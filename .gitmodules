@@ -1,0 +1,3 @@
+[submodule "my-skills"]
+	path = my-skills
+	url = git@gitlab.caijj.net:zhouzhihua/my-skills.git

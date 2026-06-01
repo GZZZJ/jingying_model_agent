@@ -1,0 +1,8 @@
+pyyaml>=6.0
+pandas
+pyarrow
+scikit-learn
+lightgbm
+xgboost
+jinja2
+matplotlib

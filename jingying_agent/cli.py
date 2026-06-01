@@ -1,0 +1,91 @@
+"""Command-line interface for local agent operations."""
+
+from __future__ import annotations
+
+import argparse
+import importlib.util
+from pathlib import Path
+
+from jingying_agent.manifest import write_manifest
+from jingying_agent.project import REPO_ROOT, create_project
+
+
+def cmd_doctor(_: argparse.Namespace) -> int:
+    """Check expected local files and optional dependencies."""
+    checks = {
+        "planning_doc": REPO_ROOT / "doc" / "AI经营建模Agent规划.md",
+        "model_inventory": REPO_ROOT / "doc" / "现有经营模型梳理.md",
+        "gcard_workbook": REPO_ROOT / "doc" / "复借G卡模型文档.xlsx",
+        "feature_select_v2": REPO_ROOT / "my-skills" / "develop" / "feature-select-v2" / "SKILL.md",
+        "project_template": REPO_ROOT / "templates" / "project" / "project.yaml",
+    }
+
+    ok = True
+    for name, path in checks.items():
+        exists = path.exists()
+        ok = ok and exists
+        status = "OK" if exists else "MISSING"
+        print(f"{status:7} {name}: {path}")
+
+    yaml_available = importlib.util.find_spec("yaml") is not None
+    ok = ok and yaml_available
+    print(f"{'OK' if yaml_available else 'MISSING':7} dependency: PyYAML")
+    return 0 if ok else 1
+
+
+def cmd_init_project(args: argparse.Namespace) -> int:
+    project_dir = create_project(
+        REPO_ROOT,
+        name=args.name,
+        display_name=args.display_name,
+        scenario=args.scenario,
+        template=args.template,
+        force=args.force,
+    )
+    print(f"created: {project_dir}")
+    return 0
+
+
+def cmd_new_run(args: argparse.Namespace) -> int:
+    project_dir = (REPO_ROOT / args.project).resolve() if not Path(args.project).is_absolute() else Path(args.project)
+    inputs = [
+        project_dir / "project.yaml",
+        project_dir / "configs" / "sample.yaml",
+        project_dir / "configs" / "feature_select.yaml",
+        project_dir / "configs" / "train.yaml",
+        project_dir / "configs" / "evaluate.yaml",
+        project_dir / "configs" / "report.yaml",
+    ]
+    manifest_path = write_manifest(project_dir, args.step, inputs=inputs, extra={"note": args.note or ""})
+    print(f"manifest: {manifest_path}")
+    return 0
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="经营建模 Agent CLI")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    doctor = subparsers.add_parser("doctor", help="check local scaffold and dependencies")
+    doctor.set_defaults(func=cmd_doctor)
+
+    init_project = subparsers.add_parser("init-project", help="create a model project workspace")
+    init_project.add_argument("--name", required=True, help="project folder name under projects/")
+    init_project.add_argument("--display-name", required=True, help="human-readable model name")
+    init_project.add_argument("--scenario", required=True, help="business scenario")
+    init_project.add_argument("--template", default="generic", choices=["generic", "fujie-gcard"])
+    init_project.add_argument("--force", action="store_true", help="overwrite existing files from template")
+    init_project.set_defaults(func=cmd_init_project)
+
+    new_run = subparsers.add_parser("new-run", help="create a run manifest skeleton")
+    new_run.add_argument("--project", required=True, help="project path, absolute or relative to repo root")
+    new_run.add_argument("--step", required=True, help="logical step name")
+    new_run.add_argument("--note", default="", help="optional note recorded in manifest")
+    new_run.set_defaults(func=cmd_new_run)
+
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    return args.func(args)

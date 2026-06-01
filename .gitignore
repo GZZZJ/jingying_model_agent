@@ -1,0 +1,19 @@
+.DS_Store
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+venv/
+
+# Local large datasets and model artifacts.
+projects/*/data/raw/*
+!projects/*/data/raw/.gitkeep
+projects/*/data/sampled/*
+!projects/*/data/sampled/.gitkeep
+projects/*/data/processed/*
+!projects/*/data/processed/.gitkeep
+projects/*/models/
+
+# Keep curated metadata under data/profile tracked.

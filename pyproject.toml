@@ -1,0 +1,22 @@
+[project]
+name = "jingying-model-agent"
+version = "0.1.0"
+description = "Local agent scaffold for business scenario model development."
+requires-python = ">=3.9"
+dependencies = [
+  "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+modeling = [
+  "pandas",
+  "pyarrow",
+  "scikit-learn",
+  "lightgbm",
+  "xgboost",
+  "jinja2",
+  "matplotlib",
+]
+
+[project.scripts]
+jingying-agent = "jingying_agent.cli:main"

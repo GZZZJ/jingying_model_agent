@@ -1,0 +1,35 @@
+{
+  "run_id": "20260530_145508",
+  "step": "feature_select_config",
+  "created_at": "2026-05-30T14:55:08",
+  "project_dir": "/Users/guzijun/Desktop/AI攻坚/jingying_model_agent/projects/2026-05-fujie-gcard-v1",
+  "environment": {
+    "python": "3.9.6",
+    "platform": "macOS-26.5-arm64-arm-64bit"
+  },
+  "inputs": [
+    {
+      "path": "project.yaml",
+      "size_bytes": 2601,
+      "mtime": "2026-05-30T14:54:56",
+      "sha256": "52eae7040bffa460bd3d3461ddead2ad5e24695883a256cc1eec5582e17cb030"
+    },
+    {
+      "path": "configs/feature_select.yaml",
+      "size_bytes": 1032,
+      "mtime": "2026-05-30T14:54:56",
+      "sha256": "7b24252a0e27c308c6542d6709ce8ab18b9ec9a8bee61ab4bf44860fb4dbd963"
+    }
+  ],
+  "outputs": [
+    {
+      "path": "runs/20260530_145508/feature_select_config.json",
+      "size_bytes": 1131,
+      "mtime": "2026-05-30T14:55:08",
+      "sha256": "ac0abc37910c721001e283ab82cd80162ada44c9d523ea546d031581ac3ca6f4"
+    }
+  ],
+  "extra": {
+    "execute_feature_select": false
+  }
+}

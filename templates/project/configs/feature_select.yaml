@@ -1,0 +1,47 @@
+feature_select:
+  engine: feature-select-v2
+  mode: local_file
+  skill_path: ../../my-skills/develop/feature-select-v2
+  output_dir: runs/{run_id}/feature_select
+
+  steps:
+    - d01
+    - d02
+    - d03
+    - d05
+    - d07
+    - d08
+
+  thresholds:
+    iv: 0.005
+    empty: 0.97
+    corr: 0.90
+    psi: 0.05
+
+  feature_info:
+    table_or_path: ""
+    required_columns:
+      - feature_name
+      - feature_comment
+      - category_name
+
+  bigtable:
+    tables: []
+    local_files: []
+
+  params:
+    D01_PARAMS:
+      random_num: 3000000
+      random_seed: 0
+    D02_PARAMS:
+      random_num: 5000000
+      random_seed: 0
+    D03_D06_PARAMS:
+      ins_random_num: 3000000
+      oos_random_num: 1000000
+      random_seed: 0
+    D07_D08_PARAMS:
+      random_num: 5000000
+      random_seed: 0
+
+  train_baseline_model: true

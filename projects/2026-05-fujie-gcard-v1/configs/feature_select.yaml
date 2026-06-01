@@ -1,0 +1,54 @@
+feature_select:
+  engine: feature-select-v2
+  mode: local_file
+  skill_path: ../../my-skills/develop/feature-select-v2
+  output_dir: runs/{run_id}/feature_select
+  scale_note: 候选特征预计15000+，样本量几百万级；必须随机抽样并分批处理特征。
+  current_screening_note: 当前D01/D02脚本按特征表单独筛选，取数条件固定为 rand_flag0 < 0.1 and final_flag in ('DEV','OOT')。
+
+  steps:
+    - d01
+    - d02
+    - d03
+    - d05
+    - d07
+    - d08
+
+  thresholds:
+    iv: 0.005
+    empty: 0.95
+    corr: 0.80
+    psi: 0.10
+
+  feature_info:
+    table_or_path: data/profile/feature_metadata/feature_columns.csv
+    required_columns:
+      - feature_name
+      - feature_comment
+      - category_name
+
+  bigtable:
+    table_list: configs/feature_tables.txt
+    metadata_dir: data/profile/feature_metadata
+    tables: []
+    local_files: []
+    expected_feature_count: 15028
+    source_status: backtracked_tables_profiled
+
+  params:
+    D01_PARAMS:
+      random_num: 3000000
+      random_seed: 0
+      round_num: 500
+    D02_PARAMS:
+      random_num: 5000000
+      random_seed: 0
+    D03_D06_PARAMS:
+      ins_random_num: 3000000
+      oos_random_num: 1000000
+      random_seed: 0
+    D07_D08_PARAMS:
+      random_num: 5000000
+      random_seed: 0
+
+  train_baseline_model: true
