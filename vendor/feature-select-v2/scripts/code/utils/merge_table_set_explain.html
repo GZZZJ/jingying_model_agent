@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>merge_table_set 函数解读（新旧对比）</title>
+<style>
+  :root { --bg: #1e1e2e; --surface: #282840; --text: #cdd6f4; --dim: #6c7086; --blue: #89b4fa; --green: #a6e3a1; --yellow: #f9e2af; --red: #f38ba8; --mauve: #cba6f7; --peach: #fab387; --border: #45475a; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif; background: var(--bg); color: var(--text); line-height: 1.8; padding: 2rem; max-width: 960px; margin: 0 auto; }
+  h1 { color: var(--mauve); font-size: 1.8rem; margin-bottom: .5rem; }
+  h2 { color: var(--blue); font-size: 1.4rem; margin: 2.5rem 0 1rem; border-left: 4px solid var(--blue); padding-left: .8rem; }
+  h3 { color: var(--green); font-size: 1.1rem; margin: 1.5rem 0 .5rem; }
+  p { margin: .6rem 0; }
+  code { background: var(--surface); padding: 2px 6px; border-radius: 4px; font-family: 'JetBrains Mono', 'Fira Code', Menlo, monospace; font-size: .9em; color: var(--yellow); }
+  pre { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.2rem; overflow-x: auto; margin: 1rem 0; font-family: 'JetBrains Mono', 'Fira Code', Menlo, monospace; font-size: .82rem; line-height: 1.6; }
+  .analogy { background: linear-gradient(135deg, #1e3a5f 0%, #1e2d4a 100%); border: 1px solid #2d5a8e; border-radius: 10px; padding: 1.2rem 1.5rem; margin: 1.5rem 0; }
+  .analogy::before { content: '💡 '; }
+  .diagram { background: #1a1a2e; border: 1px solid var(--border); border-radius: 10px; padding: 1.5rem; margin: 1.5rem 0; overflow-x: auto; }
+  .diagram pre { background: none; border: none; padding: 0; margin: 0; color: var(--green); }
+  .gotcha { background: linear-gradient(135deg, #3a1e1e 0%, #4a1e2d 100%); border: 1px solid #8e2d2d; border-radius: 10px; padding: 1.2rem 1.5rem; margin: 1.5rem 0; }
+  .gotcha::before { content: '⚠️ '; }
+  .good { background: linear-gradient(135deg, #1e3a2e 0%, #1e4a2d 100%); border: 1px solid #2d8e5a; border-radius: 10px; padding: 1.2rem 1.5rem; margin: 1.5rem 0; }
+  .good::before { content: '✅ '; }
+  .comment { color: var(--dim); }
+  .keyword { color: var(--mauve); }
+  .string { color: var(--green); }
+  .func { color: var(--blue); }
+  .num { color: var(--peach); }
+  .diff-old { background: #3a1e1e; border-left: 3px solid var(--red); padding: .8rem 1rem; margin: .5rem 0; border-radius: 0 6px 6px 0; }
+  .diff-new { background: #1e3a2e; border-left: 3px solid var(--green); padding: .8rem 1rem; margin: .5rem 0; border-radius: 0 6px 6px 0; }
+  .diff-label { font-size: .75rem; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; margin-bottom: .3rem; }
+  .diff-label-old { color: var(--red); }
+  .diff-label-new { color: var(--green); }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+  th, td { border: 1px solid var(--border); padding: .5rem .8rem; text-align: left; font-size: .9rem; }
+  th { background: var(--surface); color: var(--blue); }
+  .step { display: flex; align-items: flex-start; margin: .8rem 0; }
+  .step-num { background: var(--blue); color: var(--bg); width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: .85rem; flex-shrink: 0; margin-right: .8rem; margin-top: 2px; }
+  .step-content { flex: 1; }
+  hr { border: none; border-top: 1px solid var(--border); margin: 2rem 0; }
+  .subtitle { color: var(--dim); font-size: .95rem; margin-bottom: 2rem; }
+  .tag { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: .75rem; font-weight: 600; }
+  .tag-old { background: #3a2020; color: var(--red); }
+  .tag-new { background: #203a20; color: var(--green); }
+</style>
+</head>
+<body>
+
+<h1>merge_table_set 函数解读</h1>
+<p class="subtitle">将多张宽表的剩余特征分组合并为结果表 — 新旧版本对比</p>
+
+<hr>
+
+<h2>类比：搬家装箱</h2>
+
+<div class="analogy">
+你有 10 个房间（宽表）要搬家，每个房间有不同数量的物品（特征）。你有一批纸箱（merge 表），每个箱子最多装 <strong>800 件物品</strong>（max_fea_num）且最多装 <strong>10 个房间的东西</strong>（max_table_num）。<br><br>
+<strong>旧版搬家工人</strong>：拿起物品就往当前箱子里塞，塞不下了才换新箱子 —— 但他在判断"塞不塞得下"时犯了个错：<em>已经塞了 800 件还觉得"还行"</em>，结果第一个箱子塞了 900 件撑爆了，最后一个箱子只有几件。<br><br>
+<strong>新版搬家工人</strong>：先数清楚总共多少件物品，算好需要几个箱子、每个箱子大概装多少件，然后均匀分配。遇到一个房间物品就超过 800 件的，单独给它一个箱子。
+</div>
+
+<hr>
+
+<h2>旧版代码 <span class="tag tag-old">有 Bug</span></h2>
+
+<pre><span class="keyword">def</span> <span class="func">merge_table_set</span>(table_remain_fea, max_fea_num=<span class="num">800</span>, max_table_num=<span class="num">10</span>, ...):
+    merge_set = list()
+    cur_set = list()
+    cur_table_num = <span class="num">0</span>
+    cur_fea_num = <span class="num">0</span>
+
+    <span class="keyword">for</span> table, fea_list <span class="keyword">in</span> table_remain_fea.items():
+        <span class="keyword">if</span> len(fea_list) > <span class="num">0</span>:
+            <span class="keyword">if</span> cur_table_num <= max_table_num <span class="keyword">and</span> cur_fea_num <= max_fea_num:  <span class="comment"># ❌ Bug!</span>
+                cur_set.append(table)
+                cur_table_num += <span class="num">1</span>
+                cur_fea_num += len(fea_list)
+            <span class="keyword">else</span>:
+                merge_set.append(cur_set)
+                cur_set = [table]
+                cur_table_num = <span class="num">1</span>
+                cur_fea_num = len(fea_list)
+
+    merge_set.append(cur_set)  <span class="comment"># 最后一组</span></pre>
+
+<h3>旧版的三个问题</h3>
+
+<div class="gotcha">
+<strong>Bug 1：判断条件是"加入前"而非"加入后"。</strong><br>
+<code>cur_fea_num <= max_fea_num</code> 检查的是当前已有的特征数。假设当前已有 800，<code>800 <= 800</code> 为 True，于是再加一张 200 特征的表 —— 实际���成 1000，<strong>超标了</strong>。
+</div>
+
+<div class="gotcha">
+<strong>Bug 2：单张大表没有特殊处理。</strong><br>
+如果一张表有 1500 个特征（超过 max_fea_num=800），它会被正常加入某一组。这组不可避免地超标，但代码不知道。
+</div>
+
+<div class="gotcha">
+<strong>Bug 3：不考虑全局均匀性。</strong><br>
+纯贪心顺序填充：前面的组尽量塞满，最后一组可能只有几个特征，导致分组极不均匀。
+</div>
+
+<hr>
+
+<h2>新版代码 <span class="tag tag-new">已修复</span></h2>
+
+<h3>整体流程图</h3>
+
+<div class="diagram">
+<pre>
+输入: {表A: 500个特征, 表B: 400个, 表C: 300个, 表D: 200个, 表E: 100个}
+      max_fea_num = 800, max_table_num = 10
+
+        ┌──────────────────────────────┐
+        │ Phase 1: 分类预处理            │
+        │                              │
+        │  遍历所有表:                   │
+        │  ├─ 空表 → 跳过               │
+        │  ├─ 特征数 > 800 → 超标表     │
+        │  └─ 其余 → 正常表             │
+        └──────────────┬───────────────┘
+                       │
+        ┌──────────────▼───────────────┐
+        │ Phase 2: 超标表独占一组        │
+        │                              │
+        │  每张超标表 → 自己一组 + 警告   │
+        └──────────────┬───────────────┘
+                       │
+        ┌──────────────▼───────────────┐
+        │ Phase 3: 计算理论组数          │
+        │                              │
+        │  总特征: 500+400+300+200+100  │
+        │       = 1500                 │
+        │                              │
+        │  按特征算: ⌈1500/800⌉ = 2 组  │
+        │  按表数算: ⌈5/10⌉ = 1 组      │
+        │  取较大值: num_groups = 2      │
+        │                              │
+        │  目标: 1500/2 = 750 个/组     │
+        └──────────────┬───────────────┘
+                       │
+        ┌──────────────▼───────────────┐
+        │ Phase 4: 贪心填充             │
+        │                              │
+        │  表A(500): 0+500=500 < 750   │
+        │           → 加入当前组         │
+        │  表B(400): 500 ≥ 750?        │
+        │           → 是! 当前组关闭     │
+        │           → 开新组, 加入B      │
+        │  表C(300): 400+300=700 < 800 │
+        │           400 < 750           │
+        │           → 加入当前组         │
+        │  表D(200): 700 ≥ 750?        │
+        │           → 是! 当前组关闭     │
+        │           → 开新组, 加入D      │
+        │  表E(100): 200+100=300 < 800 │
+        │           200 < 750           │
+        │           → 加入当前组         │
+        │                              │
+        │  结果:                        │
+        │  组1: [A]     = 500 个特征    │
+        │  组2: [B, C]  = 700 个特征    │
+        │  组3: [D, E]  = 300 个特征    │
+        └──────────────────────────────┘
+</pre>
+</div>
+
+<h3>新版代码逐段解读</h3>
+
+<h3>Phase 1：分类预处理</h3>
+
+<pre><span class="comment"># 过滤空表，分离超标单表</span>
+normal_tables = []      <span class="comment"># (table, fea_count)</span>
+oversized_tables = []   <span class="comment"># 单表超过 max_fea_num 的</span>
+
+<span class="keyword">for</span> table, fea_list <span class="keyword">in</span> table_remain_fea.items():
+    n = len(fea_list)
+    <span class="keyword">if</span> n == <span class="num">0</span>:
+        <span class="keyword">continue</span>           <span class="comment"># 空表直接跳过</span>
+    <span class="keyword">if</span> n > max_fea_num:
+        oversized_tables.append(table)
+        print(f<span class="string">"warning: 表 {table} 特征数 {n} 超过上限..."</span>)
+    <span class="keyword">else</span>:
+        normal_tables.append((table, n))</pre>
+
+<p>先把表分成三类：空的丢弃、超标的单独处理、正常的参与分组。</p>
+
+<h3>Phase 2 + 3：独占组 + 计算理论组数</h3>
+
+<pre><span class="comment"># 超标表各自独占一组</span>
+<span class="keyword">for</span> t <span class="keyword">in</span> oversized_tables:
+    merge_set.append([t])
+
+<span class="comment"># 计算理论组数</span>
+total_fea = sum(n <span class="keyword">for</span> _, n <span class="keyword">in</span> normal_tables)
+min_groups_by_fea = max(<span class="num">1</span>, -(-total_fea // max_fea_num))    <span class="comment"># 向上取整技巧</span>
+min_groups_by_table = max(<span class="num">1</span>, -(-total_table // max_table_num))
+num_groups = max(min_groups_by_fea, min_groups_by_table)
+target_fea_per_group = total_fea / num_groups</pre>
+
+<p><code>-(-x // y)</code> 是 Python 向上取整的惯用技巧：<code>-(-1500 // 800)</code> = <code>-((-1500) // 800)</code> = <code>-(-2)</code> = <code>2</code>。</p>
+
+<p><code>num_groups</code> 取两个约束的较大值 —— 确保每组既不超特征数上限，也不超表数上限。<code>target_fea_per_group</code> 是每组的"理想"特征数，用来均匀分配。</p>
+
+<h3>Phase 4：贪心填充（三重判断）</h3>
+
+<pre><span class="keyword">for</span> table, n <span class="keyword">in</span> normal_tables:
+    would_exceed_hard  = (cur_fea_num + n) > max_fea_num     <span class="comment"># 硬上限：加入后是否超标</span>
+    would_exceed_table = len(cur_set) >= max_table_num        <span class="comment"># 表数上限：当前组已满</span>
+    reached_target     = cur_fea_num >= target_fea_per_group <span class="keyword">and</span> cur_set  <span class="comment"># 软目标：够均匀了</span>
+
+    <span class="keyword">if</span> cur_set <span class="keyword">and</span> (would_exceed_hard <span class="keyword">or</span> would_exceed_table <span class="keyword">or</span> reached_target):
+        merge_set.append(cur_set)   <span class="comment"># 关闭当前组</span>
+        cur_set = []
+        cur_fea_num = <span class="num">0</span>
+
+    cur_set.append(table)           <span class="comment"># 加入当前组</span>
+    cur_fea_num += n</pre>
+
+<p>三个条件分别对应：</p>
+<div class="step"><div class="step-num">1</div><div class="step-content"><strong>would_exceed_hard</strong>：加入后<em>会</em>超过 max_fea_num → 必须开新组（<strong>硬约束</strong>）</div></div>
+<div class="step"><div class="step-num">2</div><div class="step-content"><strong>would_exceed_table</strong>：当前组已有 max_table_num 张表 → 必须开新组（<strong>硬约束</strong>）</div></div>
+<div class="step"><div class="step-num">3</div><div class="step-content"><strong>reached_target</strong>：当前组特征数已达到均匀目标 → 应该开新组（<strong>软约束</strong>）</div></div>
+
+<p><code>cur_set and ...</code> 确保当前组非空时才关闭 —— 防止空组产生。</p>
+
+<hr>
+
+<h2>新旧版本对比</h2>
+
+<h3>Bug 1 修复：判断时机</h3>
+
+<div class="diff-old">
+<div class="diff-label diff-label-old">旧版 — 判断"加入前"的状态</div>
+<pre><span class="keyword">if</span> cur_table_num <= max_table_num <span class="keyword">and</span> cur_fea_num <= max_fea_num:
+    cur_set.append(table)      <span class="comment"># 先加入...</span>
+    cur_fea_num += len(fea_list)  <span class="comment"># 再加计数 → 可能超标</span></pre>
+</div>
+
+<div class="diff-new">
+<div class="diff-label diff-label-new">新版 — 判断"加入后"的状态</div>
+<pre>would_exceed_hard = (cur_fea_num + n) > max_fea_num  <span class="comment"># 预判加入后</span>
+<span class="keyword">if</span> cur_set <span class="keyword">and</span> (would_exceed_hard ...):
+    merge_set.append(cur_set)  <span class="comment"># 先关闭当前组</span>
+cur_set.append(table)          <span class="comment"># 再加入新组 → 不会超标</span></pre>
+</div>
+
+<h3>Bug 2 修复：单表超标</h3>
+
+<div class="diff-old">
+<div class="diff-label diff-label-old">旧版 — 不处理</div>
+<pre><span class="comment"># 1500 特征的表直接塞进某一组，该组超标</span></pre>
+</div>
+
+<div class="diff-new">
+<div class="diff-label diff-label-new">新版 — 独占一组 + 警告</div>
+<pre><span class="keyword">if</span> n > max_fea_num:
+    oversized_tables.append(table)
+    print(f<span class="string">"warning: 表 {table} 特征数 {n} 超过上限 {max_fea_num}，独占一组"</span>)</pre>
+</div>
+
+<h3>Bug 3 修复：均匀分配</h3>
+
+<div class="diff-old">
+<div class="diff-label diff-label-old">旧版 — 纯贪心，塞满一个再换下一个</div>
+<pre><span class="comment"># 5张表(500,400,300,200,100), max=800
+# 结果: [500,400]=900❌ [300,200,100]=600</span></pre>
+</div>
+
+<div class="diff-new">
+<div class="diff-label diff-label-new">新版 — 先算目标再均匀分配</div>
+<pre><span class="comment"># 总量1500, 至少2组, 目标750/组
+# 结果: [500]=500 [400,300]=700 [200,100]=300 ✓</span></pre>
+</div>
+
+<hr>
+
+<h2>实际测试结果</h2>
+
+<table>
+<tr><th>场景</th><th>输入</th><th>旧版结果</th><th>新版结果</th></tr>
+<tr>
+  <td>总量未超标</td>
+  <td>5张表 (200,150,100,80,50)<br>max=800</td>
+  <td>[580] — 1组</td>
+  <td>[580] — 1组（相同）</td>
+</tr>
+<tr>
+  <td>旧版超标</td>
+  <td>5张表 (500,400,300,200,100)<br>max=800</td>
+  <td style="color:var(--red)">[900❌, 600]</td>
+  <td style="color:var(--green)">[500, 700, 300] ✓</td>
+</tr>
+<tr>
+  <td>单表超标</td>
+  <td>3张表 (1500,200,300)<br>max=800</td>
+  <td style="color:var(--red)">[1500+200=1700❌, 300]</td>
+  <td style="color:var(--green)">[1500⚠️独占, 500] ✓</td>
+</tr>
+<tr>
+  <td>均匀性</td>
+  <td>20张表各50特征<br>max_table=10</td>
+  <td>[500(10张), 500(10张)]</td>
+  <td>[500(10张), 500(10张)]（相同）</td>
+</tr>
+</table>
+
+<hr>
+
+<h2>常见误区</h2>
+
+<div class="gotcha">
+<strong><code>-(-x // y)</code> 不是负负得正。</strong><br>
+这是 Python 的向上取整技巧。Python 的 <code>//</code> 是<strong>向下取整</strong>除法（floor division），对负数也一样：<code>-1500 // 800 = -2</code>（向下取整到 -2），所以 <code>-(-1500 // 800) = -(-2) = 2</code>。等价于 <code>math.ceil(1500 / 800)</code>，但不需要导入 math。
+</div>
+
+<div class="gotcha">
+<strong><code>reached_target</code> 中的 <code>and cur_set</code> 不能省。</strong><br>
+如果省掉，当 <code>cur_set</code> 为空且 <code>cur_fea_num=0</code> 且 <code>target_fea_per_group=0</code>（理论上不会，但防御性编程），<code>0 >= 0</code> 为 True，会在空组时触发关闭，产生空列表。
+</div>
+
+<div class="good">
+<strong>软目标 vs 硬上限的设计。</strong><br>
+<code>target_fea_per_group</code> 是"建议值"，达到了就开新组以保持均匀；<code>max_fea_num</code> 是"绝对不能超过的硬限制"。两者协同工作：软目标保证均匀，硬上限保证安全。
+</div>
+
+</body>
+</html>

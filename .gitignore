@@ -17,3 +17,6 @@ projects/*/data/processed/*
 projects/*/models/
 
 # Keep curated metadata under data/profile tracked.
+
+# Local skill checkout is optional; runtime code is vendored under vendor/.
+my-skills/

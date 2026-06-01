@@ -97,9 +97,9 @@ def find_feature_select_code_dir(project_dir: Path, explicit: str | None) -> Pat
         candidates.append(Path(explicit).expanduser())
     candidates.extend(
         [
-            project_dir / "my-skills/develop/feature-select-v2/scripts/code",
-            project_dir.parent.parent / "my-skills/develop/feature-select-v2/scripts/code",
-            Path.cwd() / "my-skills/develop/feature-select-v2/scripts/code",
+            project_dir / "vendor/feature-select-v2/scripts/code",
+            project_dir.parent.parent / "vendor/feature-select-v2/scripts/code",
+            Path.cwd() / "vendor/feature-select-v2/scripts/code",
             SCRIPT_PATH.parent / "feature-select-v2/scripts/code",
             SCRIPT_PATH.parent.parent / "feature-select-v2/scripts/code",
         ]

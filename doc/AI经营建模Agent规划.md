@@ -25,7 +25,7 @@
 - `doc/现有经营模型梳理.md`
 - `doc/复借G卡模型文档.xlsx`
 - `/Users/guzijun/Desktop/AI攻坚/AutoNotebook/references/base建模_精简版.ipynb`
-- `my-skills/develop/feature-select-v2/`
+- `vendor/feature-select-v2/`
 - DP 样本表：`pdm_risk.pdm_risk_gcard_base_sample_uid_ds_eva_ben_v6_1`
 
 ## 3. 核心设计原则
@@ -259,7 +259,7 @@ split:
 
 ## 7. 特征筛选模块
 
-特征筛选优先复用 `my-skills/develop/feature-select-v2/`，不重写核心算法。
+特征筛选优先复用仓库内 `vendor/feature-select-v2/`，不重写核心算法。
 
 ### 7.1 标准步骤
 
@@ -287,7 +287,7 @@ d01, d02, d03, d04, d05, d06, d07, d08
 
 ### 7.2 Agent 封装方式
 
-本 Agent 不修改 `feature-select-v2/scripts/code/`，只做适配层：
+本 Agent 默认不修改 `vendor/feature-select-v2/scripts/code/`，只做适配层：
 
 1. 从 `project.yaml` 和 `configs/feature_select.yaml` 生成 `feature-select-v2` 所需 config。
 2. 执行 `feature-select-v2` 的 Proc。

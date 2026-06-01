@@ -9,7 +9,7 @@ references:
   planning_doc: ../../doc/AI经营建模Agent规划.md
   model_inventory: ../../doc/现有经营模型梳理.md
   gcard_workbook: ../../doc/复借G卡模型文档.xlsx
-  feature_select_v2: ../../my-skills/develop/feature-select-v2
+  feature_select_v2: ../../vendor/feature-select-v2
 
 data:
   source_table: {{sample_table}}

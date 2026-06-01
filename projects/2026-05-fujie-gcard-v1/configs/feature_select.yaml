@@ -1,7 +1,7 @@
 feature_select:
   engine: feature-select-v2
   mode: local_file
-  skill_path: ../../my-skills/develop/feature-select-v2
+  skill_path: ../../vendor/feature-select-v2
   output_dir: runs/{run_id}/feature_select
   scale_note: 候选特征预计15000+，样本量几百万级；必须随机抽样并分批处理特征。
   current_screening_note: 当前D01/D02脚本按特征表单独筛选，取数条件固定为 rand_flag0 < 0.1 and final_flag in ('DEV','OOT')。

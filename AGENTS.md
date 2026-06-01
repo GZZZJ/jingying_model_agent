@@ -8,8 +8,8 @@
 
 - 第一版是本地建模 Agent，不默认直接连接 Dataphin 拉数或模型平台上线。
 - 可以用 `mcp_dp` 做样本表结构和聚合探查。
-- 特征筛选优先适配 `my-skills/develop/feature-select-v2/`，不要重写核心筛选算法。
-- `my-skills/develop/feature-select-v2/scripts/code/` 视为只读参考实现，除非用户明确要求，不要修改。
+- 特征筛选优先适配仓库内 `vendor/feature-select-v2/`，不要重写核心筛选算法。
+- `vendor/feature-select-v2/scripts/code/` 是从 feature-select-v2 固化进本仓库的运行代码，默认视为只读实现；除非用户明确要求，不要修改核心算法。
 
 ## 关键文件
 
@@ -19,6 +19,7 @@
 - `README.md`：本仓库初始化和命令说明。
 - `agent.py`：CLI 入口。
 - `templates/project/`：项目 workspace 模板。
+- `vendor/feature-select-v2/scripts/code/`：特征筛选运行代码。
 - `projects/2026-05-fujie-gcard-v1/`：复借G卡第一版 workspace。
 
 ## 常用命令

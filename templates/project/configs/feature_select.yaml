@@ -1,7 +1,7 @@
 feature_select:
   engine: feature-select-v2
   mode: local_file
-  skill_path: ../../my-skills/develop/feature-select-v2
+  skill_path: ../../vendor/feature-select-v2
   output_dir: runs/{run_id}/feature_select
 
   steps:

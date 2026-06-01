@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>decorators.py 代码解读（v2 修复版）</title>
+<style>
+  :root { --bg: #1e1e2e; --surface: #282840; --text: #cdd6f4; --dim: #6c7086; --blue: #89b4fa; --green: #a6e3a1; --yellow: #f9e2af; --red: #f38ba8; --mauve: #cba6f7; --peach: #fab387; --border: #45475a; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif; background: var(--bg); color: var(--text); line-height: 1.8; padding: 2rem; max-width: 960px; margin: 0 auto; }
+  h1 { color: var(--mauve); font-size: 1.8rem; margin-bottom: .5rem; }
+  h2 { color: var(--blue); font-size: 1.4rem; margin: 2.5rem 0 1rem; border-left: 4px solid var(--blue); padding-left: .8rem; }
+  h3 { color: var(--green); font-size: 1.1rem; margin: 1.5rem 0 .5rem; }
+  p { margin: .6rem 0; }
+  code { background: var(--surface); padding: 2px 6px; border-radius: 4px; font-family: 'JetBrains Mono', 'Fira Code', Menlo, monospace; font-size: .9em; color: var(--yellow); }
+  pre { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.2rem; overflow-x: auto; margin: 1rem 0; font-family: 'JetBrains Mono', 'Fira Code', Menlo, monospace; font-size: .82rem; line-height: 1.6; }
+  .analogy { background: linear-gradient(135deg, #1e3a5f 0%, #1e2d4a 100%); border: 1px solid #2d5a8e; border-radius: 10px; padding: 1.2rem 1.5rem; margin: 1.5rem 0; }
+  .analogy::before { content: '💡 '; }
+  .diagram { background: #1a1a2e; border: 1px solid var(--border); border-radius: 10px; padding: 1.5rem; margin: 1.5rem 0; overflow-x: auto; }
+  .diagram pre { background: none; border: none; padding: 0; margin: 0; color: var(--green); }
+  .gotcha { background: linear-gradient(135deg, #3a1e1e 0%, #4a1e2d 100%); border: 1px solid #8e2d2d; border-radius: 10px; padding: 1.2rem 1.5rem; margin: 1.5rem 0; }
+  .gotcha::before { content: '⚠️ '; }
+  .good { background: linear-gradient(135deg, #1e3a2e 0%, #1e4a2d 100%); border: 1px solid #2d8e5a; border-radius: 10px; padding: 1.2rem 1.5rem; margin: 1.5rem 0; }
+  .good::before { content: '✅ '; }
+  .bug-story { background: linear-gradient(135deg, #3a2a1e 0%, #4a2d1e 100%); border: 1px solid #8e6a2d; border-radius: 10px; padding: 1.2rem 1.5rem; margin: 1.5rem 0; }
+  .bug-story::before { content: '🐛 '; }
+  .comment { color: var(--dim); }
+  .keyword { color: var(--mauve); }
+  .string { color: var(--green); }
+  .func { color: var(--blue); }
+  .num { color: var(--peach); }
+  .diff-old { background: #3a1e1e; border-left: 3px solid var(--red); padding: .8rem 1rem; margin: .5rem 0; border-radius: 0 6px 6px 0; }
+  .diff-new { background: #1e3a2e; border-left: 3px solid var(--green); padding: .8rem 1rem; margin: .5rem 0; border-radius: 0 6px 6px 0; }
+  .diff-label { font-size: .75rem; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; margin-bottom: .3rem; }
+  .diff-label-old { color: var(--red); }
+  .diff-label-new { color: var(--green); }
+  .tag { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: .75rem; font-weight: 600; margin-right: .5rem; }
+  .tag-decorator { background: #3a2d5a; color: var(--mauve); }
+  .tag-ctx { background: #2d4a3a; color: var(--green); }
+  .tag-old { background: #3a2020; color: var(--red); }
+  .tag-new { background: #203a20; color: var(--green); }
+  .scene { background: var(--surface); border-radius: 8px; padding: 1rem 1.2rem; margin: .8rem 0; border-left: 3px solid var(--mauve); }
+  .scene-b { border-left-color: var(--green); }
+  .step { display: flex; align-items: flex-start; margin: .8rem 0; }
+  .step-num { background: var(--blue); color: var(--bg); width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: .85rem; flex-shrink: 0; margin-right: .8rem; margin-top: 2px; }
+  .step-content { flex: 1; }
+  hr { border: none; border-top: 1px solid var(--border); margin: 2rem 0; }
+  .subtitle { color: var(--dim); font-size: .95rem; margin-bottom: 2rem; }
+</style>
+</head>
+<body>
+
+<h1>decorators.py 代码解读（v2 修复版）</h1>
+<p class="subtitle">capture_print — 将函数内的 print 输出同时保留到日志文件。本文包含 v1 的 bug 故事和 v2 的修复方案。</p>
+
+<hr>
+
+<h2>类比：监控摄像头 + 透明玻璃</h2>
+
+<div class="analogy">
+想象你的函数是一个<strong>会议室</strong>，里面的人（代码）会说话（print）。<br><br>
+<strong>以前</strong>：会议室没有录音设备，说了什么出了门就忘了。<br>
+<strong>现在</strong>：装了一面<strong>透明单向玻璃</strong>（<code>_TeeStream</code>）——外面的人（控制台）照样能听到里面说什么，同时玻璃背后有个<strong>录音机</strong>（StringIO）默默记录一切，会议结束后把录音存档到日志文件（print.log）。
+</div>
+
+<hr>
+
+<h2>v1 的 Bug 故事：类装饰器吞掉了 self</h2>
+
+<div class="bug-story">
+<strong>现象</strong>：用 <code>@capture_print</code> 装饰实例方法后，调用报错：<br>
+<code>TypeError: _run_d03() missing 1 required positional argument: 'model_features'</code><br><br>
+明明传了 <code>self._run_d03(ins_df, model_features)</code> 两个参数，怎么会缺？
+</div>
+
+<h3>v1 的实现方式（有 Bug）</h3>
+
+<div class="diff-old">
+<div class="diff-label diff-label-old">v1 — capture_print 是一个类</div>
+<pre><span class="keyword">class</span> <span class="func">capture_print</span>:
+    <span class="keyword">def</span> <span class="func">__init__</span>(self, func=None):
+        self._func = func
+    <span class="keyword">def</span> <span class="func">__call__</span>(self, *args, **kwargs):
+        <span class="keyword">with</span> self:
+            <span class="keyword">return</span> self._func(*args, **kwargs)</pre>
+</div>
+
+<h3>为什么会丢 self？</h3>
+
+<p>当你写 <code>@capture_print</code> 装饰一个实例方法时：</p>
+
+<pre><span class="keyword">class</span> <span class="func">Proc02SelectD03D06</span>:
+    <span class="keyword">@capture_print</span>                     <span class="comment"># 等价于 _run_d03 = capture_print(_run_d03)</span>
+    <span class="keyword">def</span> <span class="func">_run_d03</span>(self, ins_df, model_features):
+        ...</pre>
+
+<p>此时 <code>_run_d03</code> 不再是函数，而是 <code>capture_print</code> 类的一个<strong>实例</strong>。</p>
+
+<div class="diagram">
+<pre>
+Python 的描述符协议（自动传 self）：
+
+  普通函数 → 有 __get__ 方法 → Python 自动绑定 self ✓
+  类的实例 → 没有 __get__ 方法 → Python 不传 self ✗
+
+所以当调用 proc._run_d03(ins_df, model_features) 时：
+
+  期望:  _run_d03(proc, ins_df, model_features)   ← 3 个参数
+  实际:  capture_print.__call__(ins_df, model_features)  ← 2 个参数
+                                  ↑
+                              ins_df 被当成了 self!
+                              model_features 变成了 ins_df
+                              真正的 model_features 缺失 → 报错！
+</pre>
+</div>
+
+<hr>
+
+<h2>v2 的修复方案：函数式装饰器 + 独立上下文类</h2>
+
+<p>核心思路：把"装饰器"和"上下文管理器"拆成两个独立的东西，装饰器用<strong>函数</strong>实现（有 <code>__get__</code>，Python 会正确传 self），上下文管理器用<strong>类</strong>实现。</p>
+
+<h3>整体架构图</h3>
+
+<div class="diagram">
+<pre>
+                    ┌──────────────────────────┐
+                    │  capture_print(func_or_  │
+                    │  none) — 一个普通函数     │
+                    ├─────────────┬────────────┤
+                    │ func_or_none│func_or_none│
+                    │ 是函数      │ 是 None    │
+                    │ (装饰器)    │ (上下文)   │
+                    └──────┬──────┴──────┬─────┘
+                           │             │
+                           ▼             ▼
+                    ┌──────────┐  ┌─────────────┐
+                    │ 返回     │  │ 返回         │
+                    │ wrapper  │  │ _CaptureCtx │
+                    │ (函数)   │  │ (实例)       │
+                    └──────────┘  └─────────────┘
+
+  @capture_print              with capture_print():
+  def _run_d03(self, ...):        print("hi")
+      ...
+
+  _run_d03 是 wrapper 函数       _CaptureContext 实例
+  → 有 __get__                   → 有 __enter__/__exit__
+  → Python 正确传 self ✓         → 正常工作 ✓
+</pre>
+</div>
+
+<hr>
+
+<h2>第一部分：_TeeStream（透明玻璃）</h2>
+
+<pre><span class="keyword">class</span> <span class="func">_TeeStream</span>:
+    <span class="keyword">def</span> <span class="func">__init__</span>(self, original, buffer):
+        self.original = original  <span class="comment"># 原始控制台输出</span>
+        self.buffer = buffer      <span class="comment"># 内存录音机</span>
+
+    <span class="keyword">def</span> <span class="func">write</span>(self, text):
+        self.original.write(text)  <span class="comment"># 照常显示到控制台</span>
+        self.buffer.write(text)    <span class="comment"># 同时偷偷记一份</span>
+
+    <span class="keyword">def</span> <span class="func">flush</span>(self):
+        self.original.flush()
+        self.buffer.flush()</pre>
+
+<p>名字来自 Linux 的 <code>tee</code> 命令（<code>echo hi | tee file.log</code>，同时输出到屏幕和文件）。Python 的 <code>print()</code> 底层就是调 <code>sys.stdout.write()</code>，所以只要替换 <code>sys.stdout</code>，就能劫持所有 print。</p>
+
+<hr>
+
+<h2>第二部分：_CaptureContext（录音机操控台）</h2>
+
+<pre><span class="keyword">class</span> <span class="func">_CaptureContext</span>:
+    <span class="keyword">def</span> <span class="func">__enter__</span>(self):
+        <span class="keyword">from</span> log_config <span class="keyword">import</span> get_print_logger  <span class="comment"># 延迟导入！</span>
+        self._print_logger = get_print_logger()
+        self._old_stdout = sys.stdout              <span class="comment"># 备份原始 stdout</span>
+        self._buffer = StringIO()                  <span class="comment"># 创建录音机</span>
+        sys.stdout = _TeeStream(self._old_stdout, self._buffer)  <span class="comment"># 偷梁换柱</span>
+        <span class="keyword">return</span> self
+
+    <span class="keyword">def</span> <span class="func">__exit__</span>(self, exc_type, exc_val, exc_tb):
+        sys.stdout = self._old_stdout              <span class="comment"># 先恢复，防止日志也被捕获</span>
+        printed_content = self._buffer.getvalue().strip()
+        <span class="keyword">if</span> printed_content:
+            <span class="keyword">for</span> line <span class="keyword">in</span> printed_content.split(<span class="string">'\n'</span>):
+                <span class="keyword">if</span> line.strip():
+                    self._print_logger.info(line)  <span class="comment"># 逐行写入 print.log</span>
+        <span class="keyword">return</span> False                               <span class="comment"># 不吞异常</span></pre>
+
+<p><strong>为什么延迟导入？</strong> 如果写在文件顶部，模块加载时 <code>init_logging()</code> 还没被调用，logger 就是空的。放在 <code>__enter__</code> 里，确保"开录音"的时候日志系统已经就绪。</p>
+
+<hr>
+
+<h2>第三部分：capture_print 函数（两种用法的入口）</h2>
+
+<pre><span class="keyword">def</span> <span class="func">capture_print</span>(func_or_none=None):
+    <span class="keyword">if</span> func_or_none <span class="keyword">is</span> None:
+        <span class="comment"># with capture_print(): 上下文管理器模式</span>
+        <span class="keyword">return</span> _CaptureContext()
+
+    <span class="comment"># @capture_print 装饰器模式</span>
+    func = func_or_none
+
+    <span class="keyword">@wraps</span>(func)
+    <span class="keyword">def</span> <span class="func">wrapper</span>(*args, **kwargs):
+        <span class="keyword">with</span> _CaptureContext():
+            <span class="keyword">return</span> func(*args, **kwargs)
+
+    <span class="keyword">return</span> wrapper</pre>
+
+<p>这是最"绕"的部分，但比 v1 简单多了。关键在于 <code>func_or_none</code> 参数的判断：</p>
+
+<h3><span class="tag tag-decorator">装饰器</span> 场景 A：@capture_print</h3>
+
+<div class="scene">
+<pre><span class="keyword">@capture_print</span>                              <span class="comment"># Python 执行 capture_print(_run_d03)</span>
+<span class="keyword">def</span> <span class="func">_run_d03</span>(self, ins_df, model_features): <span class="comment"># func_or_none = _run_d03（不是 None）</span>
+    ...</pre>
+
+<p>执行链路：</p>
+<div class="step"><div class="step-num">1</div><div class="step-content"><code>capture_print(_run_d03)</code> 被调用，<code>func_or_none = _run_d03</code></div></div>
+<div class="step"><div class="step-num">2</div><div class="step-content">不是 None → 走装饰器分支，创建 <code>wrapper</code> 函数</div></div>
+<div class="step"><div class="step-num">3</div><div class="step-content"><code>@wraps(func)</code> 让 <code>wrapper</code> 继承原函数的名字和文档</div></div>
+<div class="step"><div class="step-num">4</div><div class="step-content">返回 <code>wrapper</code> — 这是一个<strong>普通函数</strong>，Python 描述符协议正常工作，<code>self</code> 会被正确传递</div></div>
+</div>
+
+<h3><span class="tag tag-ctx">上下文管理器</span> 场景 B：with capture_print()</h3>
+
+<div class="scene scene-b">
+<pre><span class="keyword">with</span> <span class="func">capture_print</span>():   <span class="comment"># Python 执行 capture_print()，func_or_none = None</span>
+    <span class="func">print</span>(<span class="string">"hi"</span>)         <span class="comment"># 返回 _CaptureContext()，走 __enter__/__exit__</span></pre>
+
+<p>执行链路：</p>
+<div class="step"><div class="step-num">1</div><div class="step-content"><code>capture_print()</code> 无参调用，<code>func_or_none = None</code></div></div>
+<div class="step"><div class="step-num">2</div><div class="step-content">是 None → 返回 <code>_CaptureContext()</code> 实例</div></div>
+<div class="step"><div class="step-num">3</div><div class="step-content"><code>with</code> 语句调用 <code>__enter__</code> → 替换 stdout</div></div>
+<div class="step"><div class="step-num">4</div><div class="step-content">代码块执行完毕 → <code>__exit__</code> → 恢复 stdout + 写日志</div></div>
+</div>
+
+<hr>
+
+<h2>v1 vs v2 对比</h2>
+
+<div class="diff-old">
+<div class="diff-label diff-label-old">v1 — capture_print 是类</div>
+<pre><span class="keyword">class</span> <span class="func">capture_print</span>:
+    <span class="keyword">def</span> <span class="func">__init__</span>(self, func=None): ...
+    <span class="keyword">def</span> <span class="func">__call__</span>(self, *args, **kwargs): ...
+    <span class="keyword">def</span> <span class="func">__enter__</span>(self): ...
+    <span class="keyword">def</span> <span class="func">__exit__</span>(self, ...): ...
+
+<span class="comment"># 问题：@capture_print 后 _run_d03 变成类实例
+# → 没有 __get__ → Python 不传 self → 参数错位</span></pre>
+</div>
+
+<div class="diff-new">
+<div class="diff-label diff-label-new">v2 — capture_print 是函数，_CaptureContext 是类</div>
+<pre><span class="keyword">class</span> <span class="func">_CaptureContext</span>:               <span class="comment"># 只负责上下文管理</span>
+    <span class="keyword">def</span> <span class="func">__enter__</span>(self): ...
+    <span class="keyword">def</span> <span class="func">__exit__</span>(self, ...): ...
+
+<span class="keyword">def</span> <span class="func">capture_print</span>(func_or_none=None): <span class="comment"># 函数，负责分发</span>
+    <span class="keyword">if</span> func_or_none <span class="keyword">is</span> None:
+        <span class="keyword">return</span> _CaptureContext()      <span class="comment"># 上下文模式</span>
+    <span class="keyword">@wraps</span>(func_or_none)
+    <span class="keyword">def</span> <span class="func">wrapper</span>(*args, **kwargs): ... <span class="comment"># 装饰器模式，返回函数</span>
+    <span class="keyword">return</span> wrapper
+
+<span class="comment"># @capture_print 后 _run_d03 变成 wrapper 函数
+# → 有 __get__ → Python 正确传 self ✓</span></pre>
+</div>
+
+<hr>
+
+<h2>完整流程图</h2>
+
+<div class="diagram">
+<pre>
+              ┌─────────────────────────────────┐
+              │  两种使用方式                      │
+              ├────────────────┬────────────────┤
+              │  @capture_print│ with capture_  │
+              │  def foo():    │    print():    │
+              │    print("hi") │    print("hi") │
+              └───────┬────────┴───────┬────────┘
+                      │                │
+                      ▼                ▼
+              ┌──────────────┐  ┌──────────────┐
+              │ 返回 wrapper │  │ 返回         │
+              │ (普通函数)   │  │ _CaptureCtx  │
+              └──────┬───────┘  └──────┬───────┘
+                     │    都走 _CaptureContext   │
+                     ▼                ▼
+              ┌─────────────────────────────────┐
+              │  __enter__: 偷梁换柱              │
+              │                                  │
+              │  原始 sys.stdout ──备份──→ old    │
+              │  sys.stdout ──替换为──→ TeeStream │
+              └──────────────┬───────────────────┘
+                             │
+                   函数执行，调用 print("hi")
+                             │
+                             ▼
+              ┌─────────────────────────────────┐
+              │  _TeeStream.write("hi\n")        │
+              │                                  │
+              │  ┌──────────┐   ┌──────────────┐ │
+              │  │ original │   │   buffer     │ │
+              │  │ (控制台)  │   │  (StringIO)  │ │
+              │  │ 显示 hi  │   │  记录 "hi\n" │ │
+              │  └──────────┘   └──────────────┘ │
+              └──────────────┬───────────────────┘
+                             │
+                    函数执行完毕
+                             │
+                             ▼
+              ┌─────────────────────────────────┐
+              │  __exit__: 恢复现场 + 存档        │
+              │                                  │
+              │  1. sys.stdout = old  (恢复原样)  │
+              │  2. 从 buffer 取出所有内容         │
+              │  3. 逐行写入 print.log            │
+              └─────────────────────────────────┘
+</pre>
+</div>
+
+<hr>
+
+<h2>常见误区</h2>
+
+<div class="gotcha">
+<strong>类装饰器不能直接装饰实例方法。</strong><br>
+这是 v1 踩的坑。Python 的描述符协议（自动传 <code>self</code>）只对<strong>函数对象</strong>生效。如果一定要用类实现装饰器，必须额外实现 <code>__get__</code> 方法来手动绑定 <code>self</code>。v2 用函数式装饰器彻底避开了这个问题。
+</div>
+
+<div class="gotcha">
+<strong><code>return False</code> 不是多余的。</strong><br>
+<code>__exit__</code> 返回 <code>True</code> 会吞掉 <code>with</code> 块内的异常（报错了你也看不到），返回 <code>False</code>（或不返回）则正常抛出异常。如果这里改成 <code>return True</code>，函数内部报错你永远看不到。
+</div>
+
+<div class="gotcha">
+<strong>恢复 stdout 要在写日志之前。</strong><br>
+<code>__exit__</code> 中先 <code>sys.stdout = self._old_stdout</code>，再写日志。如果反过来，<code>print_logger.info()</code> 可能触发 StreamHandler 往 stdout 写，而此时 stdout 还是 TeeStream，就会无限递归。
+</div>
+
+<div class="good">
+<strong>v2 的设计原则：职责分离。</strong><br>
+<code>capture_print</code> 函数只负责"判断用哪种模式"（装饰器 or 上下文），<code>_CaptureContext</code> 类只负责"录音的开启和关闭"。两者各司其职，不互相纠缠。
+</div>
+
+</body>
+</html>

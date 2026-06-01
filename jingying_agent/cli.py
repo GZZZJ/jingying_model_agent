@@ -16,7 +16,7 @@ def cmd_doctor(_: argparse.Namespace) -> int:
         "planning_doc": REPO_ROOT / "doc" / "AI经营建模Agent规划.md",
         "model_inventory": REPO_ROOT / "doc" / "现有经营模型梳理.md",
         "gcard_workbook": REPO_ROOT / "doc" / "复借G卡模型文档.xlsx",
-        "feature_select_v2": REPO_ROOT / "my-skills" / "develop" / "feature-select-v2" / "SKILL.md",
+        "feature_select_v2_code": REPO_ROOT / "vendor" / "feature-select-v2" / "scripts" / "code" / "main.py",
         "project_template": REPO_ROOT / "templates" / "project" / "project.yaml",
     }
 

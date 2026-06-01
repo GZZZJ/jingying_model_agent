@@ -10,7 +10,7 @@
 - `jingying_agent/`：通用 Agent 工具包。
 - `templates/project/`：新建模型项目 workspace 的标准模板。
 - `projects/2026-05-fujie-gcard-v1/`：复借G卡第一版项目 workspace。
-- `my-skills/`：特征筛选等本地技能仓库，以 Git submodule 方式引用。
+- `vendor/feature-select-v2/scripts/code/`：已固化进本仓库的特征筛选运行代码。
 
 复借G卡项目已经完成平台回溯结果的元数据登记：
 
@@ -21,16 +21,10 @@
 
 ## 拉取仓库
 
-本仓库包含 `my-skills` 子模块，首次拉取建议使用：
+本仓库不依赖 Git submodule，直接 clone 即可：
 
 ```bash
-git clone --recurse-submodules git@gitlab.caijj.net:risk-acquisition-member/jy-model-agent.git
-```
-
-如果已经普通 clone：
-
-```bash
-git submodule update --init --recursive
+git clone git@gitlab.caijj.net:risk-acquisition-member/jy-model-agent.git
 ```
 
 ## 常用命令
@@ -89,6 +83,15 @@ python3 projects/2026-05-fujie-gcard-v1/scripts/06_run_d01_d02_batch_select.py -
 - D02：PSI 筛选，`DEV` vs `OOT`，阈值 `0.10`。
 - 抽样：每张特征表使用 `rand_flag0 < 0.1 and final_flag in ('DEV','OOT')`。
 - 执行策略：每个特征组/特征表单独筛选，支持 checkpoint 跳过已完成表。
+
+## 外部环境依赖
+
+项目代码本身已经不依赖其他 Git 项目。实际执行取数和筛选时，运行环境仍需要安装公司内部/三方 Python 包：
+
+- `tmlpatch`：提供 `TMLSQLClient`
+- `pandas`
+- `numpy`
+- `toad`：D01 优先使用；缺失时可通过脚本参数 `--use-native` 使用 feature-select-v2 的 native selector
 
 ## 后续待确认
 
