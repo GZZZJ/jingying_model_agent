@@ -42,7 +42,11 @@
    `python3 scripts/06_run_d01_d02_batch_select.py`
 4. 先试跑一张表：
    `python3 scripts/06_run_d01_d02_batch_select.py --max-tables 1`
-5. 后续接入训练、评估和报告脚本。
+5. 生成 D01/D02 保留特征宽表 SQL：
+   `python3 scripts/07_build_wide_feature_sql.py`
+6. 从宽表抽样并收敛到 500 个以内特征：
+   `python3 scripts/08_refine_wide_features.py`
+7. 后续接入训练、评估和报告脚本。
 
 ## D01/D02 当前口径
 
@@ -50,3 +54,50 @@
 - D01：仅使用 `DEV`，阈值为缺失率 `0.95`、相关性 `0.80`、IV `0.005`
 - D02：`DEV` 对比 `OOT`，PSI 阈值 `0.10`
 - 输出目录：`runs/d01_d02_batch_select/`
+
+## D01/D02 后宽表拼接
+
+- 输入：`runs/d01_d02_batch_select/results/d01_d02_final_remain_features.json`
+- SQL 输出：`queries/06_build_d01_d02_wide_table.sql`
+- 字段映射：`runs/d01_d02_batch_select/results/d01_d02_wide_feature_map.csv`
+- 默认底表：`pdm_risk.pdm_risk_gcard_base_sample_uid_ds_eva_ben_v6_1`
+- 默认目标表：`pdm_risk.pdm_risk_fujie_gcard_d01_d02_wide_feature_v6_1`
+- Join 主键：`uid`、`mdl_dte`、`ds`
+- 底表和特征表子查询均过滤：`ds is not null`
+
+当前生成器会把 70 张特征表中 D01/D02 后保留的 2,843 个特征拼成一张 MaxCompute 宽表 SQL。若不同来源表存在同名特征，生成器会自动给重复字段加来源表前缀别名，并在字段映射 CSV 中记录 `output_feature`、`source_feature`、`source_table`。
+
+也可以从仓库根目录调用：
+
+```bash
+python3 agent.py build-wide-sql --project projects/2026-05-fujie-gcard-v1
+```
+
+## 后续收敛方向
+
+- 全局相关性去重：在宽表层面对 2,843 个特征整体做相关性聚类/去重，解决当前 D01 只在单张特征表内部去相关的问题。
+- D05 重要性筛选：全局去重后直接训练一个基线模型，用模型重要性、增益、覆盖度等指标筛到几百个以内。
+- D03 随机重要性筛选：加入若干随机噪声特征，训练模型后剔除重要性不高于随机噪声的真实特征，用来过滤“看起来有值但实际弱于噪声”的字段。
+- D04 Null Importance：打乱标签多次训练得到每个特征在无真实信号下的重要性分布，再和真实标签训练的重要性对比，保留显著高于空标签分布的特征。
+
+## 宽表特征收敛
+
+- 配置：`configs/refine_features.yaml`
+- 脚本：`scripts/08_refine_wide_features.py`
+- 宽表：`pdm_risk.pdm_risk_fujie_gcard_d01_d02_wide_feature_v6_1`
+- 默认抽样：`ds is not null and final_flag in ('DEV','OOT') and ftr_30d_ord_flag in (0,1) and rand_flag0 < 0.2`
+- 输出目录：`runs/feature_refine_wide/`
+- 最终特征清单：`runs/feature_refine_wide/final_500_features.txt`
+
+先只检查 DP 抽样 SQL、不拉数：
+
+```bash
+python3 scripts/08_refine_wide_features.py --dry-run-sql
+```
+
+正式执行时会通过 TMLSQL 拉取抽样宽表，并按以下顺序处理：
+
+1. 全局相关性去重：按单变量 AUC 近似信号强弱排序，相关性超过阈值时保留得分更高的特征。
+2. D03 随机重要性筛选：加入随机噪声特征，剔除重要性低于随机噪声阈值的真实特征。
+3. D04 Null Importance：多轮打乱标签得到空标签重要性分布，保留真实重要性显著高于空标签分布的特征。
+4. D05 基线模型重要性：训练 LightGBM 基线模型，按 gain importance 保留前 500 个特征。

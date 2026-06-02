@@ -1,7 +1,7 @@
 training:
   default_algorithm: lightgbm
   random_seed: 0
-  feature_list_path: runs/{run_id}/feature_select/results/final_features.txt
+  feature_list_path: runs/feature_refine_wide/final_500_features.txt
   label_column: ftr_30d_ord_flag
 
   experiments:

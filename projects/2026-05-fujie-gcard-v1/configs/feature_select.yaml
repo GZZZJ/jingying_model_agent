@@ -35,6 +35,40 @@ feature_select:
     expected_feature_count: 15028
     source_status: backtracked_tables_profiled
 
+  wide_table:
+    base_table: pdm_risk.pdm_risk_gcard_base_sample_uid_ds_eva_ben_v6_1
+    output_table: pdm_risk.pdm_risk_fujie_gcard_d01_d02_wide_feature_v6_1
+    join_keys:
+      - uid
+      - mdl_dte
+      - ds
+    base_columns:
+      - uid
+      - mdl_dte
+      - ds
+      - blue_customer_flag
+      - ftr_30d_ord_flag
+      - ftr_30d_ord_amt
+      - prc_amt_xz_30d_3m
+      - ovd_amt_xz_30d_3m
+      - final_flag
+      - zc_level
+      - gcard_v2
+      - gcard_v4
+      - gcard_v5
+      - gcard_v6
+      - rand_flag0
+      - rand_flag1
+      - rand_flag2
+      - rand_flag3
+      - rand_flag4
+      - rand_flag5
+    base_where: ds is not null
+    feature_where: ds is not null
+    remain_features_path: runs/d01_d02_batch_select/results/d01_d02_final_remain_features.json
+    sql_output: queries/06_build_d01_d02_wide_table.sql
+    feature_map_output: runs/d01_d02_batch_select/results/d01_d02_wide_feature_map.csv
+
   params:
     D01_PARAMS:
       random_num: 3000000
