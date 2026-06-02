@@ -48,6 +48,8 @@ D01_THRESHOLDS = {
     "iv": 0.005,
 }
 D02_PSI_THRESHOLD = 0.10
+DEV_PARTITION_DS = "20250630"
+OOT_PARTITION_DS = "20260131"
 
 DEFAULT_ROUND_NUM = 500
 DEFAULT_RANDOM_SEED = 0
@@ -88,6 +90,8 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Force feature-select-v2 native selector instead of toad. Default auto-detects toad.",
     )
+    parser.add_argument("--dev-partition-ds", default=DEV_PARTITION_DS, help="Partition ds value for DEV data.")
+    parser.add_argument("--oot-partition-ds", default=OOT_PARTITION_DS, help="Partition ds value for OOT data.")
     return parser.parse_args()
 
 
@@ -145,11 +149,18 @@ def table_slug(table_name: str) -> str:
     return table_name.replace(".", "__dot__")
 
 
-def build_sample_sql(table_name: str) -> str:
+def build_sample_sql(table_name: str, dev_partition_ds: str, oot_partition_ds: str) -> str:
     return f"""
 select *
 from {table_name}
-where rand_flag0 < 0.1
+where ds = '{dev_partition_ds}'
+and rand_flag0 < 0.1
+and {SPLIT_COL} in ('{DEV_VALUE}', '{OOT_VALUE}')
+union all
+select *
+from {table_name}
+where ds = '{oot_partition_ds}'
+and rand_flag0 < 0.1
 and {SPLIT_COL} in ('{DEV_VALUE}', '{OOT_VALUE}')
 """
 
@@ -324,7 +335,7 @@ def main() -> int:
                 continue
 
             print(f"[INFO] ({table_index}/{total_tables}) {table_name}, features={len(feature_list)}", flush=True)
-            sample_sql = build_sample_sql(table_name)
+            sample_sql = build_sample_sql(table_name, args.dev_partition_ds, args.oot_partition_ds)
             (sql_dir / f"{slug}.sql").parent.mkdir(parents=True, exist_ok=True)
             (sql_dir / f"{slug}.sql").write_text(sample_sql.strip() + "\n", encoding="utf-8")
 

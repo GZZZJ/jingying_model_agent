@@ -20,3 +20,6 @@ projects/*/models/
 
 # Local skill checkout is optional; runtime code is vendored under vendor/.
 my-skills/
+
+# Jupyter auto-generated checkpoints.
+.ipynb_checkpoints/

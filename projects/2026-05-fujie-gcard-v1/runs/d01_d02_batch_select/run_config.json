@@ -1,0 +1,19 @@
+{
+  "generated_at": "2026-06-02 10:33:41",
+  "project_dir": "/root/notebook/自动化建模/jy-model-agent/projects/2026-05-fujie-gcard-v1",
+  "feature_columns": "/root/notebook/自动化建模/jy-model-agent/projects/2026-05-fujie-gcard-v1/data/profile/feature_metadata/feature_columns.csv",
+  "feature_select_code_dir": "/root/notebook/自动化建模/jy-model-agent/vendor/feature-select-v2/scripts/code",
+  "thresholds": {
+    "d01": {
+      "empty": 0.95,
+      "corr": 0.8,
+      "iv": 0.005
+    },
+    "d02_psi": 0.1
+  },
+  "sampling": {
+    "where": "rand_flag0 < 0.1 and final_flag in ('DEV', 'OOT')",
+    "d01": "final_flag = 'DEV'",
+    "d02": "DEV vs OOT"
+  }
+}
