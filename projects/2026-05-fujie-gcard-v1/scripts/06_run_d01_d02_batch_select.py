@@ -30,6 +30,7 @@ import os
 import pickle
 import sys
 import time
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
 
@@ -48,11 +49,14 @@ D01_THRESHOLDS = {
     "iv": 0.005,
 }
 D02_PSI_THRESHOLD = 0.10
-DEV_PARTITION_DS = "20250630"
-OOT_PARTITION_DS = "20260131"
+
+# All 8 monthly partitions: DEV data in 2025-06 ~ 2025-11, OOT in 2025-12 ~ 2026-01
+DEV_PARTITION_DS_LIST = ["20250630", "20250731", "20250831", "20250930", "20251031", "20251130"]
+OOT_PARTITION_DS_LIST = ["20251231", "20260131"]
 
 DEFAULT_ROUND_NUM = 500
 DEFAULT_RANDOM_SEED = 0
+DEFAULT_WORKERS = 4
 
 
 SCRIPT_PATH = Path(__file__).resolve()
@@ -90,8 +94,17 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Force feature-select-v2 native selector instead of toad. Default auto-detects toad.",
     )
-    parser.add_argument("--dev-partition-ds", default=DEV_PARTITION_DS, help="Partition ds value for DEV data.")
-    parser.add_argument("--oot-partition-ds", default=OOT_PARTITION_DS, help="Partition ds value for OOT data.")
+    parser.add_argument(
+        "--dev-partition-ds",
+        default=",".join(DEV_PARTITION_DS_LIST),
+        help="Comma-separated ds values for DEV partitions.",
+    )
+    parser.add_argument(
+        "--oot-partition-ds",
+        default=",".join(OOT_PARTITION_DS_LIST),
+        help="Comma-separated ds values for OOT partitions.",
+    )
+    parser.add_argument("--workers", type=int, default=DEFAULT_WORKERS, help="Number of parallel workers.")
     return parser.parse_args()
 
 
@@ -149,20 +162,16 @@ def table_slug(table_name: str) -> str:
     return table_name.replace(".", "__dot__")
 
 
-def build_sample_sql(table_name: str, dev_partition_ds: str, oot_partition_ds: str) -> str:
-    return f"""
-select *
-from {table_name}
-where ds = '{dev_partition_ds}'
-and rand_flag0 < 0.1
-and {SPLIT_COL} in ('{DEV_VALUE}', '{OOT_VALUE}')
-union all
-select *
-from {table_name}
-where ds = '{oot_partition_ds}'
-and rand_flag0 < 0.1
-and {SPLIT_COL} in ('{DEV_VALUE}', '{OOT_VALUE}')
-"""
+def build_sample_sql(table_name: str, dev_ds_list: list[str], oot_ds_list: list[str]) -> str:
+    blocks = []
+    for ds_val in dev_ds_list + oot_ds_list:
+        blocks.append(
+            f"select * from {table_name} "
+            f"where ds = '{ds_val}' "
+            f"and rand_flag0 < 0.1 "
+            f"and {SPLIT_COL} in ('{DEV_VALUE}', '{OOT_VALUE}')"
+        )
+    return "\nunion all\n".join(blocks)
 
 
 def coerce_features(df: pd.DataFrame, feature_list: list[str]) -> list[str]:
@@ -278,13 +287,118 @@ def write_summary_csv(path: Path, rows: list[dict]) -> None:
         writer.writerows(rows)
 
 
+# ---------------------------------------------------------------------------
+# Worker function (module-level for ProcessPoolExecutor pickling)
+# ---------------------------------------------------------------------------
+
+def process_single_table(
+    table_name: str,
+    feature_list: list[str],
+    table_index: int,
+    total_tables: int,
+    dev_ds_list: list[str],
+    oot_ds_list: list[str],
+    round_num: int,
+    random_seed: int,
+    use_native: bool | None,
+    cache_dir: str,
+    sql_dir: str,
+    feature_select_code_dir: str,
+) -> dict | None:
+    """Process one feature table end-to-end: fetch -> D01 -> D02 -> checkpoint.
+
+    Returns the summary dict, or None if table was skipped via checkpoint.
+    Runs in a worker process with its own TMLSQLClient.
+    """
+    cache_path = Path(cache_dir) / f"{table_slug(table_name)}.pkl"
+    if cache_path.exists():
+        with cache_path.open("rb") as handle:
+            checkpoint = pickle.load(handle)
+        print(f"[SKIP] ({table_index}/{total_tables}) {table_name}")
+        return checkpoint["summary"]
+
+    print(f"[INFO] ({table_index}/{total_tables}) {table_name}, features={len(feature_list)}", flush=True)
+
+    # Each worker sets up its own imports and client
+    sys.path.insert(0, feature_select_code_dir)
+    sys.path.insert(0, str(Path(feature_select_code_dir) / "utils"))
+    from utils.feature_select import batch_psi, d01_preselect_by_toad
+    from tmlpatch.database import TMLSQLClient
+
+    start_time = time.time()
+    sample_sql = build_sample_sql(table_name, dev_ds_list, oot_ds_list)
+
+    sql_path = Path(sql_dir) / f"{table_slug(table_name)}.sql"
+    sql_path.parent.mkdir(parents=True, exist_ok=True)
+    sql_path.write_text(sample_sql.strip() + "\n", encoding="utf-8")
+
+    client = TMLSQLClient()
+    try:
+        sample = client.sql(sample_sql).to_pandas()
+    finally:
+        client.stop()
+
+    available_features = coerce_features(sample, feature_list)
+    if not available_features:
+        raise RuntimeError(f"No feature columns available in table: {table_name}")
+    available_features = shuffle_features(available_features, random_seed + table_index)
+
+    d01_result, d01_remain = run_d01(
+        sample,
+        available_features,
+        round_num=round_num,
+        use_native=use_native,
+        d01_preselect_by_toad_func=d01_preselect_by_toad,
+    )
+    psi_result, feature_max_psi, psi_drop_features = run_d02(sample, d01_remain, batch_psi)
+    final_remain = [feature for feature in d01_remain if feature not in set(psi_drop_features)]
+
+    elapsed = round(time.time() - start_time, 3)
+    drop_counts = get_d01_drop_counts(d01_result, len(available_features), d01_remain)
+    summary = {
+        "table": table_name,
+        "input_features": len(available_features),
+        "sample_rows": int(len(sample)),
+        "dev_rows": int((sample[SPLIT_COL] == DEV_VALUE).sum()),
+        "oot_rows": int((sample[SPLIT_COL] == OOT_VALUE).sum()),
+        "d01_remain": len(d01_remain),
+        **drop_counts,
+        "d02_psi_drop": len(psi_drop_features),
+        "final_remain": len(final_remain),
+        "elapsed_seconds": elapsed,
+    }
+
+    checkpoint = {
+        "summary": summary,
+        "d01_result": d01_result,
+        "d01_remain_features": d01_remain,
+        "d02_psi_result": psi_result,
+        "d02_feature_max_psi": feature_max_psi,
+        "d02_psi_drop_features": psi_drop_features,
+        "final_remain_features": final_remain,
+    }
+    write_pickle(cache_path, checkpoint)
+
+    print(
+        f"[OK] {table_name}: input={len(available_features)}, "
+        f"d01_remain={len(d01_remain)}, final={len(final_remain)}, elapsed={elapsed}s",
+        flush=True,
+    )
+    return summary
+
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+
 def main() -> int:
     args = parse_args()
     project_dir = Path(args.project_dir).resolve()
     feature_select_code_dir = find_feature_select_code_dir(project_dir, args.feature_select_code_dir)
-    batch_psi_func, d01_preselect_by_toad_func = load_feature_select_functions(feature_select_code_dir)
 
-    from tmlpatch.database import TMLSQLClient
+    # Parse partition lists
+    dev_ds_list = [v.strip() for v in args.dev_partition_ds.split(",") if v.strip()]
+    oot_ds_list = [v.strip() for v in args.oot_partition_ds.split(",") if v.strip()]
 
     feature_columns_path = resolve_project_path(project_dir, args.feature_columns)
     output_dir = resolve_project_path(project_dir, args.output_dir)
@@ -298,6 +412,13 @@ def main() -> int:
         table_features = {table: features for table, features in table_features.items() if table in requested}
     if args.max_tables is not None:
         table_features = dict(list(table_features.items())[: args.max_tables])
+
+    # Force override old results if not a smoke test
+    if args.force:
+        import shutil
+        for d in [cache_dir, sql_dir]:
+            if d.exists():
+                shutil.rmtree(d)
 
     run_meta = {
         "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -313,84 +434,66 @@ def main() -> int:
             "d01": f"{SPLIT_COL} = '{DEV_VALUE}'",
             "d02": f"{DEV_VALUE} vs {OOT_VALUE}",
         },
+        "partitions": {
+            "dev": dev_ds_list,
+            "oot": oot_ds_list,
+        },
+        "workers": args.workers,
     }
     write_json(output_dir / "run_config.json", run_meta)
+
+    # Ensure output dirs
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    sql_dir.mkdir(parents=True, exist_ok=True)
+    results_dir.mkdir(parents=True, exist_ok=True)
+
+    use_native = True if args.use_native else None
+    total_tables = len(table_features)
+    table_items = list(table_features.items())
+
+    print(f"[INFO] Launching {args.workers} workers for {total_tables} tables, "
+          f"DEV partitions={len(dev_ds_list)}, OOT partitions={len(oot_ds_list)}")
 
     summary_rows: list[dict] = []
     final_remain_by_table: dict[str, list[str]] = {}
 
-    client = TMLSQLClient()
-    try:
-        total_tables = len(table_features)
-        for table_index, (table_name, feature_list) in enumerate(table_features.items(), start=1):
-            start_time = time.time()
-            slug = table_slug(table_name)
-            checkpoint_path = cache_dir / f"{slug}.pkl"
-            if checkpoint_path.exists() and not args.force:
-                with checkpoint_path.open("rb") as handle:
-                    checkpoint = pickle.load(handle)
-                summary_rows.append(checkpoint["summary"])
-                final_remain_by_table[table_name] = checkpoint["final_remain_features"]
-                print(f"[SKIP] ({table_index}/{total_tables}) {table_name}")
-                continue
-
-            print(f"[INFO] ({table_index}/{total_tables}) {table_name}, features={len(feature_list)}", flush=True)
-            sample_sql = build_sample_sql(table_name, args.dev_partition_ds, args.oot_partition_ds)
-            (sql_dir / f"{slug}.sql").parent.mkdir(parents=True, exist_ok=True)
-            (sql_dir / f"{slug}.sql").write_text(sample_sql.strip() + "\n", encoding="utf-8")
-
-            sample = client.sql(sample_sql).to_pandas()
-            available_features = coerce_features(sample, feature_list)
-            if not available_features:
-                raise RuntimeError(f"No feature columns available in table: {table_name}")
-            available_features = shuffle_features(available_features, args.random_seed + table_index)
-
-            d01_result, d01_remain = run_d01(
-                sample,
-                available_features,
+    with ProcessPoolExecutor(max_workers=args.workers) as executor:
+        futures = {}
+        for idx, (table_name, feature_list) in enumerate(table_items, start=1):
+            future = executor.submit(
+                process_single_table,
+                table_name=table_name,
+                feature_list=feature_list,
+                table_index=idx,
+                total_tables=total_tables,
+                dev_ds_list=dev_ds_list,
+                oot_ds_list=oot_ds_list,
                 round_num=args.round_num,
-                use_native=True if args.use_native else None,
-                d01_preselect_by_toad_func=d01_preselect_by_toad_func,
+                random_seed=args.random_seed,
+                use_native=use_native,
+                cache_dir=str(cache_dir),
+                sql_dir=str(sql_dir),
+                feature_select_code_dir=str(feature_select_code_dir),
             )
-            psi_result, feature_max_psi, psi_drop_features = run_d02(sample, d01_remain, batch_psi_func)
-            final_remain = [feature for feature in d01_remain if feature not in set(psi_drop_features)]
+            futures[future] = table_name
 
-            elapsed = round(time.time() - start_time, 3)
-            drop_counts = get_d01_drop_counts(d01_result, len(available_features), d01_remain)
-            summary = {
-                "table": table_name,
-                "input_features": len(available_features),
-                "sample_rows": int(len(sample)),
-                "dev_rows": int((sample[SPLIT_COL] == DEV_VALUE).sum()),
-                "oot_rows": int((sample[SPLIT_COL] == OOT_VALUE).sum()),
-                "d01_remain": len(d01_remain),
-                **drop_counts,
-                "d02_psi_drop": len(psi_drop_features),
-                "final_remain": len(final_remain),
-                "elapsed_seconds": elapsed,
-            }
+        for future in as_completed(futures):
+            table_name = futures[future]
+            try:
+                summary = future.result()
+                if summary is not None:
+                    summary_rows.append(summary)
+                    # Load checkpoint for final_remain
+                    cache_path = cache_dir / f"{table_slug(table_name)}.pkl"
+                    if cache_path.exists():
+                        with cache_path.open("rb") as handle:
+                            ck = pickle.load(handle)
+                        final_remain_by_table[table_name] = ck["final_remain_features"]
+            except Exception as exc:
+                print(f"[ERROR] {table_name}: {exc}", file=sys.stderr, flush=True)
 
-            checkpoint = {
-                "summary": summary,
-                "d01_result": d01_result,
-                "d01_remain_features": d01_remain,
-                "d02_psi_result": psi_result,
-                "d02_feature_max_psi": feature_max_psi,
-                "d02_psi_drop_features": psi_drop_features,
-                "final_remain_features": final_remain,
-            }
-            write_pickle(checkpoint_path, checkpoint)
-            summary_rows.append(summary)
-            final_remain_by_table[table_name] = final_remain
-            print(
-                f"[OK] {table_name}: input={len(available_features)}, "
-                f"d01_remain={len(d01_remain)}, final={len(final_remain)}, elapsed={elapsed}s",
-                flush=True,
-            )
-            del sample
-            gc.collect()
-    finally:
-        client.stop()
+    table_order = {name: idx for idx, (name, _) in enumerate(table_items)}
+    summary_rows.sort(key=lambda r: table_order.get(r["table"], 999))
 
     write_summary_csv(results_dir / "d01_d02_table_summary.csv", summary_rows)
     write_json(results_dir / "d01_d02_final_remain_features.json", final_remain_by_table)
