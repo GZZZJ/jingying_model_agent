@@ -1,0 +1,79 @@
+feature_refine:
+  input:
+    wide_table: ""
+    feature_map: runs/d01_d02_batch_select/results/d01_d02_wide_feature_map.csv
+    label_column: {{target_column}}
+    split_column: final_flag
+    train_value: DEV
+    valid_value: OOT
+    id_columns:
+      - uid
+      - mdl_dte
+      - {{period_column}}
+    base_columns:
+      - uid
+      - mdl_dte
+      - {{period_column}}
+      - {{target_column}}
+      - final_flag
+
+  sampling:
+    where: "{{period_column}} is not null and final_flag in ('DEV','OOT') and {{target_column}} in (0,1)"
+    max_rows: 50000
+
+  dp_feather:
+    dataset_id: feature_refine_wide_sample
+    description: D01/D02后宽表抽样，用于随机噪声、空标签重要性和基线重要性筛选。
+    data_dir: data/local/dp_feather
+    metadata_dir: data/profile/dp_feather_datasets
+
+  output_dir: runs/feature_refine_wide
+  random_seed: 0
+  target_feature_count: 500
+
+  preprocessing:
+    missing_sentinels:
+      - -999
+      - -998
+    min_non_null_rate: 0.01
+    drop_constant: true
+
+  global_corr:
+    enabled: true
+    threshold: 0.80
+    score_metric: univariate_auc
+
+  d03_random_importance:
+    enabled: true
+    random_feature_count: 5
+    rounds: 3
+    random_threshold: max
+    min_survival_rate: 0.50
+    zero_importance_drop: true
+
+  d04_null_importance:
+    enabled: true
+    max_features_for_null_importance: 1200
+    real_rounds: 3
+    null_rounds: 20
+    null_percentile: 75
+    score_threshold: 1.00
+
+  d05_baseline_importance:
+    enabled: true
+    importance_type: gain
+    keep_top_n: 500
+
+  lightgbm:
+    objective: binary
+    metric: auc
+    learning_rate: 0.05
+    num_leaves: 31
+    max_depth: 5
+    min_child_samples: 100
+    subsample: 0.7
+    colsample_bytree: 0.7
+    reg_alpha: 0.1
+    reg_lambda: 1.0
+    num_boost_round: 400
+    early_stopping_rounds: 50

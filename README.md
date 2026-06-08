@@ -39,10 +39,10 @@ python3 agent.py doctor
 
 ```bash
 python3 agent.py init-project \
-  --name 2026-05-fujie-gcard-v1 \
-  --display-name 复借G卡 \
-  --scenario 复借意愿 \
-  --template fujie-gcard
+  --name 2026-xx-new-model \
+  --display-name 新模型名称 \
+  --scenario 业务场景 \
+  --template generic
 ```
 
 为某个项目登记一次运行：
@@ -53,10 +53,10 @@ python3 agent.py new-run \
   --step bootstrap
 ```
 
-导出本次回溯特征表元数据：
+导出特征表元数据：
 
 ```bash
-python3 projects/2026-05-fujie-gcard-v1/scripts/00_export_feature_metadata.py
+python3 agent.py export-feature-metadata --project projects/2026-xx-new-model
 ```
 
 生成 feature-select-v2 适配配置：
@@ -65,23 +65,41 @@ python3 projects/2026-05-fujie-gcard-v1/scripts/00_export_feature_metadata.py
 python3 projects/2026-05-fujie-gcard-v1/scripts/02_feature_select.py
 ```
 
-按特征表分批执行 D01/D02 筛选：
+先生成分表 D01/D02 取数 SQL 给使用者确认，不拉数：
 
 ```bash
-python3 projects/2026-05-fujie-gcard-v1/scripts/06_run_d01_d02_batch_select.py
+python3 agent.py run-d01-d02 --project projects/2026-xx-new-model --dry-run-sql --max-tables 1
 ```
 
-先试跑一张表：
+确认 SQL 后执行分表 D01/D02，数据先落本地 feather：
 
 ```bash
-python3 projects/2026-05-fujie-gcard-v1/scripts/06_run_d01_d02_batch_select.py --max-tables 1
+python3 agent.py run-d01-d02 --project projects/2026-xx-new-model --refresh-dp-cache --sql-approved
+```
+
+生成 D01/D02 后宽表 SQL：
+
+```bash
+python3 agent.py build-wide-sql --project projects/2026-xx-new-model
+```
+
+先生成宽表后收敛取数 SQL 给使用者确认，不拉数：
+
+```bash
+python3 agent.py refine-features --project projects/2026-xx-new-model --dry-run-sql
+```
+
+确认 SQL 后执行全局相关性、随机噪声、空标签重要性和基线重要性筛选：
+
+```bash
+python3 agent.py refine-features --project projects/2026-xx-new-model --refresh-dp-cache --sql-approved
 ```
 
 ## 当前筛选口径
 
-- D01：TOAD 初筛，Y 为 `ftr_30d_ord_flag`，阈值为缺失率 `0.95`、相关性 `0.80`、IV `0.005`。
-- D02：PSI 筛选，`DEV` vs `OOT`，阈值 `0.10`。
-- 抽样：每张特征表使用 `rand_flag0 < 0.1 and final_flag in ('DEV','OOT')`。
+- D01：TOAD 初筛，阈值默认缺失率 `0.95`、相关性 `0.80`、IV `0.005`，可在项目 `configs/feature_select.yaml` 覆盖。
+- D02：PSI 筛选，默认阈值 `0.10`，训练/验证切分值由项目配置控制。
+- 抽样：每张特征表使用 `feature_select.d01_d02.sampling.where`，宽表后收敛使用 `configs/refine_features.yaml`。
 - 执行策略：每个特征组/特征表单独筛选，支持 checkpoint 跳过已完成表。
 
 ## 外部环境依赖
@@ -93,8 +111,6 @@ python3 projects/2026-05-fujie-gcard-v1/scripts/06_run_d01_d02_batch_select.py -
 - `numpy`
 - `toad`：D01 优先使用；缺失时可通过脚本参数 `--use-native` 使用 feature-select-v2 的 native selector
 
-## 后续待确认
+## 标准化边界
 
-- 是否将 D01/D02 结果合并成后续 D03/D05/D07/D08 的统一输入。
-- MOB1/MOB3 人头逾期率、金额逾期率历史计算逻辑。
-- 第一版训练、评估和报告脚本是否继续沿用当前模板口径。
+新建项目模板已包含从特征表元数据导出、分表 D01/D02、宽表 SQL、DP feather 缓存、宽表后特征收敛到筛选流程汇总的标准入口。执行 DP 取数前必须先 dry-run 展示 SQL，使用者确认后才能带 `--sql-approved` 执行。

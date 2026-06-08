@@ -18,8 +18,20 @@
 
 ## 建议执行顺序
 
-1. 补齐 `project.yaml` 和 `configs/sample.yaml` 中的本地样本路径。
-2. 使用 `queries/` 中的 SQL 复核 DP 样本表结构和分布。
-3. 运行 `scripts/01_prepare_sample.py` 做本地样本探查和切分。
-4. 运行 `scripts/02_feature_select.py` 生成或执行特征筛选配置。
-5. 运行训练、评估和报告脚本。
+1. 补齐 `project.yaml`、`configs/feature_tables.txt`、`configs/feature_select.yaml`、`configs/refine_features.yaml` 中的样本表、特征表、标签列、切分列、分区和宽表名。
+2. 导出特征表元数据：
+   `python3 scripts/00_export_feature_metadata.py`
+3. 生成 feature-select-v2 适配配置：
+   `python3 scripts/02_feature_select.py`
+4. 先只生成分表 D01/D02 取数 SQL，给使用者确认：
+   `python3 scripts/06_run_d01_d02_batch_select.py --dry-run-sql --max-tables 1`
+5. SQL 确认后执行分表 D01/D02：
+   `python3 scripts/06_run_d01_d02_batch_select.py --refresh-dp-cache --sql-approved`
+6. 生成 D01/D02 后宽表 SQL：
+   `python3 scripts/07_build_wide_feature_sql.py`
+7. 先只生成宽表后收敛取数 SQL，给使用者确认：
+   `python3 scripts/08_refine_wide_features.py --dry-run-sql`
+8. SQL 确认后刷新本地 feather 并执行全局相关性、随机噪声、空标签重要性和基线重要性筛选：
+   `python3 scripts/08_refine_wide_features.py --refresh-dp-cache --sql-approved`
+
+所有从 DP 获取数据的步骤都会先写本地 feather，并在 `data/profile/dp_feather_datasets/` 记录 SQL、数据说明、存储位置和行列数；真实 feather 数据位于 `data/local/dp_feather/`，不进入 Git。

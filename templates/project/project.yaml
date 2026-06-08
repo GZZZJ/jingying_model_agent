@@ -8,7 +8,6 @@ project:
 references:
   planning_doc: ../../doc/AI经营建模Agent规划.md
   model_inventory: ../../doc/现有经营模型梳理.md
-  gcard_workbook: ../../doc/复借G卡模型文档.xlsx
   feature_select_v2: ../../vendor/feature-select-v2
 
 data:
@@ -21,8 +20,14 @@ data:
   time_column: {{time_column}}
   period_column: {{period_column}}
   target_column: {{target_column}}
-  label_definition: 观察日30天内是否发起
-  sample_logic: 可经营、当前未逾期用户、重资产订单
+  base_columns:
+    - uid
+    - mdl_dte
+    - {{period_column}}
+    - {{target_column}}
+    - final_flag
+  label_definition: 待填写
+  sample_logic: 待填写
 
 split:
   source_column: final_flag
@@ -38,14 +43,7 @@ segments:
   - name: all
     display_name: 全客群
     filter: null
-  - name: e2e3
-    display_name: E2/E3客群
-    filter: "blue_customer_flag in ['E2', 'E3']"
-  - name: b2
-    display_name: B2客群
-    filter: "blue_customer_flag == 'B2'"
 
 open_questions:
-  - blue_customer_flag 与“老户次新”“流失户”的准确映射关系待确认。
-  - 本地样本和特征文件路径待确认。
+  - 样本表、特征表和字段口径待确认。
   - 抽样规则待确认。

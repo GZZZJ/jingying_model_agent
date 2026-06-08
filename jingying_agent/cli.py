@@ -54,6 +54,7 @@ def cmd_new_run(args: argparse.Namespace) -> int:
         project_dir / "project.yaml",
         project_dir / "configs" / "sample.yaml",
         project_dir / "configs" / "feature_select.yaml",
+        project_dir / "configs" / "refine_features.yaml",
         project_dir / "configs" / "train.yaml",
         project_dir / "configs" / "evaluate.yaml",
         project_dir / "configs" / "report.yaml",
@@ -85,6 +86,52 @@ def cmd_build_wide_sql(args: argparse.Namespace) -> int:
     print(f"feature_map: {feature_map_path}")
     print(f"summary: {summary_path}")
     return 0
+
+
+def cmd_export_feature_metadata(args: argparse.Namespace) -> int:
+    from jingying_agent.feature_metadata import main as metadata_main
+
+    argv = ["--project-dir", str((REPO_ROOT / args.project).resolve() if not Path(args.project).is_absolute() else Path(args.project))]
+    if args.tables_file:
+        argv.extend(["--tables-file", args.tables_file])
+    return metadata_main(argv)
+
+
+def cmd_run_d01_d02(args: argparse.Namespace) -> int:
+    from jingying_agent.batch_feature_select import main as batch_select_main
+
+    argv = ["--project-dir", str((REPO_ROOT / args.project).resolve() if not Path(args.project).is_absolute() else Path(args.project))]
+    if args.config:
+        argv.extend(["--config", args.config])
+    if args.max_tables is not None:
+        argv.extend(["--max-tables", str(args.max_tables)])
+    if args.table:
+        for table in args.table:
+            argv.extend(["--table", table])
+    if args.dry_run_sql:
+        argv.append("--dry-run-sql")
+    if args.refresh_dp_cache:
+        argv.append("--refresh-dp-cache")
+    if args.sql_approved:
+        argv.append("--sql-approved")
+    if args.force:
+        argv.append("--force")
+    return batch_select_main(argv)
+
+
+def cmd_refine_features(args: argparse.Namespace) -> int:
+    from jingying_agent.feature_refine import main as refine_main
+
+    argv = ["--project-dir", str((REPO_ROOT / args.project).resolve() if not Path(args.project).is_absolute() else Path(args.project))]
+    if args.config:
+        argv.extend(["--config", args.config])
+    if args.dry_run_sql:
+        argv.append("--dry-run-sql")
+    if args.refresh_dp_cache:
+        argv.append("--refresh-dp-cache")
+    if args.sql_approved:
+        argv.append("--sql-approved")
+    return refine_main(argv)
 
 
 def cmd_feature_screening_summary(args: argparse.Namespace) -> int:
@@ -142,6 +189,39 @@ def build_parser() -> argparse.ArgumentParser:
     build_wide_sql.add_argument("--base-where", default=None, help="optional base table where clause")
     build_wide_sql.add_argument("--feature-where", default=None, help="optional feature table where clause")
     build_wide_sql.set_defaults(func=cmd_build_wide_sql)
+
+    export_metadata = subparsers.add_parser(
+        "export-feature-metadata",
+        help="export source and feature table metadata for a model project",
+    )
+    export_metadata.add_argument("--project", required=True, help="project path, absolute or relative to repo root")
+    export_metadata.add_argument("--tables-file", default=None, help="override feature table list path")
+    export_metadata.set_defaults(func=cmd_export_feature_metadata)
+
+    run_d01_d02 = subparsers.add_parser(
+        "run-d01-d02",
+        help="run per-table D01/D02 screening with DP feather caching",
+    )
+    run_d01_d02.add_argument("--project", required=True, help="project path, absolute or relative to repo root")
+    run_d01_d02.add_argument("--config", default=None, help="feature select config path")
+    run_d01_d02.add_argument("--table", action="append", help="only run the specified full table name")
+    run_d01_d02.add_argument("--max-tables", type=int, default=None, help="optional cap for smoke runs")
+    run_d01_d02.add_argument("--dry-run-sql", action="store_true", help="write and print SQL metadata only")
+    run_d01_d02.add_argument("--refresh-dp-cache", action="store_true", help="refresh local feather cache after approval")
+    run_d01_d02.add_argument("--sql-approved", action="store_true", help="confirm displayed SQL has been reviewed")
+    run_d01_d02.add_argument("--force", action="store_true", help="overwrite table checkpoints")
+    run_d01_d02.set_defaults(func=cmd_run_d01_d02)
+
+    refine_features = subparsers.add_parser(
+        "refine-features",
+        help="refine wide-table features with correlation and importance filters",
+    )
+    refine_features.add_argument("--project", required=True, help="project path, absolute or relative to repo root")
+    refine_features.add_argument("--config", default=None, help="refine config path")
+    refine_features.add_argument("--dry-run-sql", action="store_true", help="write and print SQL metadata only")
+    refine_features.add_argument("--refresh-dp-cache", action="store_true", help="refresh local feather cache after approval")
+    refine_features.add_argument("--sql-approved", action="store_true", help="confirm displayed SQL has been reviewed")
+    refine_features.set_defaults(func=cmd_refine_features)
 
     screening_summary = subparsers.add_parser(
         "feature-screening-summary",

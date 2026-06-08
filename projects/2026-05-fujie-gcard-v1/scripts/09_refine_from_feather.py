@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Feature refinement (D03+) using draft feather data instead of DP wide table.
 
-Reuses the same D03/D04/D05 logic from 08_refine_wide_features.py,
+Reuses the same importance-refinement logic from jingying_agent.feature_refine,
 but reads data from local feather file with rand_flag0 sampling.
 """
 from __future__ import annotations
@@ -23,23 +23,15 @@ REPO_ROOT = SCRIPT_PATH.parents[3]
 sys.path.insert(0, str(REPO_ROOT))
 
 from jingying_agent.config import load_yaml
-
-# Import D03/D04/D05 functions from the existing refine script
-import importlib.util
-_refine_spec = importlib.util.spec_from_file_location(
-    "refine_wide", PROJECT_DIR / "scripts" / "08_refine_wide_features.py"
+from jingying_agent.feature_refine import (
+    DatasetParts,
+    d03_random_importance,
+    d04_null_importance,
+    d05_top_importance,
+    fill_for_model,
+    global_corr_select,
+    univariate_auc_scores,
 )
-_refine = importlib.util.module_from_spec(_refine_spec)
-_refine_spec.loader.exec_module(_refine)
-
-# Re-export the functions we need
-global_corr_select = _refine.global_corr_select
-d03_random_importance = _refine.d03_random_importance
-d04_null_importance = _refine.d04_null_importance
-d05_top_importance = _refine.d05_top_importance
-DatasetParts = _refine.DatasetParts
-univariate_auc_scores = _refine.univariate_auc_scores
-fill_for_model = _refine.fill_for_model
 
 FEATHER_PATH = "/root/notebook/draft/十分之一观察样本.feather"
 OUTPUT_DIR_NAME = "runs/feature_refine_feather"
@@ -194,7 +186,7 @@ def make_dataset_parts(x: pd.DataFrame, y: pd.Series, split_series: pd.Series, c
     if not train_mask.any() or not valid_mask.any():
         raise RuntimeError(f"No train/valid samples: train={train_mask.sum()}, valid={valid_mask.sum()}")
 
-    return _refine.DatasetParts(
+    return DatasetParts(
         train_x=x.iloc[train_mask].reset_index(drop=True),
         train_y=pd.Series(y_arr[train_mask]).reset_index(drop=True),
         valid_x=x.iloc[valid_mask].reset_index(drop=True),

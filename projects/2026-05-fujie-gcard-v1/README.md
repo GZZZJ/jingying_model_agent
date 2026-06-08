@@ -97,7 +97,7 @@ python3 agent.py feature-screening-summary --project projects/2026-05-fujie-gcar
 - 配置：`configs/refine_features.yaml`
 - 脚本：`scripts/08_refine_wide_features.py`
 - 宽表：`pdm_risk.pdm_risk_fujie_gcard_d01_d02_wide_feature_v6_1`
-- 默认抽样：`ds is not null and final_flag in ('DEV','OOT') and ftr_30d_ord_flag in (0,1) and rand_flag0 < 0.2`
+- 默认抽样：`ds is not null and final_flag in ('DEV','OOT') and ftr_30d_ord_flag in (0,1) and rand_flag0 < 0.01`
 - 输出目录：`runs/feature_refine_wide/`
 - 最终特征清单：`runs/feature_refine_wide/final_500_features.txt`
 

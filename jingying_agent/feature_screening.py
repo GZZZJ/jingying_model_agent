@@ -41,27 +41,40 @@ def build_feature_screening_summary(project_dir: str | Path) -> dict[str, Any]:
     """Build a source-backed summary of the current completed screening flow."""
     project_path = Path(project_dir).resolve()
     project_config = load_yaml(project_path / "project.yaml")
+    feature_select_config = load_yaml(project_path / "configs" / "feature_select.yaml").get("feature_select", {})
     refine_config = load_yaml(project_path / "configs" / "refine_features.yaml")["feature_refine"]
 
     d01_d02 = _read_json(project_path / "runs" / "d01_d02_batch_select" / "results" / "d01_d02_run_summary.json")
-    feather_summary_path = project_path / "runs" / "feature_refine_feather" / "stage_summary.json"
-    feather = _read_json(feather_summary_path)
-    final_features_path = project_path / "runs" / "feature_refine_feather" / "final_500_features.txt"
-    d05_importance_path = project_path / "runs" / "feature_refine_feather" / "d05_baseline_importance.csv"
+    preferred_refine_dir = project_path / "runs" / "feature_refine_feather"
+    configured_refine_dir = project_path / refine_config.get("output_dir", "runs/feature_refine_wide")
+    refine_dir = preferred_refine_dir if (preferred_refine_dir / "stage_summary.json").exists() else configured_refine_dir
+    refine_summary_path = refine_dir / "stage_summary.json"
+    refine_summary = _read_json(refine_summary_path)
+    final_features_path = refine_dir / "final_500_features.txt"
+    d05_importance_path = refine_dir / "d05_baseline_importance.csv"
 
     final_count = _read_feature_count(final_features_path)
-    d01_thresholds = "缺失率 < 0.95，相关性 < 0.80，IV >= 0.005"
-    d02_threshold = "DEV vs OOT，PSI <= 0.10"
+    thresholds = feature_select_config.get("thresholds", {})
+    d01_d02_config = feature_select_config.get("d01_d02", {})
+    train_value = d01_d02_config.get("train_value", "DEV")
+    valid_value = d01_d02_config.get("valid_value", "OOT")
+    d01_thresholds = (
+        f"缺失率 < {float(thresholds.get('empty', 0.95)):.2f}，"
+        f"相关性 < {float(thresholds.get('corr', 0.80)):.2f}，"
+        f"IV >= {float(thresholds.get('iv', 0.005)):.3f}"
+    )
+    d02_threshold = f"{train_value} vs {valid_value}，PSI <= {float(thresholds.get('psi', 0.10)):.2f}"
     global_corr = refine_config["global_corr"]
     d03 = refine_config["d03_random_importance"]
     d04 = refine_config["d04_null_importance"]
     d05 = refine_config["d05_baseline_importance"]
 
     initial_feature_count = int(d01_d02["input_features"])
+    initial_table_count = int(d01_d02.get("tables", 0)) or len(feature_select_config.get("bigtable", {}).get("tables", []))
     screening_rows = [
         {
             "step": "初始",
-            "method": f"初始候选变量总数：70张特征表，共{initial_feature_count:,}个字段级候选变量",
+            "method": f"初始候选变量总数：{initial_table_count}张特征表，共{initial_feature_count:,}个字段级候选变量",
             "remaining_features": initial_feature_count,
             "source": "runs/d01_d02_batch_select/results/d01_d02_run_summary.json",
         },
@@ -80,17 +93,17 @@ def build_feature_screening_summary(project_dir: str | Path) -> dict[str, Any]:
         {
             "step": 3,
             "method": (
-                f"Feather观察样本可用特征：{int(feather['total_rows']):,}行，"
+                f"Feather观察样本可用特征：{int(refine_summary.get('total_rows', refine_summary.get('raw_rows', 0))):,}行，"
                 "过滤缺失率过低和常量字段"
             ),
-            "remaining_features": int(feather["available_features"]),
-            "source": "runs/feature_refine_feather/stage_summary.json",
+            "remaining_features": int(refine_summary["available_features"]),
+            "source": str(refine_summary_path.relative_to(project_path)),
         },
         {
             "step": 4,
             "method": f"全局相关性去重：相关性阈值 {float(global_corr['threshold']):.2f}，按单变量AUC保留更强特征",
-            "remaining_features": int(feather["after_global_corr"]),
-            "source": "runs/feature_refine_feather/stage_summary.json",
+            "remaining_features": int(refine_summary["after_global_corr"]),
+            "source": str(refine_summary_path.relative_to(project_path)),
         },
         {
             "step": 5,
@@ -99,8 +112,8 @@ def build_feature_screening_summary(project_dir: str | Path) -> dict[str, Any]:
                 f"{int(d03['rounds'])}轮，{int(d03['random_feature_count'])}个随机噪声特征，"
                 f"存活率 >= {float(d03['min_survival_rate']):.2f}"
             ),
-            "remaining_features": int(feather["after_d03_random_importance"]),
-            "source": "runs/feature_refine_feather/stage_summary.json",
+            "remaining_features": int(refine_summary["after_d03_random_importance"]),
+            "source": str(refine_summary_path.relative_to(project_path)),
         },
         {
             "step": 6,
@@ -109,17 +122,17 @@ def build_feature_screening_summary(project_dir: str | Path) -> dict[str, Any]:
                 f"{int(d04['null_rounds'])}轮空标签，空标签重要性{int(d04['null_percentile'])}分位，"
                 f"score >= {float(d04['score_threshold']):.2f}"
             ),
-            "remaining_features": int(feather["after_d04_null_importance"]),
-            "source": "runs/feature_refine_feather/stage_summary.json",
+            "remaining_features": int(refine_summary["after_d04_null_importance"]),
+            "source": str(refine_summary_path.relative_to(project_path)),
         },
         {
             "step": 7,
             "method": (
                 "基线模型重要性筛选：LightGBM gain importance，"
-                f"保留前{int(d05['keep_top_n'])}个，valid AUC={float(feather['d05_valid_auc']):.4f}"
+                f"保留前{int(d05['keep_top_n'])}个，valid AUC={float(refine_summary['d05_valid_auc']):.4f}"
             ),
             "remaining_features": final_count,
-            "source": "runs/feature_refine_feather/final_500_features.txt",
+            "source": str(final_features_path.relative_to(project_path)),
         },
     ]
 
@@ -130,14 +143,14 @@ def build_feature_screening_summary(project_dir: str | Path) -> dict[str, Any]:
             "scenario": project_config["project"]["scenario"],
         },
         "basis": {
-            "primary_refine_source": "feature_refine_feather",
-            "feather_path": feather["feather_path"],
+            "primary_refine_source": refine_dir.name,
+            "feather_path": refine_summary.get("feather_path", ""),
             "initial_feature_count": initial_feature_count,
-            "sample_rows": int(feather["total_rows"]),
-            "train_samples": int(feather["train_samples"]),
-            "valid_samples": int(feather["valid_samples"]),
-            "d05_valid_auc": float(feather["d05_valid_auc"]),
-            "stage_summary": str(feather_summary_path.relative_to(project_path)),
+            "sample_rows": int(refine_summary.get("total_rows", refine_summary.get("raw_rows", 0))),
+            "train_samples": int(refine_summary.get("train_samples", 0)),
+            "valid_samples": int(refine_summary.get("valid_samples", 0)),
+            "d05_valid_auc": float(refine_summary["d05_valid_auc"]),
+            "stage_summary": str(refine_summary_path.relative_to(project_path)),
         },
         "feature_select_v2_alignment": {
             "status": "concept_aligned_not_exact_reimplementation",
