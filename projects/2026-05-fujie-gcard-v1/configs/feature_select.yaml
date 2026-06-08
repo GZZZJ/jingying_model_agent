@@ -41,7 +41,6 @@ feature_select:
     join_keys:
       - uid
       - mdl_dte
-      - ds
     base_columns:
       - uid
       - mdl_dte

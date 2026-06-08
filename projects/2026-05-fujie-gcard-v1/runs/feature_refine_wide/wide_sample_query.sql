@@ -2863,4 +2863,5 @@ select
   d60_d360_suc_ord_cnt_rat_all,
   d180_d360_apl_ord_prc_amt_avg_rat_all
 from pdm_risk.pdm_risk_fujie_gcard_d01_d02_wide_feature_v6_1
-where ds is not null and final_flag in ('DEV','OOT') and ftr_30d_ord_flag in (0,1) and rand_flag0 < 0.2
+where ds is not null and final_flag in ('DEV','OOT') and ftr_30d_ord_flag in (0,1) and rand_flag0 < 0.01
+limit 50000

@@ -34,8 +34,8 @@ feature_refine:
 
   sampling:
     # Keep this small when pulling from DP through TMLSQL. Increase only after memory checks.
-    where: "ds is not null and final_flag in ('DEV','OOT') and ftr_30d_ord_flag in (0,1) and rand_flag0 < 0.2"
-    max_rows: null
+    where: "ds is not null and final_flag in ('DEV','OOT') and ftr_30d_ord_flag in (0,1) and rand_flag0 < 0.01"
+    max_rows: 50000
 
   output_dir: runs/feature_refine_wide
   random_seed: 0
@@ -58,7 +58,7 @@ feature_refine:
     random_feature_count: 5
     rounds: 3
     random_threshold: max
-    min_survival_rate: 0.67
+    min_survival_rate: 0.50
     zero_importance_drop: true
 
   d04_null_importance:

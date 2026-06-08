@@ -124,6 +124,23 @@ def coerce_feature_frame(df: pd.DataFrame, features: list[str], cfg: dict[str, A
     drop_constant = bool(preprocessing.get("drop_constant", True))
 
     available = [feature for feature in features if feature in df.columns]
+    if len(available) == 0:
+        sample_features = features[:5]
+        sample_df_cols = list(df.columns[:10])
+        print(f"[WARN] available=0: df.columns[:10]={sample_df_cols}, "
+              f"first features={sample_features}", file=sys.stderr)
+    else:
+        # debug: check base columns + first 3 features
+        base_cols = ['uid', 'ds', 'final_flag', 'ftr_30d_ord_flag', 'rand_flag0']
+        for c in base_cols:
+            if c in df.columns:
+                print(f"[DEBUG] base_col={c}, dtype={df[c].dtype}, "
+                      f"sample={list(df[c].head(3).values)}, "
+                      f"non_null={df[c].notna().mean():.4f}")
+        for f in available[:3]:
+            print(f"[DEBUG] feature={f}, dtype={df[f].dtype}, "
+                  f"sample={list(df[f].head(3).values)}, "
+                  f"non_null={df[f].notna().mean():.4f}")
     x = df.loc[:, available].copy()
     stats = []
     kept = []
@@ -150,6 +167,15 @@ def coerce_feature_frame(df: pd.DataFrame, features: list[str], cfg: dict[str, A
                 "drop_reason": drop_reason,
             }
         )
+    drop_counts = {}
+    for s in stats:
+        if s["drop_reason"]:
+            drop_counts[s["drop_reason"]] = drop_counts.get(s["drop_reason"], 0) + 1
+    if kept:
+        print(f"[PREPROCESS] kept={len(kept)}/{len(available)}, drops={drop_counts}")
+    else:
+        sample_dropped = [s for s in stats if s["drop_reason"]][:3]
+        print(f"[PREPROCESS] ALL DROPPED: {drop_counts}, samples={sample_dropped}")
     return x.loc[:, kept], kept, pd.DataFrame(stats)
 
 
@@ -291,6 +317,11 @@ def d03_random_importance(parts: DatasetParts, features: list[str], cfg: dict[st
         random_imp = importance[importance["feature"].isin(random_features)]
         gain_threshold = float(random_imp["gain"].max())
         split_threshold = float(random_imp["split"].max())
+        real_imp = importance[~importance["feature"].isin(random_features)]
+        round_surv = int(((real_imp["gain"] > gain_threshold) & ((not zero_importance_drop) | (real_imp["split"] > 0))).sum())
+        print(f"[D03] round={round_index} n_feat={len(features)} auc={auc:.4f} "
+              f"gain_th={gain_threshold:.2f} max_real_gain={real_imp['gain'].max():.2f} "
+              f"round_surv={round_surv}/{len(features)}")
         for row in importance[~importance["feature"].isin(random_features)].itertuples(index=False):
             survives = row.gain > gain_threshold and (not zero_importance_drop or row.split > 0)
             if survives:
@@ -412,10 +443,17 @@ def main() -> int:
     raw_df = load_wide_sample(sql)
     x, available_features, preprocess_stats = coerce_feature_frame(raw_df, initial_features, cfg)
     parts = make_dataset_parts(raw_df, x, cfg)
+    print(f"[STAGE] raw_rows={len(raw_df)} initial_feat={len(initial_features)} "
+          f"available={len(available_features)} train={len(parts.train_x)} valid={len(parts.valid_x)}")
 
     corr_features, corr_drops = global_corr_select(parts.train_x.loc[:, available_features], parts.train_y, cfg)
+    print(f"[STAGE] after_global_corr: {len(corr_features)} (dropped {len(corr_drops)})")
     parts_corr = DatasetParts(parts.train_x.loc[:, corr_features], parts.train_y, parts.valid_x.loc[:, corr_features], parts.valid_y)
     d03_features, d03_detail = d03_random_importance(parts_corr, corr_features, cfg)
+    print(f"[STAGE] after_d03: {len(d03_features)} (dropped {len(corr_features) - len(d03_features)})")
+    if len(d03_features) == 0:
+        print("[FATAL] D03 eliminated all features, aborting", file=sys.stderr)
+        return 1
     parts_d03 = DatasetParts(parts_corr.train_x.loc[:, d03_features], parts_corr.train_y, parts_corr.valid_x.loc[:, d03_features], parts_corr.valid_y)
     d04_features, d04_detail = d04_null_importance(parts_d03, d03_features, cfg)
     parts_d04 = DatasetParts(parts_d03.train_x.loc[:, d04_features], parts_d03.train_y, parts_d03.valid_x.loc[:, d04_features], parts_d03.valid_y)
