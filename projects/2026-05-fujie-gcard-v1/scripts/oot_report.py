@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Show OOT detailed metrics for the 73-feature model."""
+"""Show OOT detailed metrics for the selected-feature model."""
+import argparse
 import sys, time
 from pathlib import Path
 import numpy as np, pandas as pd
@@ -12,11 +13,34 @@ PROJECT = SCRIPT.parents[1]
 REPO = SCRIPT.parents[3]
 sys.path.insert(0, str(REPO))
 from jingying_agent.config import load_yaml
+from jingying_agent.dp_feather import default_dataset_paths, load_or_fetch_dp_feather, print_sql_review, write_dataset_metadata
+
+parser = argparse.ArgumentParser(description="Show OOT detailed metrics for the selected-feature model.")
+parser.add_argument("--dry-run-sql", action="store_true", help="Print SQL and metadata path without querying DP.")
+parser.add_argument("--refresh-dp-cache", action="store_true", help="Refresh local feather cache from DP after SQL approval.")
+parser.add_argument("--sql-approved", action="store_true", help="Confirm that the displayed DP SQL has been reviewed.")
+parser.add_argument(
+    "--features-path",
+    default=None,
+    help="Selected feature list. Defaults to feature_refine_wide if present, otherwise feature_refine_feather.",
+)
+args = parser.parse_args()
 
 config = load_yaml(PROJECT / "configs" / "refine_features.yaml")
 
+def resolve_project_path(project_dir: Path, value: str | Path) -> Path:
+    path = Path(value)
+    return path if path.is_absolute() else project_dir / path
+
+def default_features_path(project_dir: Path) -> Path:
+    wide_path = project_dir / "runs" / "feature_refine_wide" / "final_500_features.txt"
+    if wide_path.exists():
+        return wide_path
+    return project_dir / "runs" / "feature_refine_feather" / "final_500_features.txt"
+
 # Load features
-with open(PROJECT / "runs" / "feature_refine_wide" / "final_500_features.txt") as f:
+features_path = resolve_project_path(PROJECT, args.features_path) if args.features_path else default_features_path(PROJECT)
+with open(features_path) as f:
     features = [l.strip() for l in f if l.strip()]
 
 # Pull data
@@ -30,12 +54,38 @@ s = config["feature_refine"]["sampling"]
 if s.get("where"): sql += f"\nwhere {s['where']}"
 if s.get("max_rows"): sql += f"\nlimit {int(s['max_rows'])}"
 
-from tmlpatch.database import TMLSQLClient
-client = TMLSQLClient()
-try:
-    df = client.sql(sql).to_pandas()
-finally:
-    client.stop()
+dataset_id = "oot_report_selected_feature_sample"
+feather_path, metadata_path = default_dataset_paths(PROJECT, dataset_id=dataset_id)
+description = "所选特征OOT效果明细抽样，用于输出DEV/OOT AUC、KS、十分位和特征重要性。"
+if args.dry_run_sql:
+    write_dataset_metadata(
+        project_dir=PROJECT,
+        metadata_path=metadata_path,
+        feather_path=feather_path,
+        dataset_id=dataset_id,
+        description=description,
+        sql=sql,
+        status="sql_review_required" if args.refresh_dp_cache or not feather_path.exists() else "ready",
+        note="Review this SQL before running DP fetch. The feather file itself is gitignored.",
+    )
+    print_sql_review(
+        dataset_id=dataset_id,
+        description=description,
+        feather_path=feather_path,
+        metadata_path=metadata_path,
+        sql=sql,
+    )
+    raise SystemExit(0)
+df = load_or_fetch_dp_feather(
+    project_dir=PROJECT,
+    sql=sql,
+    dataset_id=dataset_id,
+    description=description,
+    feather_path=feather_path,
+    metadata_path=metadata_path,
+    refresh=args.refresh_dp_cache,
+    sql_approved=args.sql_approved,
+)
 print(f"[DATA] {len(df)} rows x {len(df.columns)} cols")
 
 # Coerce

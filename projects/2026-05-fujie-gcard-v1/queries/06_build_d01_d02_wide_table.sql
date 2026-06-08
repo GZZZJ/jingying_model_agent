@@ -2894,17 +2894,15 @@ left join (
   select
     uid,
     mdl_dte,
-    ds,
     max_ctn_ovd_day
   from ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_final_12his_continue_ovd_days_df_feature
   where ds is not null
 ) t2
-  on t1.uid = t2.uid and t1.mdl_dte = t2.mdl_dte and t1.ds = t2.ds
+  on t1.uid = t2.uid and t1.mdl_dte = t2.mdl_dte
 left join (
   select
     uid,
     mdl_dte,
-    ds,
     not_ovd_tqhk_rep_tim_cnt_12m,
     ddf_mdl_max_not_ovd_tqhk_rep_tim_12m,
     ddf_mdl_max_con_not_ovd_tqhk_rep_tim_12m,
@@ -2914,12 +2912,11 @@ left join (
   from ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_final_2tqhk_reptim_360d_con_feature_feature
   where ds is not null
 ) t3
-  on t1.uid = t3.uid and t1.mdl_dte = t3.mdl_dte and t1.ds = t3.ds
+  on t1.uid = t3.uid and t1.mdl_dte = t3.mdl_dte
 left join (
   select
     uid,
     mdl_dte,
-    ds,
     lag_his_rep_amt_sum_per_mth_btch_rat_mor_50_per_cnt,
     d30_d60_his_rep_amt_sum_rat_btch,
     d90_d360_his_rep_amt_sum_rat_btch,
@@ -2932,12 +2929,11 @@ left join (
   from ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_12his_rep_pressure_trend_df_feature
   where ds is not null
 ) t4
-  on t1.uid = t4.uid and t1.mdl_dte = t4.mdl_dte and t1.ds = t4.ds
+  on t1.uid = t4.uid and t1.mdl_dte = t4.mdl_dte
 left join (
   select
     uid,
     mdl_dte,
-    ds,
     min_avl_lmt_lft_rep_prc_all_cash_bjq_12m,
     rsk_lmt_rate_ch_1m_grt_0p2_cnt_bjq_12m,
     rsk_avl_lmt_ch_1m_les_10000_rate_bjq_12m,
@@ -2958,12 +2954,11 @@ left join (
   from ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_account_lmt_feature_sample_all_final_jqh_df_feature
   where ds is not null
 ) t5
-  on t1.uid = t5.uid and t1.mdl_dte = t5.mdl_dte and t1.ds = t5.ds
+  on t1.uid = t5.uid and t1.mdl_dte = t5.mdl_dte
 left join (
   select
     uid,
     mdl_dte,
-    ds,
     stg_pln_sum_rep_prc_3m_his_d0_non_zd_rto_v2,
     stg_pln_sum_rep_prc_1m_his_d0_evn_zd_rto_v2,
     stg_pln_sum_rep_prc_1m_his_ovd_14d_pls_30d_zd_rto_v2,
@@ -3030,12 +3025,11 @@ left join (
   from ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_final_12his_rep_ability_derived_v2_df_feature
   where ds is not null
 ) t6
-  on t1.uid = t6.uid and t1.mdl_dte = t6.mdl_dte and t1.ds = t6.ds
+  on t1.uid = t6.uid and t1.mdl_dte = t6.mdl_dte
 left join (
   select
     uid,
     mdl_dte,
-    ds,
     stg_pln_avg_prc_amt_bjq_12m_his,
     stg_pln_pay_off_cnt_d0_rep_bjq_12m_rto,
     stg_pln_cnt_ovd_m2_pls_rep_bjq_12m_rto,
@@ -3048,12 +3042,11 @@ left join (
   from ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_final_12his_rep_will_pressure_derived_jqh_df_feature
   where ds is not null
 ) t7
-  on t1.uid = t7.uid and t1.mdl_dte = t7.mdl_dte and t1.ds = t7.ds
+  on t1.uid = t7.uid and t1.mdl_dte = t7.mdl_dte
 left join (
   select
     uid,
     mdl_dte,
-    ds,
     stg_pln_sum_rep_prc_1m_his_ovd_7d_pls_14d_mrn_pk_rto,
     stg_pln_sum_rep_prc_3m_his_ovd_7d_pls_14d_mrn_pk_rto,
     stg_pln_sum_rep_prc_3m_his_ovd_m2_pls_zd_rto,
@@ -3120,12 +3113,11 @@ left join (
   from ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_final_12his_rep_ability_derived_df_feature
   where ds is not null
 ) t8
-  on t1.uid = t8.uid and t1.mdl_dte = t8.mdl_dte and t1.ds = t8.ds
+  on t1.uid = t8.uid and t1.mdl_dte = t8.mdl_dte
 left join (
   select
     uid,
     mdl_dte,
-    ds,
     rsk_lmt_rate_ch_1m_grt_0p2_rate_36m,
     min_rsk_lmt_rate_24m_bt_ch,
     rsk_avl_lmt_ch_1m_les_1000_rate_24m,
@@ -3153,12 +3145,11 @@ left join (
   from ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_account_lmt_feature_sample_all_final_new_df_feature
   where ds is not null
 ) t9
-  on t1.uid = t9.uid and t1.mdl_dte = t9.mdl_dte and t1.ds = t9.ds
+  on t1.uid = t9.uid and t1.mdl_dte = t9.mdl_dte
 left join (
   select
     uid,
     mdl_dte,
-    ds,
     stg_pln_sum_prc_amt_12m_36m_rto,
     stg_pln_avg_prc_amt_24m_his_per_mth,
     stg_pln_avg_prc_amt_24m_his,
@@ -3168,12 +3159,11 @@ left join (
   from ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_final_12his_rep_will_pressure_derived_new_df_feature
   where ds is not null
 ) t10
-  on t1.uid = t10.uid and t1.mdl_dte = t10.mdl_dte and t1.ds = t10.ds
+  on t1.uid = t10.uid and t1.mdl_dte = t10.mdl_dte
 left join (
   select
     uid,
     mdl_dte,
-    ds,
     stg_pln_sum_rep_prc_12m_his_ovd_0d_pls_3d_zd,
     stg_pln_sum_rep_prc_his_ovd_3d_pls_7d_zd,
     stg_pln_sum_rep_prc_his_ovd_0d_pls_3d_zd,
@@ -3208,12 +3198,11 @@ left join (
   from ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_final_12his_rep_ability_df_feature
   where ds is not null
 ) t11
-  on t1.uid = t11.uid and t1.mdl_dte = t11.mdl_dte and t1.ds = t11.ds
+  on t1.uid = t11.uid and t1.mdl_dte = t11.mdl_dte
 left join (
   select
     uid,
     mdl_dte,
-    ds,
     stg_pln_sum_rep_prc_3m_his_d0_non_zd_v2,
     stg_pln_sum_rep_prc_his_d0_mrn_pk_v2,
     stg_pln_sum_rep_prc_12m_his_d0_mrn_zd_v2,
@@ -3239,12 +3228,11 @@ left join (
   from ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_final_12his_rep_ability_v2_df_feature
   where ds is not null
 ) t12
-  on t1.uid = t12.uid and t1.mdl_dte = t12.mdl_dte and t1.ds = t12.ds
+  on t1.uid = t12.uid and t1.mdl_dte = t12.mdl_dte
 left join (
   select
     uid,
     mdl_dte,
-    ds,
     stg_pln_sum_prc_amt_adv_rct,
     stg_pln_min_prc_amt_d0_rep,
     stg_pln_max_prc_amt_adv_rct_24m,
@@ -3261,12 +3249,11 @@ left join (
   from ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_final_12his_rep_will_pressure_new_df_feature
   where ds is not null
 ) t13
-  on t1.uid = t13.uid and t1.mdl_dte = t13.mdl_dte and t1.ds = t13.ds
+  on t1.uid = t13.uid and t1.mdl_dte = t13.mdl_dte
 left join (
   select
     uid,
     mdl_dte,
-    ds,
     his_light_fail_trade_heavy_ovd_repay_same_date_count,
     light_d720_max_fail_prc_amt_divide_heavy_d720_max_ontim_repay_amt,
     light_his_sum_faqi_prc_amt_divide_heavy_his_sum_ovd_repay_amt,
@@ -3381,12 +3368,11 @@ left join (
   from ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_30light_cross_heavy_inner_behaviour_df_feature
   where ds is not null
 ) t14
-  on t1.uid = t14.uid and t1.mdl_dte = t14.mdl_dte and t1.ds = t14.ds
+  on t1.uid = t14.uid and t1.mdl_dte = t14.mdl_dte
 left join (
   select
     uid,
     mdl_dte,
-    ds,
     rsk_lmt_rate_ch_1m_grt_0p5_cnt_3m,
     rsk_lmt_rate_ch_1m_grt_0p2_cnt_3m,
     rsk_avl_lmt_ch_1m_les_10000_cnt_12m,
@@ -3423,12 +3409,11 @@ left join (
   from ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_account_lmt_feature_sample_all_final_df_feature
   where ds is not null
 ) t15
-  on t1.uid = t15.uid and t1.mdl_dte = t15.mdl_dte and t1.ds = t15.ds
+  on t1.uid = t15.uid and t1.mdl_dte = t15.mdl_dte
 left join (
   select
     uid,
     mdl_dte,
-    ds,
     pmt_hnd_amt_rat_1m,
     payment_not_balancenotenough_day_3m,
     payment_not_balancenotenough_dis_rate_3m,
@@ -3448,12 +3433,11 @@ left join (
   from ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_final_12payment_info_df_feature
   where ds is not null
 ) t16
-  on t1.uid = t16.uid and t1.mdl_dte = t16.mdl_dte and t1.ds = t16.ds
+  on t1.uid = t16.uid and t1.mdl_dte = t16.mdl_dte
 left join (
   select
     uid,
     mdl_dte,
-    ds,
     stg_pln_sum_prc_amt_3m_6m_rto,
     stg_pln_sum_prc_amt_ovd_14d_pls_rep_1m_rto,
     stg_pln_cnt_ovd_pls_rep_1m_rto_his,
@@ -3495,12 +3479,11 @@ left join (
   from ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_final_12his_rep_will_pressure_derived_df_feature
   where ds is not null
 ) t17
-  on t1.uid = t17.uid and t1.mdl_dte = t17.mdl_dte and t1.ds = t17.ds
+  on t1.uid = t17.uid and t1.mdl_dte = t17.mdl_dte
 left join (
   select
     uid,
     mdl_dte,
-    ds,
     max_ddf_rep_tim_dte_ovd_pls_rep_bjq_12m,
     stg_pln_max_prc_amt_adv_d0_rep_bjq_12m,
     stg_pln_fst_sum_prc_amt_ovd_pls_rep_bjq_12m,
@@ -3566,12 +3549,11 @@ left join (
   from ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_final_12his_rep_will_pressure_jqh_df_feature
   where ds is not null
 ) t18
-  on t1.uid = t18.uid and t1.mdl_dte = t18.mdl_dte and t1.ds = t18.ds
+  on t1.uid = t18.uid and t1.mdl_dte = t18.mdl_dte
 left join (
   select
     uid,
     mdl_dte,
-    ds,
     stg_pln_sum_prc_amt_1m_2m_rto_ftr,
     stg_pln_sum_prc_amt_6m_12m_rto_ftr,
     stg_pln_cnt_1m_ftr_adv,
@@ -3592,12 +3574,11 @@ left join (
   from ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_final_14ftr_rep_pressure_df_feature
   where ds is not null
 ) t19
-  on t1.uid = t19.uid and t1.mdl_dte = t19.mdl_dte and t1.ds = t19.ds
+  on t1.uid = t19.uid and t1.mdl_dte = t19.mdl_dte
 left join (
   select
     uid,
     mdl_dte,
-    ds,
     ddf_bjq_12m_rep_dte_neg_7_crt_dt_ord_cnt,
     min_ddf_rep_dte_ord_crt_tim_7_bjq_12m,
     ddf_bjq_12m_rep_dte_0_crt_dt_min_prc_amt,
@@ -3626,12 +3607,11 @@ left join (
   from ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_final_16draw_repay_crossed_jqh_df_feature
   where ds is not null
 ) t20
-  on t1.uid = t20.uid and t1.mdl_dte = t20.mdl_dte and t1.ds = t20.ds
+  on t1.uid = t20.uid and t1.mdl_dte = t20.mdl_dte
 left join (
   select
     uid,
     mdl_dte,
-    ds,
     mdt_lst_30d_90d_ord_cnt_typ_btch_rte,
     mdt_lst_60d_180d_ord_cnt_typ_btch_rte,
     cnt_stg_cnt_30d_90d,
@@ -3656,12 +3636,11 @@ left join (
   from ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_final_22order_calculate_stage_order_info_df_feature
   where ds is not null
 ) t21
-  on t1.uid = t21.uid and t1.mdl_dte = t21.mdl_dte and t1.ds = t21.ds
+  on t1.uid = t21.uid and t1.mdl_dte = t21.mdl_dte
 left join (
   select
     uid,
     mdl_dte,
-    ds,
     abf_1y_inter_1m_count_down,
     af_3m_inter_1m_sum_down,
     abf_1y_inter_1m_count_up,
@@ -3700,12 +3679,11 @@ left join (
   from ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_final_23changzhai_trend_df_feature
   where ds is not null
 ) t22
-  on t1.uid = t22.uid and t1.mdl_dte = t22.mdl_dte and t1.ds = t22.ds
+  on t1.uid = t22.uid and t1.mdl_dte = t22.mdl_dte
 left join (
   select
     uid,
     mdl_dte,
-    ds,
     cnt_avb_lmt_2m_v2,
     avg_avb_lmt_2m_v2,
     avg_lmt_use_rat_2m_v2,
@@ -3713,12 +3691,11 @@ left join (
   from ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_final_5account_extra_df_feature
   where ds is not null
 ) t23
-  on t1.uid = t23.uid and t1.mdl_dte = t23.mdl_dte and t1.ds = t23.ds
+  on t1.uid = t23.uid and t1.mdl_dte = t23.mdl_dte
 left join (
   select
     uid,
     mdl_dte,
-    ds,
     d3_level0_city_lbs_collect_uniq_cnt,
     d3_13_18_lbs_collect_cnt,
     d3_level3_city_lbs_collect_cnt,
@@ -3816,12 +3793,11 @@ left join (
   from ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_final_28lbs_info_df_feature
   where ds is not null
 ) t24
-  on t1.uid = t24.uid and t1.mdl_dte = t24.mdl_dte and t1.ds = t24.ds
+  on t1.uid = t24.uid and t1.mdl_dte = t24.mdl_dte
 left join (
   select
     uid,
     mdl_dte,
-    ds,
     succloan_stage_num_mean_all,
     n_unique_channel_event_result_1,
     stddev_amt_event_type_repay_all,
@@ -3877,12 +3853,11 @@ left join (
   from ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_final_22pip_heavy_cross_info_df_feature
   where ds is not null
 ) t25
-  on t1.uid = t25.uid and t1.mdl_dte = t25.mdl_dte and t1.ds = t25.ds
+  on t1.uid = t25.uid and t1.mdl_dte = t25.mdl_dte
 left join (
   select
     uid,
     mdl_dte,
-    ds,
     ddf_36m_rep_dte_neg_3_crt_dt_max_prc_amt,
     ddf_24m_rep_dte_3_crt_dt_max_prc_amt,
     ddf_rep_dte_7_crt_dt_max_prc_amt,
@@ -3902,12 +3877,11 @@ left join (
   from ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_final_16draw_repay_crossed_new_df_feature
   where ds is not null
 ) t26
-  on t1.uid = t26.uid and t1.mdl_dte = t26.mdl_dte and t1.ds = t26.ds
+  on t1.uid = t26.uid and t1.mdl_dte = t26.mdl_dte
 left join (
   select
     uid,
     mdl_dte,
-    ds,
     d90_stddev_schedule_pay_penalty,
     ftr_pending_repay_gurantee_fee_sum_divide_ftr_principal_sum,
     d360_schedule_pay_penalty_max,
@@ -3938,12 +3912,11 @@ left join (
   from ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_final_26_lending_costs_detail_df_feature
   where ds is not null
 ) t27
-  on t1.uid = t27.uid and t1.mdl_dte = t27.mdl_dte and t1.ds = t27.ds
+  on t1.uid = t27.uid and t1.mdl_dte = t27.mdl_dte
 left join (
   select
     uid,
     mdl_dte,
-    ds,
     max_con_dau_7d,
     ddf_mdl_max_con_dau_dt_90d,
     ddf_mdl_max_con_dau_dt_7d,
@@ -3954,12 +3927,11 @@ left join (
   from ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_final_8active_dau_feature
   where ds is not null
 ) t28
-  on t1.uid = t28.uid and t1.mdl_dte = t28.mdl_dte and t1.ds = t28.ds
+  on t1.uid = t28.uid and t1.mdl_dte = t28.mdl_dte
 left join (
   select
     uid,
     mdl_dte,
-    ds,
     ord_apl_suc_min_stg_num_360_day_bjq_12m,
     ord_apl_suc_sum_prc_amt_360_day_04_06_bjq_12m,
     ord_apl_cnt_360_day_19_23_bjq_12m,
@@ -4001,22 +3973,20 @@ left join (
   from ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_final_7fst_9all_10cur_11lst_orders_info_jqh_df_feature
   where ds is not null
 ) t29
-  on t1.uid = t29.uid and t1.mdl_dte = t29.mdl_dte and t1.ds = t29.ds
+  on t1.uid = t29.uid and t1.mdl_dte = t29.mdl_dte
 left join (
   select
     uid,
     mdl_dte,
-    ds,
     act_dvc_90d
   from ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_final_8active_device_df_feature
   where ds is not null
 ) t30
-  on t1.uid = t30.uid and t1.mdl_dte = t30.mdl_dte and t1.ds = t30.ds
+  on t1.uid = t30.uid and t1.mdl_dte = t30.mdl_dte
 left join (
   select
     uid,
     mdl_dte,
-    ds,
     lst_app_str_hr,
     lat_tud,
     lng_tud,
@@ -4025,12 +3995,11 @@ left join (
   from ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_final_8active_device_extra_1_df_feature
   where ds is not null
 ) t31
-  on t1.uid = t31.uid and t1.mdl_dte = t31.mdl_dte and t1.ds = t31.ds
+  on t1.uid = t31.uid and t1.mdl_dte = t31.mdl_dte
 left join (
   select
     uid,
     mdl_dte,
-    ds,
     his_30d_app_str_ctn_v2,
     dvc_cnt_cjj_7,
     his_1d_app_str_ctn_v2,
@@ -4042,12 +4011,11 @@ left join (
   from ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_final_8active_device_extra_2_df_feature
   where ds is not null
 ) t32
-  on t1.uid = t32.uid and t1.mdl_dte = t32.mdl_dte and t1.ds = t32.ds
+  on t1.uid = t32.uid and t1.mdl_dte = t32.mdl_dte
 left join (
   select
     uid,
     mdl_dte,
-    ds,
     credit_fund_level2_min_limit_cnt_24m,
     loan_unique_fund_cnt_3m,
     credit_pass_unique_scene_cnt_36m,
@@ -4201,12 +4169,11 @@ left join (
   from ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_final_31light_credit_trade_cross_df_feature
   where ds is not null
 ) t33
-  on t1.uid = t33.uid and t1.mdl_dte = t33.mdl_dte and t1.ds = t33.ds
+  on t1.uid = t33.uid and t1.mdl_dte = t33.mdl_dte
 left join (
   select
     uid,
     mdl_dte,
-    ds,
     pge_id_cnt_7d,
     dau_00_06_14d,
     clk_cnt_14d,
@@ -4217,12 +4184,11 @@ left join (
   from ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_final_8active_page_view_n_click_cnt_feature
   where ds is not null
 ) t34
-  on t1.uid = t34.uid and t1.mdl_dte = t34.mdl_dte and t1.ds = t34.ds
+  on t1.uid = t34.uid and t1.mdl_dte = t34.mdl_dte
 left join (
   select
     uid,
     mdl_dte,
-    ds,
     d90_max_adv_repay_amt_divide_d90_max_faqi_prc_amt,
     d360_due_repay_amt_avg_divide_d360_faqi_trade_amt_avg,
     d360_max_adv_repay_amt_divide_rsk_adt_lmt_cash,
@@ -4378,12 +4344,11 @@ left join (
   from ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_final_25_cross_inner_behaviour_df_feature
   where ds is not null
 ) t35
-  on t1.uid = t35.uid and t1.mdl_dte = t35.mdl_dte and t1.ds = t35.ds
+  on t1.uid = t35.uid and t1.mdl_dte = t35.mdl_dte
 left join (
   select
     uid,
     mdl_dte,
-    ds,
     ord_apl_cnt_720_day_04_06,
     ord_apl_cnt_720_day_00_03,
     ord_apl_suc_cnt_720_day_07_12,
@@ -4423,12 +4388,11 @@ left join (
   from ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_final_7fst_9all_10cur_11lst_orders_info_new_df_feature
   where ds is not null
 ) t36
-  on t1.uid = t36.uid and t1.mdl_dte = t36.mdl_dte and t1.ds = t36.ds
+  on t1.uid = t36.uid and t1.mdl_dte = t36.mdl_dte
 left join (
   select
     uid,
     mdl_dte,
-    ds,
     ddf_6m_rep_dte_neg_7_crt_dt_max_prc_amt,
     avg_ddf_rep_dte_ord_crt_tim_7,
     ddf_1m_rep_dte_3_crt_dt_max_prc_amt,
@@ -4475,12 +4439,11 @@ left join (
   from ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_final_16draw_repay_crossed_df_feature
   where ds is not null
 ) t37
-  on t1.uid = t37.uid and t1.mdl_dte = t37.mdl_dte and t1.ds = t37.ds
+  on t1.uid = t37.uid and t1.mdl_dte = t37.mdl_dte
 left join (
   select
     uid,
     mdl_dte,
-    ds,
     stg_pln_max_prc_amt_ovd_1d_3d,
     stg_pln_pay_off_sum_prc_amt_1m,
     stg_pln_pay_off_max_prc_amt_pday,
@@ -4556,12 +4519,11 @@ left join (
   from ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_final_12his_rep_will_pressure_df_feature
   where ds is not null
 ) t38
-  on t1.uid = t38.uid and t1.mdl_dte = t38.mdl_dte and t1.ds = t38.ds
+  on t1.uid = t38.uid and t1.mdl_dte = t38.mdl_dte
 left join (
   select
     uid,
     mdl_dte,
-    ds,
     `12m_repay_ftr_amt_second_der_max`,
     `3m_repay_ftr_amt_second_der_mean_diff`,
     `18m_repay_ftr_amt_first_der_mean_diff`,
@@ -4596,12 +4558,11 @@ left join (
   from ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_final_ftr_rep_trend_time_series_df_feature
   where ds is not null
 ) t39
-  on t1.uid = t39.uid and t1.mdl_dte = t39.mdl_dte and t1.ds = t39.ds
+  on t1.uid = t39.uid and t1.mdl_dte = t39.mdl_dte
 left join (
   select
     uid,
     mdl_dte,
-    ds,
     stg_pln_sum_prc_amt_1m_ftr_his_rep_rto_all,
     stg_pln_cnt_3d_ftr_all,
     stg_pln_sum_prc_amt_6m_12m_ftr_rto_cash,
@@ -4658,12 +4619,11 @@ left join (
   from ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_final_14ftr_rep_pressure_trend_df_feature
   where ds is not null
 ) t40
-  on t1.uid = t40.uid and t1.mdl_dte = t40.mdl_dte and t1.ds = t40.ds
+  on t1.uid = t40.uid and t1.mdl_dte = t40.mdl_dte
 left join (
   select
     uid,
     mdl_dte,
-    ds,
     `6thord_con_dsc_apply_amt_max`,
     `6ord_apply_amt_first_der_sum`,
     `18ord_apply_amt_first_der_small_0_count`,
@@ -4694,12 +4654,11 @@ left join (
   from ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_final_his_apply_trend_time_series_df_feature
   where ds is not null
 ) t41
-  on t1.uid = t41.uid and t1.mdl_dte = t41.mdl_dte and t1.ds = t41.ds
+  on t1.uid = t41.uid and t1.mdl_dte = t41.mdl_dte
 left join (
   select
     uid,
     mdl_dte,
-    ds,
     recent_1m_lend_amt_over10k_month_cnt,
     recent_12m_credit_fundcls_lv2_month_cnt,
     recent_1m_credit_fundcls_other_month_cnt,
@@ -4742,12 +4701,11 @@ left join (
   from ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_light_trans_inner_cross_behaviour_df_feature
   where ds is not null
 ) t42
-  on t1.uid = t42.uid and t1.mdl_dte = t42.mdl_dte and t1.ds = t42.ds
+  on t1.uid = t42.uid and t1.mdl_dte = t42.mdl_dte
 left join (
   select
     uid,
     mdl_dte,
-    ds,
     `10d_range_ord_cnt_his`,
     `15d_range_ord_cnt_12m`,
     `15d_range_sum_prc_amt_1m`,
@@ -4772,12 +4730,11 @@ left join (
   from ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_light_order_repay_crossed_new_df_feature
   where ds is not null
 ) t43
-  on t1.uid = t43.uid and t1.mdl_dte = t43.mdl_dte and t1.ds = t43.ds
+  on t1.uid = t43.uid and t1.mdl_dte = t43.mdl_dte
 left join (
   select
     uid,
     mdl_dte,
-    ds,
     m1_stg_pln_d0_manual_deduct_rep_apl_fal_cnt,
     m6_stg_pln_his_ovd_ao_offline_rep_apl_suc_cnt,
     m6_stg_pln_adv_ao_offline_rep_apl_suc_cnt_rat,
@@ -4853,12 +4810,11 @@ left join (
   from ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_final_rep_apply_summary_3_feature
   where ds is not null
 ) t44
-  on t1.uid = t44.uid and t1.mdl_dte = t44.mdl_dte and t1.ds = t44.ds
+  on t1.uid = t44.uid and t1.mdl_dte = t44.mdl_dte
 left join (
   select
     uid,
     mdl_dte,
-    ds,
     m3_manual_rep_apl_suc_stg_pln_cnt_sum,
     m1_manual_deduct_rep_apl_fal_stg_pln_cnt_max,
     m6_manual_deduct_rep_apl_stg_pln_cnt_mor_1_cnt,
@@ -4929,12 +4885,11 @@ left join (
   from ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_final_rep_apply_summary_2_feature
   where ds is not null
 ) t45
-  on t1.uid = t45.uid and t1.mdl_dte = t45.mdl_dte and t1.ds = t45.ds
+  on t1.uid = t45.uid and t1.mdl_dte = t45.mdl_dte
 left join (
   select
     uid,
     mdl_dte,
-    ds,
     `6m_used_lmt_first_der_min`,
     `3m_used_lmt_second_der_median`,
     `12m_used_lmt_second_der_mean_rto`,
@@ -4981,12 +4936,11 @@ left join (
   from ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_final_used_lmt_trend_time_series_df_feature
   where ds is not null
 ) t46
-  on t1.uid = t46.uid and t1.mdl_dte = t46.mdl_dte and t1.ds = t46.ds
+  on t1.uid = t46.uid and t1.mdl_dte = t46.mdl_dte
 left join (
   select
     uid,
     mdl_dte,
-    ds,
     stg_pln_cnt_adv_1m_rto_his_light,
     stg_pln_cnt_6m_12m_rto_light,
     stg_pln_cnt_on_1m_rto_his_light,
@@ -5014,12 +4968,11 @@ left join (
   from ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_light_rep_will_pressure_derived_new_df_feature
   where ds is not null
 ) t47
-  on t1.uid = t47.uid and t1.mdl_dte = t47.mdl_dte and t1.ds = t47.ds
+  on t1.uid = t47.uid and t1.mdl_dte = t47.mdl_dte
 left join (
   select
     uid,
     mdl_dte,
-    ds,
     ord_apl_fal_cnt_90_day,
     ord_apl_cnt_90_day_19_23,
     ord_apl_suc_min_stg_num_360_day,
@@ -5113,12 +5066,11 @@ left join (
   from ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_final_7fst_9all_10cur_11lst_orders_info_df_feature
   where ds is not null
 ) t48
-  on t1.uid = t48.uid and t1.mdl_dte = t48.mdl_dte and t1.ds = t48.ds
+  on t1.uid = t48.uid and t1.mdl_dte = t48.mdl_dte
 left join (
   select
     uid,
     mdl_dte,
-    ds,
     m1_stg_pln_bnk_cnt_max,
     m1_pmt_not_eng_mor_3_stg_pln_cnt,
     m1_pmt_not_eng_mor_3_stg_pln_amt_sum,
@@ -5200,12 +5152,11 @@ left join (
   from ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_final_repayment_deduct_info_df_feature
   where ds is not null
 ) t49
-  on t1.uid = t49.uid and t1.mdl_dte = t49.mdl_dte and t1.ds = t49.ds
+  on t1.uid = t49.uid and t1.mdl_dte = t49.mdl_dte
 left join (
   select
     uid,
     mdl_dte,
-    ds,
     m3_rep_apl_suc_cnt_rat,
     m6_ao_offline_rep_apl_suc_cnt,
     m3_manual_work_day_rep_apl_fal_cnt,
@@ -5333,12 +5284,11 @@ left join (
   from ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_final_rep_apply_summary_1_feature
   where ds is not null
 ) t50
-  on t1.uid = t50.uid and t1.mdl_dte = t50.mdl_dte and t1.ds = t50.ds
+  on t1.uid = t50.uid and t1.mdl_dte = t50.mdl_dte
 left join (
   select
     uid,
     mdl_dte,
-    ds,
     d365_avl_lmt_eql_0_month_cnt,
     d180_avl_lmt_eql_0_month_cnt,
     d1095_avl_lmt_con_drp_month_max,
@@ -5352,12 +5302,11 @@ left join (
   from ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_off_dp_dz_inner_behavior_aval_lmt_enhanced_aggregation_feature
   where ds is not null
 ) t51
-  on t1.uid = t51.uid and t1.mdl_dte = t51.mdl_dte and t1.ds = t51.ds
+  on t1.uid = t51.uid and t1.mdl_dte = t51.mdl_dte
 left join (
   select
     uid,
     mdl_dte,
-    ds,
     ai_refuse_cnt_60d,
     ai_alpa_cnt_3d,
     ai_rtp_cnt_30d,
@@ -5407,12 +5356,11 @@ left join (
   from ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_pdm_risk_dh_model_15ai_call_record_feature
   where ds is not null
 ) t52
-  on t1.uid = t52.uid and t1.mdl_dte = t52.mdl_dte and t1.ds = t52.ds
+  on t1.uid = t52.uid and t1.mdl_dte = t52.mdl_dte
 left join (
   select
     uid,
     mdl_dte,
-    ds,
     d365_aplord_amt_grt_fst_month_rto,
     d365_aplord_amt_grt_fst_month_cnt,
     d365_aplord_amt10000plus_month_cnt,
@@ -5432,12 +5380,11 @@ left join (
   from ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_off_dp_dz_inner_behavior_order_enhanced_aggregation_feature
   where ds is not null
 ) t53
-  on t1.uid = t53.uid and t1.mdl_dte = t53.mdl_dte and t1.ds = t53.ds
+  on t1.uid = t53.uid and t1.mdl_dte = t53.mdl_dte
 left join (
   select
     uid,
     mdl_dte,
-    ds,
     `6m_repay_amt_second_der_median`,
     `18m_repay_amt_second_der_mean_rto`,
     `3stg_pln_repay_amt_first_der_mean_rto`,
@@ -5536,12 +5483,11 @@ left join (
   from ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_final_his_rep_trend_time_series_df_feature
   where ds is not null
 ) t54
-  on t1.uid = t54.uid and t1.mdl_dte = t54.mdl_dte and t1.ds = t54.ds
+  on t1.uid = t54.uid and t1.mdl_dte = t54.mdl_dte
 left join (
   select
     uid,
     mdl_dte,
-    ds,
     percent_true_call_mode_is_manual_called_phone_social_relations_is_friend_30d,
     percent_true_call_mode_is_ai_called_phone_social_relations_is_self_15d,
     percent_true_call_mode_is_yuce_called_phone_social_relations_is_self_180d,
@@ -5592,12 +5538,11 @@ left join (
   from ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_pdm_risk_dh_model_final_13collection_call_info_trend_features_di_feature
   where ds is not null
 ) t55
-  on t1.uid = t55.uid and t1.mdl_dte = t55.mdl_dte and t1.ds = t55.ds
+  on t1.uid = t55.uid and t1.mdl_dte = t55.mdl_dte
 left join (
   select
     uid,
     mdl_dte,
-    ds,
     used_rate_ch_grt_0p2_rate_3m_suc,
     rsk_avl_lmt_ch_les_1000_cnt_3m,
     rsk_avl_lmt_ch_les_500_cnt_12m,
@@ -5631,12 +5576,11 @@ left join (
   from ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_pdm_risk_dz_model_account_lmt_feature_sample_final_df_feature
   where ds is not null
 ) t56
-  on t1.uid = t56.uid and t1.mdl_dte = t56.mdl_dte and t1.ds = t56.ds
+  on t1.uid = t56.uid and t1.mdl_dte = t56.mdl_dte
 left join (
   select
     uid,
     mdl_dte,
-    ds,
     percent_true_followup_code_yjt_called_phone_social_relations_friend_30d,
     percent_true_call_mode_is_manual_called_phone_social_relations_is_self_7d,
     percent_true_call_mode_is_yuce_called_phone_social_relations_is_self_30d,
@@ -5762,12 +5706,11 @@ left join (
   from ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_pdm_risk_dh_model_final_13collection_notes_trend_features_feature
   where ds is not null
 ) t57
-  on t1.uid = t57.uid and t1.mdl_dte = t57.mdl_dte and t1.ds = t57.ds
+  on t1.uid = t57.uid and t1.mdl_dte = t57.mdl_dte
 left join (
   select
     uid,
     mdl_dte,
-    ds,
     m6_stg_pln_d0_rep_apl_cnt_mor_4_cnt_rat,
     m6_stg_pln_d0_normal_batch_rep_apl_cnt_equal_2_cnt_rat,
     m1_stg_pln_d0_rep_apl_fal_cnt_equal_1_cnt,
@@ -5967,12 +5910,11 @@ left join (
   from ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_final_rep_apply_summary_4_feature
   where ds is not null
 ) t58
-  on t1.uid = t58.uid and t1.mdl_dte = t58.mdl_dte and t1.ds = t58.ds
+  on t1.uid = t58.uid and t1.mdl_dte = t58.mdl_dte
 left join (
   select
     uid,
     mdl_dte,
-    ds,
     stg_pln_max_prc_amt_24m_ftr_light,
     stg_pln_avg_rep_prc_his_due_light,
     stg_pln_cnt_his_adv_light,
@@ -6046,12 +5988,11 @@ left join (
   from ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_light_rep_ability_new_df_feature
   where ds is not null
 ) t59
-  on t1.uid = t59.uid and t1.mdl_dte = t59.mdl_dte and t1.ds = t59.ds
+  on t1.uid = t59.uid and t1.mdl_dte = t59.mdl_dte
 left join (
   select
     uid,
     mdl_dte,
-    ds,
     d15_suc_ord_prc_amt_per_stg_max_all,
     d7_apl_ord_prc_amt_sum_all,
     d90_apl_ord_prc_amt_sum_all,
@@ -6263,5 +6204,5 @@ left join (
   from ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_pdm_risk_dz_model_final_order_info_df_feature
   where ds is not null
 ) t60
-  on t1.uid = t60.uid and t1.mdl_dte = t60.mdl_dte and t1.ds = t60.ds
+  on t1.uid = t60.uid and t1.mdl_dte = t60.mdl_dte
 ;

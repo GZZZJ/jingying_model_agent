@@ -14,6 +14,7 @@ projects/*/data/sampled/*
 !projects/*/data/sampled/.gitkeep
 projects/*/data/processed/*
 !projects/*/data/processed/.gitkeep
+projects/*/data/local/*
 projects/*/models/
 
 # Keep curated metadata under data/profile tracked.

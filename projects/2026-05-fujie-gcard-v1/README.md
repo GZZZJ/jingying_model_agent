@@ -62,10 +62,12 @@
 - 字段映射：`runs/d01_d02_batch_select/results/d01_d02_wide_feature_map.csv`
 - 默认底表：`pdm_risk.pdm_risk_gcard_base_sample_uid_ds_eva_ben_v6_1`
 - 默认目标表：`pdm_risk.pdm_risk_fujie_gcard_d01_d02_wide_feature_v6_1`
-- Join 主键：`uid`、`mdl_dte`、`ds`
+- Join 主键：`uid`、`mdl_dte`
 - 底表和特征表子查询均过滤：`ds is not null`
 
 当前生成器会把 70 张特征表中 D01/D02 后保留的 2,843 个特征拼成一张 MaxCompute 宽表 SQL。若不同来源表存在同名特征，生成器会自动给重复字段加来源表前缀别名，并在字段映射 CSV 中记录 `output_feature`、`source_feature`、`source_table`。
+
+注意：`ds` 仍作为底表保留字段和过滤字段，但不再作为特征表 join key。宽表生成器会按 `uid`、`mdl_dte` 关联样本与特征表。
 
 也可以从仓库根目录调用：
 
@@ -89,13 +91,32 @@ python3 agent.py build-wide-sql --project projects/2026-05-fujie-gcard-v1
 - 输出目录：`runs/feature_refine_wide/`
 - 最终特征清单：`runs/feature_refine_wide/final_500_features.txt`
 
-先只检查 DP 抽样 SQL、不拉数：
+当前仓库不再保留历史 DP 宽表抽样结果；需要重新生成时，先执行 SQL review，再刷新本地 feather 缓存并重跑收敛流程。
+
+### DP 取数与本地 feather 缓存
+
+所有需要从 DP 读取数据的脚本必须先把 SQL 对应的数据落到本地 feather，再从 feather 继续处理。
+
+- 本地数据目录：`data/local/dp_feather/`
+- 目录状态：已写入仓库根目录 `.gitignore`，不提交真实样本数据。
+- 元数据目录：`data/profile/dp_feather_datasets/`
+- 元数据内容：数据含义、feather 存储位置、SQL、SQL hash、行列数、列名。
+
+执行前先只检查 SQL，不拉数：
 
 ```bash
 python3 scripts/08_refine_wide_features.py --dry-run-sql
 ```
 
-正式执行时会通过 TMLSQL 拉取抽样宽表，并按以下顺序处理：
+确认 SQL 正确后，再执行 DP 拉数并刷新本地 feather：
+
+```bash
+python3 scripts/08_refine_wide_features.py --refresh-dp-cache --sql-approved
+```
+
+如果本地 feather 已存在，后续运行会直接 `read_feather`，不会重新访问 DP；需要重新取数时才加 `--refresh-dp-cache`。Codex 或其他自动化代理在自行执行任何 `TMLSQLClient` 取数前，必须先把待执行 SQL 展示给使用者确认，确认后才能带 `--sql-approved` 执行。
+
+正式执行时会按以下顺序处理：
 
 1. 全局相关性去重：按单变量 AUC 近似信号强弱排序，相关性超过阈值时保留得分更高的特征。
 2. D03 随机重要性筛选：加入随机噪声特征，剔除重要性低于随机噪声阈值的真实特征。

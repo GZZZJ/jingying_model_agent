@@ -37,6 +37,12 @@ feature_refine:
     where: "ds is not null and final_flag in ('DEV','OOT') and ftr_30d_ord_flag in (0,1) and rand_flag0 < 0.01"
     max_rows: 50000
 
+  dp_feather:
+    dataset_id: feature_refine_wide_sample
+    description: D01/D02后宽表抽样，用于D03随机重要性、D04 Null Importance 和D05基线重要性筛选。
+    data_dir: data/local/dp_feather
+    metadata_dir: data/profile/dp_feather_datasets
+
   output_dir: runs/feature_refine_wide
   random_seed: 0
   target_feature_count: 500

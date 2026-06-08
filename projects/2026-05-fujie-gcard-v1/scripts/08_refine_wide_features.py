@@ -41,6 +41,12 @@ REPO_ROOT = find_repo_root(SCRIPT_PATH)
 sys.path.insert(0, str(REPO_ROOT))
 
 from jingying_agent.config import load_yaml
+from jingying_agent.dp_feather import (
+    default_dataset_paths,
+    load_or_fetch_dp_feather,
+    print_sql_review,
+    write_dataset_metadata,
+)
 from jingying_agent.manifest import write_manifest
 
 
@@ -67,6 +73,16 @@ def parse_args() -> argparse.Namespace:
         "--dry-run-sql",
         action="store_true",
         help="Only print and save the DP sampling SQL; do not query DP or train models.",
+    )
+    parser.add_argument(
+        "--refresh-dp-cache",
+        action="store_true",
+        help="Refresh the local feather cache from DP after SQL approval.",
+    )
+    parser.add_argument(
+        "--sql-approved",
+        action="store_true",
+        help="Confirm that the displayed DP SQL has been reviewed and may be executed.",
     )
     return parser.parse_args()
 
@@ -105,16 +121,6 @@ def build_sampling_sql(cfg: dict[str, Any], features: list[str]) -> str:
     if sampling.get("max_rows"):
         sql += f"\nlimit {int(sampling['max_rows'])}"
     return sql + "\n"
-
-
-def load_wide_sample(sql: str) -> pd.DataFrame:
-    from tmlpatch.database import TMLSQLClient
-
-    client = TMLSQLClient()
-    try:
-        return client.sql(sql).to_pandas()
-    finally:
-        client.stop()
 
 
 def coerce_feature_frame(df: pd.DataFrame, features: list[str], cfg: dict[str, Any]) -> tuple[pd.DataFrame, list[str], pd.DataFrame]:
@@ -434,13 +440,49 @@ def main() -> int:
 
     initial_features = load_feature_list(project_dir, cfg)
     sql = build_sampling_sql(cfg, initial_features)
-    (output_dir / "wide_sample_query.sql").write_text(sql, encoding="utf-8")
+
+    dp_cache_cfg = cfg.get("dp_feather", {})
+    dataset_id = dp_cache_cfg.get("dataset_id", "feature_refine_wide_sample")
+    description = dp_cache_cfg.get(
+        "description",
+        "D01/D02 wide-table sample for D03-D05 feature refinement.",
+    )
+    feather_path, metadata_path = default_dataset_paths(
+        project_dir,
+        dataset_id=dataset_id,
+        data_dir=dp_cache_cfg.get("data_dir", "data/local/dp_feather"),
+        metadata_dir=dp_cache_cfg.get("metadata_dir", "data/profile/dp_feather_datasets"),
+    )
     if args.dry_run_sql:
-        print(sql)
-        print(f"sql: {output_dir / 'wide_sample_query.sql'}")
+        write_dataset_metadata(
+            project_dir=project_dir,
+            metadata_path=metadata_path,
+            feather_path=feather_path,
+            dataset_id=dataset_id,
+            description=description,
+            sql=sql,
+            status="sql_review_required" if args.refresh_dp_cache or not feather_path.exists() else "ready",
+            note="Review this SQL before running DP fetch. The feather file itself is gitignored.",
+        )
+        print_sql_review(
+            dataset_id=dataset_id,
+            description=description,
+            feather_path=feather_path,
+            metadata_path=metadata_path,
+            sql=sql,
+        )
         return 0
 
-    raw_df = load_wide_sample(sql)
+    raw_df = load_or_fetch_dp_feather(
+        project_dir=project_dir,
+        sql=sql,
+        dataset_id=dataset_id,
+        description=description,
+        feather_path=feather_path,
+        metadata_path=metadata_path,
+        refresh=args.refresh_dp_cache,
+        sql_approved=args.sql_approved,
+    )
     x, available_features, preprocess_stats = coerce_feature_frame(raw_df, initial_features, cfg)
     parts = make_dataset_parts(raw_df, x, cfg)
     print(f"[STAGE] raw_rows={len(raw_df)} initial_feat={len(initial_features)} "

@@ -16,6 +16,9 @@ data:
   source_table: ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_sample
   raw_path: data/raw/sample.feather
   feature_path: data/raw/features.feather
+  local_dp_feather_dir: data/local/dp_feather
+  local_dp_feather_metadata_dir: data/profile/dp_feather_datasets
+  dp_fetch_policy: 使用TMLSQLClient从DP取数前必须先展示SQL并获得人工确认；取数后先to_feather落本地，再read_feather处理。
   id_columns:
     - uid
     - mdl_dte

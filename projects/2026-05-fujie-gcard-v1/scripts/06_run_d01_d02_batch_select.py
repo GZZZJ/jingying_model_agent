@@ -37,6 +37,16 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+SCRIPT_PATH = Path(__file__).resolve()
+REPO_ROOT = next(path for path in [SCRIPT_PATH, *SCRIPT_PATH.parents] if (path / "agent.py").exists())
+sys.path.insert(0, str(REPO_ROOT))
+
+from jingying_agent.dp_feather import (
+    load_or_fetch_dp_feather,
+    print_sql_review,
+    write_dataset_metadata,
+)
+
 
 TARGET_COL = "ftr_30d_ord_flag"
 SPLIT_COL = "final_flag"
@@ -59,7 +69,6 @@ DEFAULT_RANDOM_SEED = 0
 DEFAULT_WORKERS = 4
 
 
-SCRIPT_PATH = Path(__file__).resolve()
 DEFAULT_PROJECT_DIR = SCRIPT_PATH.parents[1] if len(SCRIPT_PATH.parents) >= 2 else Path.cwd()
 
 
@@ -105,6 +114,21 @@ def parse_args() -> argparse.Namespace:
         help="Comma-separated ds values for OOT partitions.",
     )
     parser.add_argument("--workers", type=int, default=DEFAULT_WORKERS, help="Number of parallel workers.")
+    parser.add_argument(
+        "--dry-run-sql",
+        action="store_true",
+        help="Write and print DP sample SQL metadata only; do not query DP or run D01/D02.",
+    )
+    parser.add_argument(
+        "--refresh-dp-cache",
+        action="store_true",
+        help="Refresh local feather cache from DP after SQL approval.",
+    )
+    parser.add_argument(
+        "--sql-approved",
+        action="store_true",
+        help="Confirm that all generated DP SQL has been reviewed and may be executed.",
+    )
     return parser.parse_args()
 
 
@@ -172,6 +196,10 @@ def build_sample_sql(table_name: str, dev_ds_list: list[str], oot_ds_list: list[
             f"and {SPLIT_COL} in ('{DEV_VALUE}', '{OOT_VALUE}')"
         )
     return "\nunion all\n".join(blocks)
+
+
+def d01_d02_dataset_id(table_name: str) -> str:
+    return f"d01_d02_{table_slug(table_name)}"
 
 
 def coerce_features(df: pd.DataFrame, feature_list: list[str]) -> list[str]:
@@ -303,12 +331,17 @@ def process_single_table(
     use_native: bool | None,
     cache_dir: str,
     sql_dir: str,
+    project_dir: str,
+    dp_data_dir: str,
+    dp_metadata_dir: str,
+    refresh_dp_cache: bool,
+    sql_approved: bool,
     feature_select_code_dir: str,
 ) -> dict | None:
     """Process one feature table end-to-end: fetch -> D01 -> D02 -> checkpoint.
 
     Returns the summary dict, or None if table was skipped via checkpoint.
-    Runs in a worker process with its own TMLSQLClient.
+    Runs in a worker process and reads DP samples through the local feather cache.
     """
     cache_path = Path(cache_dir) / f"{table_slug(table_name)}.pkl"
     if cache_path.exists():
@@ -323,7 +356,6 @@ def process_single_table(
     sys.path.insert(0, feature_select_code_dir)
     sys.path.insert(0, str(Path(feature_select_code_dir) / "utils"))
     from utils.feature_select import batch_psi, d01_preselect_by_toad
-    from tmlpatch.database import TMLSQLClient
 
     start_time = time.time()
     sample_sql = build_sample_sql(table_name, dev_ds_list, oot_ds_list)
@@ -332,11 +364,18 @@ def process_single_table(
     sql_path.parent.mkdir(parents=True, exist_ok=True)
     sql_path.write_text(sample_sql.strip() + "\n", encoding="utf-8")
 
-    client = TMLSQLClient()
-    try:
-        sample = client.sql(sample_sql).to_pandas()
-    finally:
-        client.stop()
+    dataset_id = d01_d02_dataset_id(table_name)
+    description = f"D01/D02分表筛选样本：{table_name}，DEV/OOT分区抽样后用于D01预筛和D02 PSI。"
+    sample = load_or_fetch_dp_feather(
+        project_dir=Path(project_dir),
+        sql=sample_sql,
+        dataset_id=dataset_id,
+        description=description,
+        feather_path=Path(dp_data_dir) / f"{table_slug(table_name)}.feather",
+        metadata_path=Path(dp_metadata_dir) / f"{table_slug(table_name)}.json",
+        refresh=refresh_dp_cache,
+        sql_approved=sql_approved,
+    )
 
     available_features = coerce_features(sample, feature_list)
     if not available_features:
@@ -405,6 +444,8 @@ def main() -> int:
     cache_dir = output_dir / "cache"
     sql_dir = output_dir / "sql"
     results_dir = output_dir / "results"
+    dp_data_dir = project_dir / "data" / "local" / "dp_feather" / "d01_d02_batch_select"
+    dp_metadata_dir = project_dir / "data" / "profile" / "dp_feather_datasets" / "d01_d02_batch_select"
 
     table_features = load_feature_map(feature_columns_path)
     if args.table:
@@ -446,6 +487,41 @@ def main() -> int:
     cache_dir.mkdir(parents=True, exist_ok=True)
     sql_dir.mkdir(parents=True, exist_ok=True)
     results_dir.mkdir(parents=True, exist_ok=True)
+    dp_metadata_dir.mkdir(parents=True, exist_ok=True)
+
+    if args.dry_run_sql:
+        for idx, (table_name, _feature_list) in enumerate(table_items, start=1):
+            sample_sql = build_sample_sql(table_name, dev_ds_list, oot_ds_list)
+            sql_path = sql_dir / f"{table_slug(table_name)}.sql"
+            sql_path.parent.mkdir(parents=True, exist_ok=True)
+            sql_path.write_text(sample_sql.strip() + "\n", encoding="utf-8")
+            dataset_id = d01_d02_dataset_id(table_name)
+            feather_path = dp_data_dir / f"{table_slug(table_name)}.feather"
+            metadata_path = dp_metadata_dir / f"{table_slug(table_name)}.json"
+            description = f"D01/D02分表筛选样本：{table_name}，DEV/OOT分区抽样后用于D01预筛和D02 PSI。"
+            write_dataset_metadata(
+                project_dir=project_dir,
+                metadata_path=metadata_path,
+                feather_path=feather_path,
+                dataset_id=dataset_id,
+                description=description,
+                sql=sample_sql,
+                status="sql_review_required" if args.refresh_dp_cache or not feather_path.exists() else "ready",
+                note="Review this SQL before running DP fetch. The feather file itself is gitignored.",
+            )
+            if idx <= 3:
+                print_sql_review(
+                    dataset_id=dataset_id,
+                    description=description,
+                    feather_path=feather_path,
+                    metadata_path=metadata_path,
+                    sql=sample_sql,
+                )
+        print(f"[DRY-RUN] wrote {len(table_items)} SQL files under {sql_dir}")
+        print(f"[DRY-RUN] wrote metadata under {dp_metadata_dir}")
+        if len(table_items) > 3:
+            print("[DRY-RUN] printed first 3 SQLs only; inspect the SQL files for the rest.")
+        return 0
 
     use_native = True if args.use_native else None
     total_tables = len(table_features)
@@ -473,6 +549,11 @@ def main() -> int:
                 use_native=use_native,
                 cache_dir=str(cache_dir),
                 sql_dir=str(sql_dir),
+                project_dir=str(project_dir),
+                dp_data_dir=str(dp_data_dir),
+                dp_metadata_dir=str(dp_metadata_dir),
+                refresh_dp_cache=args.refresh_dp_cache,
+                sql_approved=args.sql_approved,
                 feature_select_code_dir=str(feature_select_code_dir),
             )
             futures[future] = table_name

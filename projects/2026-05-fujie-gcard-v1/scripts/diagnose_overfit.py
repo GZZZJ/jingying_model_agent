@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Diagnose overfitting vs feature leakage for the 73-feature GCard model.
+"""Diagnose overfitting vs feature leakage for the selected GCard model.
 
 Compares train vs valid AUC and flags suspicious feature names.
 """
@@ -8,6 +8,7 @@ from __future__ import annotations
 import pickle
 import sys
 import time
+import argparse
 from pathlib import Path
 
 import numpy as np
@@ -21,6 +22,7 @@ REPO_ROOT = SCRIPT_PATH.parents[3]
 sys.path.insert(0, str(REPO_ROOT))
 
 from jingying_agent.config import load_yaml
+from jingying_agent.dp_feather import default_dataset_paths, load_or_fetch_dp_feather, print_sql_review, write_dataset_metadata
 
 LGBM_PARAMS = {
     "objective": "binary",
@@ -72,15 +74,6 @@ def build_sampling_sql(cfg: dict, features: list[str], max_rows_override: int | 
     if max_rows:
         sql += f"\nlimit {int(max_rows)}"
     return sql + "\n"
-
-
-def load_wide_sample(sql: str) -> pd.DataFrame:
-    from tmlpatch.database import TMLSQLClient
-    client = TMLSQLClient()
-    try:
-        return client.sql(sql).to_pandas()
-    finally:
-        client.stop()
 
 
 def coerce_feature_frame(df: pd.DataFrame, features: list[str], cfg: dict) -> tuple[pd.DataFrame, list[str], pd.DataFrame]:
@@ -156,6 +149,18 @@ def flag_suspicious(features: list[str]) -> list[dict]:
     return flagged
 
 
+def resolve_project_path(project_dir: Path, value: str | Path) -> Path:
+    path = Path(value)
+    return path if path.is_absolute() else project_dir / path
+
+
+def default_features_path(project_dir: Path) -> Path:
+    wide_path = project_dir / "runs" / "feature_refine_wide" / "final_500_features.txt"
+    if wide_path.exists():
+        return wide_path
+    return project_dir / "runs" / "feature_refine_feather" / "final_500_features.txt"
+
+
 def train_and_evaluate(train_x, train_y, valid_x, valid_y, features: list[str]) -> dict:
     print(f"[TRAIN] train: {train_x.shape}, valid: {valid_x.shape}")
     print(f"[TRAIN] y_train mean={train_y.mean():.4f}, y_valid mean={valid_y.mean():.4f}")
@@ -211,8 +216,19 @@ def train_and_evaluate(train_x, train_y, valid_x, valid_y, features: list[str]) 
 
 
 def main():
+    parser = argparse.ArgumentParser(description="Diagnose overfitting and feature leakage for selected GCard features.")
+    parser.add_argument("--dry-run-sql", action="store_true", help="Print SQL and metadata path without querying DP.")
+    parser.add_argument("--refresh-dp-cache", action="store_true", help="Refresh local feather cache from DP after SQL approval.")
+    parser.add_argument("--sql-approved", action="store_true", help="Confirm that the displayed DP SQL has been reviewed.")
+    parser.add_argument(
+        "--features-path",
+        default=None,
+        help="Selected feature list. Defaults to feature_refine_wide if present, otherwise feature_refine_feather.",
+    )
+    args = parser.parse_args()
+
     config = load_yaml(PROJECT_DIR / "configs" / "refine_features.yaml")
-    features_path = PROJECT_DIR / "runs" / "feature_refine_wide" / "final_500_features.txt"
+    features_path = resolve_project_path(PROJECT_DIR, args.features_path) if args.features_path else default_features_path(PROJECT_DIR)
 
     with open(features_path) as f:
         features = [line.strip() for line in f if line.strip()]
@@ -225,13 +241,46 @@ def main():
         print(f"  {s['feature']}  ← {s['reason']}")
 
     # Pull data - use larger sample for more reliable diagnosis
-    print("\n[PULL] Fetching data with only the 73 selected features...")
+    print(f"\n[PULL] Fetching data with only the {len(features)} selected features...")
     sample_cfg = config["feature_refine"]["sampling"].copy()
     # Loosen filter slightly for diagnostic - we only have 73 cols now, much faster
     t0 = time.time()
     sql = build_sampling_sql(config, features)
-    print(f"[PULL] SQL (first 400 chars):\n{sql[:400]}...")
-    df = load_wide_sample(sql)
+    feather_path, metadata_path = default_dataset_paths(
+        PROJECT_DIR,
+        dataset_id="diagnose_overfit_selected_feature_sample",
+    )
+    dataset_id = "diagnose_overfit_selected_feature_sample"
+    description = "所选特征穿越诊断抽样，用于比较全量可疑特征与剔除suc/next类特征后的DEV/OOT效果。"
+    if args.dry_run_sql:
+        write_dataset_metadata(
+            project_dir=PROJECT_DIR,
+            metadata_path=metadata_path,
+            feather_path=feather_path,
+            dataset_id=dataset_id,
+            description=description,
+            sql=sql,
+            status="sql_review_required" if args.refresh_dp_cache or not feather_path.exists() else "ready",
+            note="Review this SQL before running DP fetch. The feather file itself is gitignored.",
+        )
+        print_sql_review(
+            dataset_id=dataset_id,
+            description=description,
+            feather_path=feather_path,
+            metadata_path=metadata_path,
+            sql=sql,
+        )
+        return 0
+    df = load_or_fetch_dp_feather(
+        project_dir=PROJECT_DIR,
+        sql=sql,
+        dataset_id=dataset_id,
+        description=description,
+        feather_path=feather_path,
+        metadata_path=metadata_path,
+        refresh=args.refresh_dp_cache,
+        sql_approved=args.sql_approved,
+    )
     elapsed = time.time() - t0
     print(f"[PULL] Got {len(df)} rows, {len(df.columns)} cols in {elapsed:.1f}s")
 
@@ -247,11 +296,11 @@ def main():
 
     # Train 73-feature model
     print("\n" + "=" * 60)
-    print("TRAINING DIAGNOSTIC MODEL (73 features)")
+    print(f"TRAINING DIAGNOSTIC MODEL ({len(kept_features)} features)")
     print("=" * 60)
     result = train_and_evaluate(train_x, train_y, valid_x, valid_y, kept_features)
 
-    # Train 66-feature model (73 minus 7 suspicious 'suc'/'after' features, keep 'future' for now)
+    # Train a cleaner model after removing suspicious 'suc'/'after'/'next' features.
     remove_patterns = ["suc_", "_suc_", "after_", "next_"]
     clean_features = [f for f in kept_features if not any(p in f.lower() for p in remove_patterns)]
     clean_indices = [kept_features.index(f) for f in clean_features]
