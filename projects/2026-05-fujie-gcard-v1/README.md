@@ -82,6 +82,16 @@ python3 agent.py build-wide-sql --project projects/2026-05-fujie-gcard-v1
 - D03 随机重要性筛选：加入若干随机噪声特征，训练模型后剔除重要性不高于随机噪声的真实特征，用来过滤“看起来有值但实际弱于噪声”的字段。
 - D04 Null Importance：打乱标签多次训练得到每个特征在无真实信号下的重要性分布，再和真实标签训练的重要性对比，保留显著高于空标签分布的特征。
 
+## 筛选流程汇总表
+
+当前项目已内置特征筛选流程摘要命令，会优先使用 `runs/feature_refine_feather/` 这条已确认主线生成可追溯 JSON：
+
+```bash
+python3 agent.py feature-screening-summary --project projects/2026-05-fujie-gcard-v1 --output reports/feature_screening_process.json
+```
+
+当前已生成 Excel 版本：`reports/feature_screening_process.xlsx`。其中 `Feature Screening` 是汇报表，`Source Data` 保留样本行数、AUC、阶段产物来源等追溯信息。
+
 ## 宽表特征收敛
 
 - 配置：`configs/refine_features.yaml`

@@ -7,6 +7,7 @@ import importlib.util
 from pathlib import Path
 
 from jingying_agent.manifest import write_manifest
+from jingying_agent.feature_screening import write_feature_screening_summary
 from jingying_agent.project import REPO_ROOT, create_project
 from jingying_agent.wide_sql import generate_wide_sql
 
@@ -86,6 +87,13 @@ def cmd_build_wide_sql(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_feature_screening_summary(args: argparse.Namespace) -> int:
+    project_dir = (REPO_ROOT / args.project).resolve() if not Path(args.project).is_absolute() else Path(args.project)
+    output_path = write_feature_screening_summary(project_dir, args.output)
+    print(f"summary: {output_path}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="经营建模 Agent CLI")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -134,6 +142,18 @@ def build_parser() -> argparse.ArgumentParser:
     build_wide_sql.add_argument("--base-where", default=None, help="optional base table where clause")
     build_wide_sql.add_argument("--feature-where", default=None, help="optional feature table where clause")
     build_wide_sql.set_defaults(func=cmd_build_wide_sql)
+
+    screening_summary = subparsers.add_parser(
+        "feature-screening-summary",
+        help="write a source-backed feature screening process summary",
+    )
+    screening_summary.add_argument("--project", required=True, help="project path, absolute or relative to repo root")
+    screening_summary.add_argument(
+        "--output",
+        default="reports/feature_screening_process.json",
+        help="summary JSON output path, relative to project unless absolute",
+    )
+    screening_summary.set_defaults(func=cmd_feature_screening_summary)
 
     return parser
 
