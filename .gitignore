@@ -17,6 +17,13 @@ projects/*/data/processed/*
 projects/*/data/local/*
 projects/*/models/
 
+# Large run artifacts (feather files) – keep CSVs/JSONs.
+projects/*/runs/*/*.feather
+projects/*/runs/model_scores/*.feather
+
+# Vendor D03 refinement intermediate results
+projects/*/runs/feature_refine_feather_vendor_d03/
+
 # Keep curated metadata under data/profile tracked.
 
 # Local skill checkout is optional; runtime code is vendored under vendor/.

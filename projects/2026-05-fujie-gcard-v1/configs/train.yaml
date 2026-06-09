@@ -1,25 +1,54 @@
+# Training config for 复借G卡 main model (round: 2026-06)
+#
+# This round trains ONE main model (main_lgbm) on new data with new features.
+# Segment columns are used ONLY for evaluation slices, NOT for separate training.
+
 training:
   default_algorithm: lightgbm
   random_seed: 0
-  feature_list_path: runs/feature_refine_wide/final_500_features.txt
+  feature_list_path: runs/modeling_feature_set/feature_list.txt
   label_column: ftr_30d_ord_flag
+  split_column: final_flag
+  train_values: ["DEV"]
+  valid_values: ["OOT"]
+  oos_values: ["DEV-OOS", "OOT-OOS"]
 
   experiments:
-    - name: baseline_all
-      display_name: 全客群统一模型
+    - name: main_lgbm
+      display_name: 复借G卡主模型
       segment: all
       algorithm: lightgbm
       sample_weight: null
-    - name: segment_e2e3
-      display_name: E2/E3分客群模型
-      segment: e2e3
-      algorithm: lightgbm
-      sample_weight: null
-    - name: segment_b2
-      display_name: B2分客群模型
-      segment: b2
-      algorithm: lightgbm
-      sample_weight: null
+
+# Sample data configuration
+input:
+  feather_path: /root/notebook/draft/筛选96维度特征样本.feather
+  id_columns:
+    - uid
+    - mdl_dte
+  base_columns:
+    - uid
+    - mdl_dte
+    - ds
+    - final_flag
+    - blue_customer_flag
+    - zc_level
+    - ftr_30d_ord_flag
+    - ftr_30d_ord_amt
+    - prc_amt_xz_30d_3m
+    - ovd_amt_xz_30d_3m
+    - rand_flag0
+    - gcard_v2
+    - gcard_v4
+    - gcard_v5
+    - gcard_v6
+  label_column: ftr_30d_ord_flag
+  split_column: final_flag
+
+preprocessing:
+  missing_sentinels: [-999, -998]
+  min_non_null_rate: 0.01
+  drop_constant: true
 
 lightgbm:
   objective: binary
