@@ -1,0 +1,5 @@
+name: train_baseline
+description: Baseline model training workflow.
+stages:
+  - validate_config
+  - train_baseline

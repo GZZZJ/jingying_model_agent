@@ -1,0 +1,14 @@
+project:
+  name: example-project
+  display_name: Example Model
+  scenario: business scenario
+data:
+  source_table: database.table
+  id_columns: [uid, mdl_dte]
+  target_column: target
+  time_column: mdl_dte
+  period_column: ds
+segments:
+  - name: all
+    display_name: all
+    filter: null

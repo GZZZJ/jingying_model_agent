@@ -1,0 +1,6 @@
+name: challenger_evaluation
+description: Champion/challenger evaluation workflow.
+stages:
+  - validate_config
+  - evaluate
+  - compare

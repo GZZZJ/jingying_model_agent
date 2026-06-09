@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>复借G卡模型报告</title>
+<style>
+body{font-family:Arial,'Microsoft YaHei',sans-serif;margin:32px;color:#1f2933;line-height:1.55}
+h1{font-size:26px;margin-bottom:16px} h2{font-size:19px;margin-top:28px;border-bottom:1px solid #d9e0e3;padding-bottom:6px}
+table{border-collapse:collapse;margin:12px 0 20px 0;font-size:13px} th,td{border:1px solid #d9e0e3;padding:6px 8px;text-align:right} th{background:#f3f6f6} td:first-child,th:first-child{text-align:left}
+li{margin:4px 0} blockquote{color:#667085;border-left:3px solid #d9e0e3;padding-left:10px}
+</style>
+</head><body>
+<h1>复借G卡模型报告</h1>
+<p>生成日期：2026-06-09</p>
+<h2>一、模型描述</h2>
+<ul>
+<li>模型目标：预测观察日后 30 天内是否发起，标签字段为 `ftr_30d_ord_flag`。</li>
+<li>建模样本：训练集 DEV，验证集 OOT，OOS DEV-OOS、OOT-OOS。</li>
+<li>算法：lightgbm；最终入模变量 96 个；best iteration 1000。</li>
+<li>验证集效果：AUC 0.936，KS 0.736，Train/Valid AUC gap 0.002。</li>
+</ul>
+<h2>二、变量筛选过程</h2>
+<ul>
+<li>当前复借G卡 Feather 主线借鉴 feature-select-v2 的随机重要性、Null Importance、Top Importance 思路，但阈值和局部实现为项目内自定义。</li>
+</ul>
+<table>
+<tr><th>步骤</th><th>筛选方法</th><th>剩余变量个数</th><th>来源</th></tr>
+<tr><td>初始</td><td>初始候选变量总数：70张特征表，共15,028个字段级候选变量</td><td>15028</td><td>runs/d01_d02_batch_select/results/d01_d02_run_summary.json</td></tr>
+<tr><td>1</td><td>分表基础预筛：缺失率 &lt; 0.95，相关性 &lt; 0.80，IV &gt;= 0.005</td><td>2958</td><td>runs/d01_d02_batch_select/results/d01_d02_run_summary.json</td></tr>
+<tr><td>2</td><td>稳定性筛选：DEV vs OOT，PSI &lt;= 0.10</td><td>2843</td><td>runs/d01_d02_batch_select/results/d01_d02_run_summary.json</td></tr>
+<tr><td>3</td><td>Feather观察样本可用特征：50,000行，过滤缺失率过低和常量字段</td><td>2825</td><td>runs/feature_refine_feather/stage_summary.json</td></tr>
+<tr><td>4</td><td>全局相关性去重：相关性阈值 0.80，按单变量AUC保留更强特征</td><td>1945</td><td>runs/feature_refine_feather/stage_summary.json</td></tr>
+<tr><td>5</td><td>随机噪声重要性筛选：3轮，5个随机噪声特征，存活率 &gt;= 0.50</td><td>96</td><td>runs/feature_refine_feather/stage_summary.json</td></tr>
+<tr><td>6</td><td>空标签重要性筛选：20轮空标签，空标签重要性75分位，score &gt;= 1.00</td><td>96</td><td>runs/feature_refine_feather/stage_summary.json</td></tr>
+<tr><td>7</td><td>基线模型重要性筛选：LightGBM gain importance，保留前500个，valid AUC=0.9292</td><td>96</td><td>runs/feature_refine_feather/final_500_features.txt</td></tr>
+</table>
+<h2>三、核心效果与历史版本对比</h2>
+<ul>
+<li>OOT-OOS：本轮模型 AUC 0.931、KS 0.718；相对 G卡V2 KS 提升 0.019，相对 G卡V4 KS 提升 0.033，相对 G卡V6 KS 提升 0.003。</li>
+</ul>
+<table>
+<tr><th>final_flag</th><th>n_samples</th><th>positive</th><th>bad_rate</th><th>model_score_auc</th><th>model_score_ks</th></tr>
+<tr><td>DEV</td><td>3600000</td><td>550617</td><td>0.153</td><td>0.939</td><td>0.734</td></tr>
+<tr><td>DEV-OOS</td><td>3600000</td><td>624900</td><td>0.174</td><td>0.933</td><td>0.720</td></tr>
+<tr><td>OOT</td><td>1200000</td><td>154072</td><td>0.128</td><td>0.936</td><td>0.736</td></tr>
+<tr><td>OOT-OOS</td><td>1200000</td><td>171478</td><td>0.143</td><td>0.931</td><td>0.718</td></tr>
+</table>
+<table>
+<tr><th>final_flag</th><th>model_score_auc</th><th>model_score_ks</th><th>ks_uplift_vs_gcard_v2</th><th>ks_uplift_vs_gcard_v4</th><th>ks_uplift_vs_gcard_v5</th><th>ks_uplift_vs_gcard_v6</th></tr>
+<tr><td>DEV</td><td>0.939</td><td>0.734</td><td>0.021</td><td>0.029</td><td>0.027</td><td>0.006</td></tr>
+<tr><td>DEV-OOS</td><td>0.933</td><td>0.720</td><td>0.018</td><td>0.029</td><td>0.023</td><td>0.003</td></tr>
+<tr><td>OOT</td><td>0.936</td><td>0.736</td><td>0.017</td><td>0.027</td><td>0.022</td><td>0.002</td></tr>
+<tr><td>OOT-OOS</td><td>0.931</td><td>0.718</td><td>0.019</td><td>0.033</td><td>0.023</td><td>0.003</td></tr>
+</table>
+<h2>四、分客群效果</h2>
+<table>
+<tr><th>segment</th><th>final_flag</th><th>n_samples</th><th>bad_rate</th><th>model_score_auc</th><th>model_score_ks</th><th>ks_uplift_vs_gcard_v2</th></tr>
+<tr><td>全客群</td><td>DEV</td><td>3600000</td><td>0.153</td><td>0.939</td><td>0.734</td><td>0.021</td></tr>
+<tr><td>全客群</td><td>DEV-OOS</td><td>3600000</td><td>0.174</td><td>0.933</td><td>0.720</td><td>0.018</td></tr>
+<tr><td>全客群</td><td>OOT</td><td>1200000</td><td>0.128</td><td>0.936</td><td>0.736</td><td>0.017</td></tr>
+<tr><td>全客群</td><td>OOT-OOS</td><td>1200000</td><td>0.143</td><td>0.931</td><td>0.718</td><td>0.019</td></tr>
+<tr><td>老户次新</td><td>DEV</td><td>1184621</td><td>0.419</td><td>0.830</td><td>0.502</td><td>0.051</td></tr>
+<tr><td>老户次新</td><td>DEV-OOS</td><td>1287620</td><td>0.437</td><td>0.823</td><td>0.490</td><td>0.041</td></tr>
+<tr><td>老户次新</td><td>OOT</td><td>337008</td><td>0.402</td><td>0.804</td><td>0.456</td><td>0.040</td></tr>
+<tr><td>老户次新</td><td>OOT-OOS</td><td>372417</td><td>0.404</td><td>0.802</td><td>0.453</td><td>0.041</td></tr>
+<tr><td>老户</td><td>DEV</td><td>1057723</td><td>0.435</td><td>0.832</td><td>0.505</td><td>0.052</td></tr>
+<tr><td>老户</td><td>DEV-OOS</td><td>1129863</td><td>0.457</td><td>0.825</td><td>0.492</td><td>0.042</td></tr>
+<tr><td>老户</td><td>OOT</td><td>309770</td><td>0.411</td><td>0.806</td><td>0.459</td><td>0.041</td></tr>
+<tr><td>老户</td><td>OOT-OOS</td><td>327473</td><td>0.417</td><td>0.806</td><td>0.458</td><td>0.043</td></tr>
+<tr><td>次新</td><td>DEV</td><td>126898</td><td>0.285</td><td>0.781</td><td>0.421</td><td>0.070</td></tr>
+<tr><td>次新</td><td>DEV-OOS</td><td>157757</td><td>0.297</td><td>0.774</td><td>0.406</td><td>0.052</td></tr>
+<tr><td>次新</td><td>OOT</td><td>27238</td><td>0.302</td><td>0.756</td><td>0.378</td><td>0.052</td></tr>
+<tr><td>次新</td><td>OOT-OOS</td><td>44944</td><td>0.310</td><td>0.750</td><td>0.376</td><td>0.051</td></tr>
+<tr><td>流失户</td><td>DEV</td><td>2415379</td><td>0.022</td><td>0.879</td><td>0.605</td><td>0.018</td></tr>
+<tr><td>流失户</td><td>DEV-OOS</td><td>2312380</td><td>0.027</td><td>0.882</td><td>0.613</td><td>0.019</td></tr>
+<tr><td>流失户</td><td>OOT</td><td>862992</td><td>0.022</td><td>0.884</td><td>0.619</td><td>0.031</td></tr>
+<tr><td>流失户</td><td>OOT-OOS</td><td>827583</td><td>0.026</td><td>0.893</td><td>0.638</td><td>0.040</td></tr>
+</table>
+<h2>五、模型 sloping、意愿交叉风险与稳定性</h2>
+<ul>
+<li>sloping 详见 Excel 中 `模型效果-模型sloping`，已按全客群、老户次新、流失户分别横向对比本轮模型和历史 G 卡版本；累计和剩余 lift 按参考文档口径从低分尾部开始累计。</li>
+<li>意愿交叉风险详见 Excel 中 `模型效果-意愿交叉风险（DEV-OOS）`。当前 artifact 缺少老户/流失户、score version、final_flag 和金额风险 x 资产评级维度，不伪造缺失矩阵。</li>
+<li>本轮模型 PSI 最高的 5 个观测如下；分箱占比变化明细需补充产出后回填：</li>
+</ul>
+<table>
+<tr><th>month</th><th>psi</th><th>n_samples</th><th>score_column</th></tr>
+<tr><td>2026-01</td><td>0.046</td><td>1200000</td><td>model_score</td></tr>
+<tr><td>2025-12</td><td>0.037</td><td>1200000</td><td>model_score</td></tr>
+<tr><td>2025-11</td><td>0.033</td><td>1200000</td><td>model_score</td></tr>
+<tr><td>2025-10</td><td>0.027</td><td>1200000</td><td>model_score</td></tr>
+<tr><td>2025-09</td><td>0.018</td><td>1200000</td><td>model_score</td></tr>
+</table>
+<h2>六、重要变量</h2>
+<table>
+<tr><th>feature</th><th>gain</th><th>split</th></tr>
+<tr><td>ord_apl_sum_prc_amt_90_day</td><td>5426063.174</td><td>204</td></tr>
+<tr><td>unpaid_principal_future_light_add_heavy</td><td>1985538.499</td><td>445</td></tr>
+<tr><td>ord_apl_max_prc_amt_180_day</td><td>1820451.862</td><td>340</td></tr>
+<tr><td>d360_apl_ord_ddf_mdl_ord_crt_dte_min</td><td>1086284.381</td><td>969</td></tr>
+<tr><td>his_360_day_csh_apl_ord_cnt</td><td>1068670.777</td><td>224</td></tr>
+<tr><td>d180_apl_ord_days_cnt_all</td><td>870015.297</td><td>220</td></tr>
+<tr><td>cnt_event_result_1_uid_recent_days_120</td><td>637491.652</td><td>347</td></tr>
+<tr><td>his_360_day_csh_apl_ord_cnt_his_rto</td><td>289071.587</td><td>173</td></tr>
+<tr><td>cnt_other_info_cash_uid_recent_days_30</td><td>249303.482</td><td>197</td></tr>
+<tr><td>dau_90d</td><td>200764.363</td><td>602</td></tr>
+<tr><td>cnt_avg_ord_span_30d</td><td>158264.697</td><td>422</td></tr>
+<tr><td>his_180_day_csh_apl_ord_cnt_his_rto</td><td>157546.802</td><td>242</td></tr>
+<tr><td>stg_pln_max_rep_prc_1m_his</td><td>116375.389</td><td>353</td></tr>
+<tr><td>ddf_lst_app_str_tim_to_mdl_tim_sec</td><td>112144.534</td><td>791</td></tr>
+<tr><td>ord_apl_sum_prc_amt_360_day</td><td>105323.065</td><td>280</td></tr>
+</table>
+<h2>七、待补充事项</h2>
+<ul>
+<li>历史文档中的变量分布/分箱图、变量中文描述与业务标签、MOB1/MOB3 历史风险精确定义仍需在另一环境补充计算。</li>
+<li>详见 `model_report_missing_results.md`。</li>
+</ul>
+</body></html>

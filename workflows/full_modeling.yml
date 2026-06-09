@@ -1,0 +1,25 @@
+name: full_modeling
+description: Full automated business modeling workflow.
+stages:
+  - validate_config
+  - sample_check
+  - feature_metadata
+  - d01_d02_screening
+  - build_wide_sql
+  - feature_refine
+  - train_baseline
+  - evaluate
+  - compare
+  - report
+gates:
+  before_train:
+    require:
+      - sample_check.status == done
+      - feature_refine.status == done
+      - feature_selection.final_features.exists == true
+    stop_if:
+      - audit.high_risk_leakage == true
+  before_report:
+    require:
+      - evaluation.status in [done, scaffold]
+      - audit.artifact_manifest.exists == true

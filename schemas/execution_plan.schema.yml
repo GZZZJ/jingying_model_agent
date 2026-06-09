@@ -1,0 +1,33 @@
+name: execution_plan
+version: 1
+required_fields:
+  - version
+  - plan_id
+  - request_id
+  - request_path
+  - project
+  - workflow
+  - created_at
+  - run_id_placeholder
+  - tasks
+task_required_fields:
+  - task_id
+  - type
+  - status
+  - workspace
+  - depends_on
+  - command
+  - outputs
+task_command_required_fields:
+  - executable
+  - args
+task_status_values:
+  - pending
+  - running
+  - done
+  - failed
+  - scaffold
+notes:
+  - plan creation uses <run_id> as a placeholder until jm run init binds a concrete run workspace.
+  - every task workspace is relative to projects/<project>/runs/<run_id>/.
+  - command.args is an argv-style list, not a shell string.

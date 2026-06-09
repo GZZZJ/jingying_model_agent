@@ -19,4 +19,11 @@ modeling = [
 ]
 
 [project.scripts]
-jingying-agent = "jingying_agent.cli:main"
+jingying-agent = "jingying_model_agent.cli:main"
+jm = "jingying_model_agent.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]

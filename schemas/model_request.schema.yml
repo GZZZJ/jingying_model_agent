@@ -1,0 +1,24 @@
+name: model_request
+version: 1
+format: markdown_with_yaml_front_matter
+required_fields:
+  - request_id
+  - project
+  - target_column
+  - id_columns
+  - split_column
+  - experiments
+  - evaluation
+  - reports
+field_notes:
+  request_id: Stable id for this modeling request.
+  project: Project workspace name, usually matching project.yml project.name.
+  target_column: Label column.
+  id_columns: Primary key columns.
+  split_column: Train/OOS/OOT split column.
+  sample_checks: Optional ordered sample-check task ids.
+  feature_selection.rounds: Ordered feature-selection rounds. Supported first-stage values are metadata, d01_d02, refine.
+  experiments: List of model experiments to train.
+  evaluation.metrics: Metrics required for evaluation.
+  evaluation.champions: Existing score columns used for champion/challenger comparison.
+  reports.outputs: Required final report artifacts.

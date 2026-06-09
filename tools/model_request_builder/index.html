@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>模型需求生成器</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="配置导航">
+        <div class="brand">
+          <div class="brand-mark">JM</div>
+          <div>
+            <h1>模型需求生成器</h1>
+            <p>Model Request Builder</p>
+          </div>
+        </div>
+        <nav class="nav-list">
+          <a href="#basic" class="active">基本信息</a>
+          <a href="#sample">样本与切分</a>
+          <a href="#features">特征筛选</a>
+          <a href="#modeling">建模实验</a>
+          <a href="#evaluation">评估报告</a>
+          <a href="#notes">补充说明</a>
+        </nav>
+        <div class="status-panel">
+          <span class="status-dot"></span>
+          <span id="validationSummary">等待填写</span>
+        </div>
+      </aside>
+
+      <main class="workspace">
+        <header class="topbar">
+          <div class="project-strip">
+            <label for="projectSelect">项目</label>
+            <select id="projectSelect">
+              <option value="2026-05-fujie-gcard-v1">复借 G 卡</option>
+              <option value="">自定义项目</option>
+            </select>
+            <input id="customProject" class="compact-input hidden" placeholder="projects/<project>" />
+          </div>
+          <div class="actions">
+            <button type="button" id="loadGcard">导入复借G卡模板</button>
+            <button type="button" id="copyMarkdown">复制 Markdown</button>
+            <button type="button" id="downloadMarkdown" class="primary">下载 .md</button>
+          </div>
+        </header>
+
+        <div class="content-grid">
+          <form id="requestForm" class="form-stack">
+            <section id="basic" class="section">
+              <div class="section-head">
+                <h2>基本信息</h2>
+                <span>定义任务合同和建模目标</span>
+              </div>
+              <div class="field-grid two">
+                <label>
+                  <span>需求 ID</span>
+                  <input name="request_id" required />
+                </label>
+                <label>
+                  <span>标题</span>
+                  <input name="title" required />
+                </label>
+                <label>
+                  <span>负责人</span>
+                  <input name="owner" />
+                </label>
+                <label>
+                  <span>Workflow</span>
+                  <select name="workflow">
+                    <option value="full_modeling">full_modeling</option>
+                    <option value="feature_selection">feature_selection</option>
+                    <option value="train_baseline">train_baseline</option>
+                    <option value="challenger_evaluation">challenger_evaluation</option>
+                  </select>
+                </label>
+              </div>
+              <label>
+                <span>建模目标</span>
+                <textarea name="objective" rows="4" placeholder="说明模型要解决的业务问题、使用场景和预期决策动作"></textarea>
+              </label>
+            </section>
+
+            <section id="sample" class="section">
+              <div class="section-head">
+                <h2>样本与切分</h2>
+                <span>数据位置、标签、主键、DEV/OOT/OOS 口径</span>
+              </div>
+              <div class="field-grid three">
+                <label>
+                  <span>样本位置</span>
+                  <input name="sample_location" placeholder="表名或 data/raw/sample.feather" />
+                </label>
+                <label>
+                  <span>特征数据位置</span>
+                  <input name="feature_location" placeholder="表名、目录或 feather/parquet" />
+                </label>
+                <label>
+                  <span>标签字段</span>
+                  <input name="target_column" required />
+                </label>
+                <label>
+                  <span>主键字段</span>
+                  <input name="id_columns" placeholder="uid, mdl_dte" required />
+                </label>
+                <label>
+                  <span>时间字段</span>
+                  <input name="time_column" />
+                </label>
+                <label>
+                  <span>分区字段</span>
+                  <input name="period_column" />
+                </label>
+                <label>
+                  <span>切分字段</span>
+                  <input name="split_column" required />
+                </label>
+                <label>
+                  <span>DEV 取值</span>
+                  <input name="dev_values" placeholder="DEV" />
+                </label>
+                <label>
+                  <span>OOT/OOS 取值</span>
+                  <input name="oot_values" placeholder="DEV-OOS, OOT, OOT-OOS" />
+                </label>
+              </div>
+              <label>
+                <span>样本口径 / 标签定义</span>
+                <textarea name="sample_definition" rows="4" placeholder="说明准入、排除规则、观察窗口、标签定义和待确认事项"></textarea>
+              </label>
+            </section>
+
+            <section id="features" class="section">
+              <div class="section-head">
+                <h2>特征筛选</h2>
+                <span>选择默认步骤，也可以添加自定义要求</span>
+              </div>
+              <div class="check-grid" data-group="feature_steps">
+                <label><input type="checkbox" value="metadata" checked /> 特征元数据</label>
+                <label><input type="checkbox" value="d01_d02" checked /> D01/D02</label>
+                <label><input type="checkbox" value="refine" checked /> 宽表后收敛</label>
+                <label><input type="checkbox" value="leakage_check" /> 泄漏检查</label>
+                <label><input type="checkbox" value="stability_check" /> 稳定性检查</label>
+              </div>
+              <div class="field-grid two">
+                <label>
+                  <span>候选特征来源</span>
+                  <input name="feature_sources" placeholder="70张特征表、本地目录、特征字典等" />
+                </label>
+                <label class="switch-row">
+                  <input type="checkbox" name="require_sql_approval" checked />
+                  <span>真实拉数前必须 SQL 审批</span>
+                </label>
+              </div>
+              <label>
+                <span>特征筛选补充要求</span>
+                <textarea name="feature_notes" rows="3" placeholder="例如禁止字段、抽样策略、分批策略、相关性阈值等"></textarea>
+              </label>
+            </section>
+
+            <section id="modeling" class="section">
+              <div class="section-head">
+                <h2>建模实验</h2>
+                <span>定义实验、不同 Y、不同样本和优化目标</span>
+              </div>
+              <div class="field-grid two">
+                <label>
+                  <span>候选 Y 字段</span>
+                  <input name="candidate_targets" placeholder="ftr_30d_ord_flag, ..." />
+                </label>
+                <label>
+                  <span>样本变体</span>
+                  <input name="sample_variants" placeholder="all, e2e3, b2, ..." />
+                </label>
+              </div>
+              <div class="experiment-panel">
+                <div class="panel-title">
+                  <span>实验列表</span>
+                  <button type="button" id="addExperiment">新增实验</button>
+                </div>
+                <div id="experiments" class="experiment-list"></div>
+              </div>
+              <label>
+                <span>建模过程要求</span>
+                <textarea name="modeling_notes" rows="3" placeholder="例如是否分客群建模、是否加权、是否优化排序倒挂、是否限制特征数量"></textarea>
+              </label>
+            </section>
+
+            <section id="evaluation" class="section">
+              <div class="section-head">
+                <h2>评估与报告</h2>
+                <span>选择指标、对比维度、报告章节和风险画像</span>
+              </div>
+              <div class="split-panel">
+                <div>
+                  <h3>评估指标</h3>
+                  <div class="check-grid compact" data-group="metrics">
+                    <label><input type="checkbox" value="auc" checked /> AUC</label>
+                    <label><input type="checkbox" value="ks" checked /> KS</label>
+                    <label><input type="checkbox" value="decile_lift" checked /> 十分箱 Lift</label>
+                    <label><input type="checkbox" value="ranking_inversion" checked /> 排序倒挂</label>
+                    <label><input type="checkbox" value="psi" /> PSI</label>
+                    <label><input type="checkbox" value="business_risk" /> 业务风险</label>
+                  </div>
+                </div>
+                <div>
+                  <h3>报告章节</h3>
+                  <div class="check-grid compact" data-group="report_sections">
+                    <label><input type="checkbox" value="sample_overview" checked /> 样本概览</label>
+                    <label><input type="checkbox" value="feature_screening" checked /> 特征筛选情况</label>
+                    <label><input type="checkbox" value="modeling_plan" checked /> 建模方案</label>
+                    <label><input type="checkbox" value="top_features" checked /> 入模 Top 特征</label>
+                    <label><input type="checkbox" value="model_performance" checked /> 模型性能</label>
+                    <label><input type="checkbox" value="champion_comparison" checked /> 历史分对比</label>
+                    <label><input type="checkbox" value="risk_profile" /> 风险画像</label>
+                    <label><input type="checkbox" value="next_action" checked /> 下一步建议</label>
+                  </div>
+                </div>
+              </div>
+              <div class="field-grid two">
+                <label>
+                  <span>历史分 / Champion</span>
+                  <input name="champions" placeholder="gcard_v2, gcard_v4, gcard_v5, gcard_v6" />
+                </label>
+                <label>
+                  <span>重点比较维度</span>
+                  <input name="comparison_dimensions" placeholder="split, month, segment, decile" />
+                </label>
+                <label>
+                  <span>风险画像维度</span>
+                  <input name="risk_profile_dimensions" placeholder="blue_customer_flag, zc_level, ..." />
+                </label>
+                <label>
+                  <span>报告输出</span>
+                  <input name="report_outputs" placeholder="model_report.md, model_card.md, executive_summary.md" />
+                </label>
+              </div>
+            </section>
+
+            <section id="notes" class="section">
+              <div class="section-head">
+                <h2>补充说明</h2>
+                <span>给 Agent 的自由文本约束</span>
+              </div>
+              <label>
+                <span>开放问题 / 禁止事项 / 特殊口径</span>
+                <textarea name="extra_notes" rows="5" placeholder="例如 MOB1/MOB3 口径待确认、禁止修改 vendor、缺少真实数据时只能 scaffold"></textarea>
+              </label>
+            </section>
+          </form>
+
+          <aside class="preview-pane">
+            <div class="preview-head">
+              <div>
+                <h2>Markdown 预览</h2>
+                <p id="filenameHint">model_request.md</p>
+              </div>
+              <button type="button" id="resetForm">重置</button>
+            </div>
+            <pre id="markdownPreview"></pre>
+          </aside>
+        </div>
+      </main>
+    </div>
+
+    <div id="toast" role="status" aria-live="polite"></div>
+    <script src="./app.js"></script>
+  </body>
+</html>

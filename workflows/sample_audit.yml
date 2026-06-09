@@ -1,0 +1,5 @@
+name: sample_audit
+description: Sample and label quality audit workflow.
+stages:
+  - validate_config
+  - sample_check

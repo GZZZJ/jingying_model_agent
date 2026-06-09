@@ -1,0 +1,7 @@
+name: ranking_optimization
+description: Ranking optimization experiment workflow.
+stages:
+  - validate_config
+  - train_baseline
+  - evaluate
+  - compare

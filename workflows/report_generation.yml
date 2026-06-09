@@ -1,0 +1,5 @@
+name: report_generation
+description: Report generation workflow.
+stages:
+  - validate_config
+  - report

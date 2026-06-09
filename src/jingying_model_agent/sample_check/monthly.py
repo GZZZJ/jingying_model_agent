@@ -1,0 +1,1 @@
+"""Monthly sample checks namespace."""

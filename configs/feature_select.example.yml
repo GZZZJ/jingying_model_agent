@@ -1,0 +1,5 @@
+feature_select:
+  require_sql_approval: true
+  d01_d02:
+    sampling:
+      where: ""

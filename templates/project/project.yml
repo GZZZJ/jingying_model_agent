@@ -1,0 +1,49 @@
+project:
+  name: {{project_name}}
+  display_name: {{display_name}}
+  scenario: {{scenario}}
+  created_date: {{created_date}}
+  template: {{template}}
+
+references:
+  planning_doc: ../../docs/legacy/AI经营建模Agent规划.md
+  model_inventory: ../../docs/legacy/现有经营模型梳理.md
+  feature_select_v2: ../../vendor/feature-select-v2
+
+data:
+  source_table: {{sample_table}}
+  raw_path: data/raw/sample.feather
+  feature_path: data/raw/features.feather
+  id_columns:
+    - uid
+    - mdl_dte
+  time_column: {{time_column}}
+  period_column: {{period_column}}
+  target_column: {{target_column}}
+  base_columns:
+    - uid
+    - mdl_dte
+    - {{period_column}}
+    - {{target_column}}
+    - final_flag
+  label_definition: 待填写
+  sample_logic: 待填写
+
+split:
+  source_column: final_flag
+  ins_values:
+    - DEV
+  oos_values:
+    - DEV-OOS
+  oot_values:
+    - OOT
+    - OOT-OOS
+
+segments:
+  - name: all
+    display_name: 全客群
+    filter: null
+
+open_questions:
+  - 样本表、特征表和字段口径待确认。
+  - 抽样规则待确认。

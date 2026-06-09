@@ -20,6 +20,18 @@ projects/*/models/
 # Large run artifacts (feather files) – keep CSVs/JSONs.
 projects/*/runs/*/*.feather
 projects/*/runs/model_scores/*.feather
+projects/*/runs/**/*.pkl
+projects/*/runs/**/*.joblib
+projects/*/runs/**/*.bin
+projects/*/runs/**/*.model
+projects/*/runs/**/.~*.xlsx
+
+# Local generated package metadata.
+*.egg-info/
+
+# Local agent/editor configuration.
+.codex/
+.claude/settings.json
 
 # Vendor D03 refinement intermediate results
 projects/*/runs/feature_refine_feather_vendor_d03/

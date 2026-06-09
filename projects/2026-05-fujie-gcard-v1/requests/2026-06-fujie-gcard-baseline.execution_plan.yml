@@ -1,0 +1,235 @@
+version: 1
+plan_id: 2026-06-fujie-gcard-baseline_plan
+request_id: 2026-06-fujie-gcard-baseline
+request_path: /Users/guzijun/Desktop/AI攻坚/jingying_model_agent/projects/2026-05-fujie-gcard-v1/requests/model_request_template.md
+project: projects/2026-05-fujie-gcard-v1
+workflow: full_modeling
+created_at: '2026-06-09T11:07:55'
+run_id_placeholder: <run_id>
+tasks:
+- task_id: sample_check_profile
+  type: sample_check
+  status: pending
+  workspace: tasks/sample_check_profile
+  depends_on: []
+  command:
+    executable: jm
+    args:
+    - sample
+    - check
+    - --project
+    - projects/2026-05-fujie-gcard-v1
+    - --run-id
+    - <run_id>
+  outputs:
+  - sample_check/sample_summary.json
+  - sample_check/sample_check_report.md
+- task_id: sample_check_stability
+  type: sample_check
+  status: pending
+  workspace: tasks/sample_check_stability
+  depends_on: []
+  command:
+    executable: jm
+    args:
+    - sample
+    - check
+    - --project
+    - projects/2026-05-fujie-gcard-v1
+    - --run-id
+    - <run_id>
+  outputs:
+  - sample_check/sample_summary.json
+  - sample_check/sample_check_report.md
+- task_id: feature_metadata
+  type: feature_selection
+  status: pending
+  workspace: tasks/feature_metadata
+  depends_on:
+  - sample_check_stability
+  command:
+    executable: jm
+    args:
+    - feature
+    - metadata
+    - --project
+    - projects/2026-05-fujie-gcard-v1
+    - --run-id
+    - <run_id>
+  outputs:
+  - feature_selection/feature_table_summary.csv
+  - feature_selection/feature_columns.csv
+- task_id: feature_d01_d02
+  type: feature_selection
+  status: pending
+  workspace: tasks/feature_d01_d02
+  depends_on:
+  - feature_metadata
+  command:
+    executable: jm
+    args:
+    - feature
+    - d01-d02
+    - --project
+    - projects/2026-05-fujie-gcard-v1
+    - --run-id
+    - <run_id>
+    - --dry-run-sql
+  outputs:
+  - feature_selection/d01_d02_run_summary.json
+  - feature_selection/d01_d02_final_remain_features.json
+- task_id: feature_refine
+  type: feature_selection
+  status: pending
+  workspace: tasks/feature_refine
+  depends_on:
+  - feature_d01_d02
+  command:
+    executable: jm
+    args:
+    - feature
+    - refine
+    - --project
+    - projects/2026-05-fujie-gcard-v1
+    - --run-id
+    - <run_id>
+    - --dry-run-sql
+  outputs:
+  - feature_selection/stage_summary.json
+  - feature_selection/final_features.txt
+- task_id: train_baseline_all
+  type: train
+  status: pending
+  workspace: tasks/train_baseline_all
+  depends_on:
+  - feature_refine
+  command:
+    executable: jm
+    args:
+    - train
+    - --project
+    - projects/2026-05-fujie-gcard-v1
+    - --run-id
+    - <run_id>
+    - --experiment
+    - baseline_all
+  outputs:
+  - modeling/baseline_all/model.pkl
+  - modeling/baseline_all/prediction.parquet
+  - modeling/baseline_all/train_metrics.json
+- task_id: train_baseline_e2e3
+  type: train
+  status: pending
+  workspace: tasks/train_baseline_e2e3
+  depends_on:
+  - feature_refine
+  command:
+    executable: jm
+    args:
+    - train
+    - --project
+    - projects/2026-05-fujie-gcard-v1
+    - --run-id
+    - <run_id>
+    - --experiment
+    - baseline_e2e3
+  outputs:
+  - modeling/baseline_e2e3/model.pkl
+  - modeling/baseline_e2e3/prediction.parquet
+  - modeling/baseline_e2e3/train_metrics.json
+- task_id: train_baseline_b2
+  type: train
+  status: pending
+  workspace: tasks/train_baseline_b2
+  depends_on:
+  - feature_refine
+  command:
+    executable: jm
+    args:
+    - train
+    - --project
+    - projects/2026-05-fujie-gcard-v1
+    - --run-id
+    - <run_id>
+    - --experiment
+    - baseline_b2
+  outputs:
+  - modeling/baseline_b2/model.pkl
+  - modeling/baseline_b2/prediction.parquet
+  - modeling/baseline_b2/train_metrics.json
+- task_id: train_weighted_by_segment_v1
+  type: train
+  status: pending
+  workspace: tasks/train_weighted_by_segment_v1
+  depends_on:
+  - feature_refine
+  command:
+    executable: jm
+    args:
+    - train
+    - --project
+    - projects/2026-05-fujie-gcard-v1
+    - --run-id
+    - <run_id>
+    - --experiment
+    - weighted_by_segment_v1
+  outputs:
+  - modeling/weighted_by_segment_v1/model.pkl
+  - modeling/weighted_by_segment_v1/prediction.parquet
+  - modeling/weighted_by_segment_v1/train_metrics.json
+- task_id: evaluate_final
+  type: evaluate
+  status: pending
+  workspace: tasks/evaluate_final
+  depends_on:
+  - train_baseline_all
+  - train_baseline_e2e3
+  - train_baseline_b2
+  - train_weighted_by_segment_v1
+  command:
+    executable: jm
+    args:
+    - evaluate
+    - --project
+    - projects/2026-05-fujie-gcard-v1
+    - --run-id
+    - <run_id>
+  outputs:
+  - evaluation/evaluation_summary.json
+- task_id: compare_final
+  type: compare
+  status: pending
+  workspace: tasks/compare_final
+  depends_on:
+  - evaluate_final
+  command:
+    executable: jm
+    args:
+    - compare
+    - --project
+    - projects/2026-05-fujie-gcard-v1
+    - --run-id
+    - <run_id>
+    - --champion
+    - gcard_v6
+  outputs:
+  - evaluation/champion_challenger.json
+- task_id: report_final
+  type: report
+  status: pending
+  workspace: tasks/report_final
+  depends_on:
+  - compare_final
+  command:
+    executable: jm
+    args:
+    - report
+    - --project
+    - projects/2026-05-fujie-gcard-v1
+    - --run-id
+    - <run_id>
+  outputs:
+  - reports/model_report.md
+  - reports/model_card.md
+  - reports/executive_summary.md
+improvement_log: audit/improvement_candidates.md
