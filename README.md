@@ -1,10 +1,10 @@
-# jy-model-agent
+# risk_model_workbench
 
-经营场景模型本地建模工作台。工作台提供可复用的本地建模流程：项目初始化、需求校验、执行计划、样本检查、特征筛选、模型训练、评估、对比、报告生成，以及跨会话连续性交接。
+风险场景 AI 建模工作台。工作台提供可复用的本地建模流程：项目初始化、需求校验、执行计划、样本检查、特征筛选、模型训练、评估、对比、报告生成，以及跨会话连续性交接。
 
 复借 G 卡是当前已承接的活跃案例项目，用于验证真实历史产物标准化、评估报告和连续性交接机制；工作台能力不与该项目强绑定。
 
-标准入口是 `jm` CLI。`agent.py` 和 `jingying-agent` 仅作为兼容入口保留。
+标准入口是 `rmw` CLI。`jm` 是长期兼容别名；`agent.py` 和 `jingying-agent` 仅作为历史兼容入口保留。
 
 详细规划见 [docs/legacy/AI经营建模Agent规划.md](docs/legacy/AI经营建模Agent规划.md)。
 
@@ -12,15 +12,15 @@
 
 截至 2026-06-09：
 
-- 通用工作台代码在 `src/jingying_model_agent/`。
+- 通用工作台代码在 `src/risk_model_workbench/`。
 - 项目模板在 `templates/project/`。
 - 工作流定义在 `workflows/`。
 - 当前活跃案例项目是 `projects/2026-05-fujie-gcard-v1/`。
 - 当前项目断点文件是 `projects/2026-05-fujie-gcard-v1/project_state.yml`。
 - 当前 active run 是 `2026-06-imported-gcard-main-lgbm`。
 - 当前目标是 `复借G卡主模型产物标准化与连续性交接机制建设`。
-- `jm project status` 显示项目状态为 `active`，active run 的 stage counts 为 `done=7, pending=3`。
-- `jm run audit` 当前 verdict 是 `open`，因为 `feature_metadata`、`d01_d02_screening`、`build_wide_sql` 仍为 pending，且已完成阶段是 imported evidence。
+- `rmw project status` 显示项目状态为 `active`，active run 的 stage counts 为 `done=7, pending=3`。
+- `rmw run audit` 当前 verdict 是 `open`，因为 `feature_metadata`、`d01_d02_screening`、`build_wide_sql` 仍为 pending，且已完成阶段是 imported evidence。
 
 active run 是远端真实复借 G 卡训练、评估和报告产物导入后的标准 run。它是真实历史产物的标准化登记，不是当前本地环境端到端重跑证据。
 
@@ -56,31 +56,31 @@ active run 是远端真实复借 G 卡训练、评估和报告产物导入后的
 ```bash
 pip install -e ".[modeling]"
 
-jm doctor
-jm project validate --project projects/2026-05-fujie-gcard-v1
+rmw doctor
+rmw project validate --project projects/2026-05-fujie-gcard-v1
 pytest tests -q
 ```
 
-`jm doctor` 会检查规划文档、模型资产索引、vendored feature-select-v2、项目模板和核心 workflow 是否存在；复借 G 卡历史工作簿只作为 legacy/example 资料提示。
+`rmw doctor` 会检查规划文档、模型资产索引、vendored feature-select-v2、项目模板和核心 workflow 是否存在；复借 G 卡历史工作簿只作为 legacy/example 资料提示。
 
 ## 常用命令
 
 查看项目连续性状态：
 
 ```bash
-jm project status --project projects/2026-05-fujie-gcard-v1
+rmw project status --project projects/2026-05-fujie-gcard-v1
 ```
 
 刷新项目断点文件：
 
 ```bash
-jm project status --project projects/2026-05-fujie-gcard-v1 --write-state
+rmw project status --project projects/2026-05-fujie-gcard-v1 --write-state
 ```
 
 更新项目断点：
 
 ```bash
-jm project update-state \
+rmw project update-state \
   --project projects/2026-05-fujie-gcard-v1 \
   --active-run-id 2026-06-imported-gcard-main-lgbm \
   --objective "复借G卡主模型产物标准化与连续性交接机制建设" \
@@ -91,7 +91,7 @@ jm project update-state \
 查看 run 状态：
 
 ```bash
-jm run status \
+rmw run status \
   --project projects/2026-05-fujie-gcard-v1 \
   --run-id 2026-06-imported-gcard-main-lgbm
 ```
@@ -99,11 +99,11 @@ jm run status \
 审计 run 或单个阶段是否可收尾：
 
 ```bash
-jm run audit \
+rmw run audit \
   --project projects/2026-05-fujie-gcard-v1 \
   --run-id 2026-06-imported-gcard-main-lgbm
 
-jm run audit \
+rmw run audit \
   --project projects/2026-05-fujie-gcard-v1 \
   --run-id 2026-06-imported-gcard-main-lgbm \
   --stage report
@@ -112,7 +112,7 @@ jm run audit \
 写会话交接：
 
 ```bash
-jm handoff write \
+rmw handoff write \
   --project projects/2026-05-fujie-gcard-v1 \
   --run-id 2026-06-imported-gcard-main-lgbm
 ```
@@ -120,7 +120,7 @@ jm handoff write \
 写显式复盘：
 
 ```bash
-jm retrospective write \
+rmw retrospective write \
   --project projects/2026-05-fujie-gcard-v1 \
   --run-id 2026-06-imported-gcard-main-lgbm \
   --scope session \
@@ -130,7 +130,7 @@ jm retrospective write \
 记录项目经验：
 
 ```bash
-jm lesson add \
+rmw lesson add \
   --project projects/2026-05-fujie-gcard-v1 \
   --title "SQL approval gate" \
   --kind guardrail \
@@ -150,11 +150,11 @@ open tools/model_request_builder/index.html
 校验需求并生成执行计划：
 
 ```bash
-jm request validate \
+rmw request validate \
   --project projects/2026-05-fujie-gcard-v1 \
   --request projects/2026-05-fujie-gcard-v1/requests/model_request_template.md
 
-jm plan create \
+rmw plan create \
   --project projects/2026-05-fujie-gcard-v1 \
   --request projects/2026-05-fujie-gcard-v1/requests/model_request_template.md
 ```
@@ -162,7 +162,7 @@ jm plan create \
 把需求文档和执行计划绑定到一次新 run：
 
 ```bash
-jm run init \
+rmw run init \
   --project projects/2026-05-fujie-gcard-v1 \
   --workflow full_modeling \
   --request projects/2026-05-fujie-gcard-v1/requests/model_request_template.md \
@@ -176,7 +176,7 @@ jm run init \
 新建模型项目：
 
 ```bash
-jm init-project \
+rmw init-project \
   --name 2026-xx-new-model \
   --display-name 新模型名称 \
   --scenario 业务场景 \
@@ -186,7 +186,7 @@ jm init-project \
 登记一次空 run：
 
 ```bash
-jm run init \
+rmw run init \
   --project projects/2026-05-fujie-gcard-v1 \
   --workflow full_modeling
 ```
@@ -194,7 +194,7 @@ jm run init \
 导入真实复借 G 卡训练、评估和报告产物到标准 run：
 
 ```bash
-jm run import-gcard-model-artifacts \
+rmw run import-gcard-model-artifacts \
   --project projects/2026-05-fujie-gcard-v1 \
   --run-id 2026-06-imported-gcard-main-lgbm
 ```
@@ -206,13 +206,13 @@ jm run import-gcard-model-artifacts \
 导出特征表元数据：
 
 ```bash
-jm feature metadata --project projects/2026-05-fujie-gcard-v1 --run-id <run_id>
+rmw feature metadata --project projects/2026-05-fujie-gcard-v1 --run-id <run_id>
 ```
 
 先生成分表 D01/D02 取数 SQL 给使用者确认，不拉数：
 
 ```bash
-jm feature d01-d02 \
+rmw feature d01-d02 \
   --project projects/2026-05-fujie-gcard-v1 \
   --run-id <run_id> \
   --dry-run-sql
@@ -221,7 +221,7 @@ jm feature d01-d02 \
 确认 SQL 后执行分表 D01/D02，数据先落本地 feather：
 
 ```bash
-jm feature d01-d02 \
+rmw feature d01-d02 \
   --project projects/2026-05-fujie-gcard-v1 \
   --run-id <run_id> \
   --refresh-dp-cache \
@@ -231,13 +231,13 @@ jm feature d01-d02 \
 生成 D01/D02 后宽表 SQL：
 
 ```bash
-jm build-wide-sql --project projects/2026-05-fujie-gcard-v1
+rmw build-wide-sql --project projects/2026-05-fujie-gcard-v1
 ```
 
 先生成宽表后收敛取数 SQL 给使用者确认，不拉数：
 
 ```bash
-jm feature refine \
+rmw feature refine \
   --project projects/2026-05-fujie-gcard-v1 \
   --run-id <run_id> \
   --dry-run-sql
@@ -246,7 +246,7 @@ jm feature refine \
 确认 SQL 后执行全局相关性、随机噪声、空标签重要性和基线重要性筛选：
 
 ```bash
-jm feature refine \
+rmw feature refine \
   --project projects/2026-05-fujie-gcard-v1 \
   --run-id <run_id> \
   --refresh-dp-cache \
@@ -260,7 +260,7 @@ jm feature refine \
 在有本地 feather 训练数据和特征清单时执行 LightGBM 训练：
 
 ```bash
-jm train \
+rmw train \
   --project projects/2026-05-fujie-gcard-v1 \
   --run-id <run_id> \
   --experiment main_lgbm \
@@ -271,7 +271,7 @@ jm train \
 在有本地打分 feather 时执行标准评估：
 
 ```bash
-jm evaluate \
+rmw evaluate \
   --project projects/2026-05-fujie-gcard-v1 \
   --run-id <run_id> \
   --scores-feather runs/model_scores/scores_all_splits.feather
@@ -280,7 +280,7 @@ jm evaluate \
 生成 champion/challenger 对比：
 
 ```bash
-jm compare \
+rmw compare \
   --project projects/2026-05-fujie-gcard-v1 \
   --run-id <run_id> \
   --champion gcard_v6
@@ -289,7 +289,7 @@ jm compare \
 从标准训练和评估产物生成报告：
 
 ```bash
-jm report --project projects/2026-05-fujie-gcard-v1 --run-id <run_id>
+rmw report --project projects/2026-05-fujie-gcard-v1 --run-id <run_id>
 ```
 
 如果本地 feather 训练数据或打分结果不可用，部分命令可能生成 scaffold artifact。scaffold artifact 不能当成真实建模证据。
@@ -305,8 +305,8 @@ jm report --project projects/2026-05-fujie-gcard-v1 --run-id <run_id>
 
 ## 目录说明
 
-- `src/jingying_model_agent/`：通用工作台模块和 CLI 实现。
-- `src/jingying_agent/`、`jingying_agent/`、`agent.py`：兼容层和历史入口。
+- `src/risk_model_workbench/`：通用工作台模块和 CLI 实现。
+- `src/jingying_model_agent/`、`src/jingying_agent/`、`jingying_agent/`、`agent.py`：兼容层和历史入口。
 - `projects/2026-05-fujie-gcard-v1/configs/`：项目配置。
 - `projects/2026-05-fujie-gcard-v1/queries/`：SQL 草稿和生成 SQL。
 - `projects/2026-05-fujie-gcard-v1/runs/`：run workspace、状态、审计、模型、评估和报告产物。
@@ -328,7 +328,7 @@ jm report --project projects/2026-05-fujie-gcard-v1 --run-id <run_id>
 
 ## 标准化边界
 
-通用逻辑放在 `src/jingying_model_agent/`。项目特定口径放在项目配置、请求文档、run workspace 或 `legacy_scripts/`。
+通用逻辑放在 `src/risk_model_workbench/`。项目特定口径放在项目配置、请求文档、run workspace 或 `legacy_scripts/`。
 
 真实项目里的临时脚本和产物应先导入到一次标准 run，再判断哪些逻辑值得固化为通用 CLI。不要直接把一次性路径、样本口径或业务假设写进通用模块。
 
@@ -339,5 +339,5 @@ jm report --project projects/2026-05-fujie-gcard-v1 --run-id <run_id>
 本仓库不依赖 Git submodule，直接 clone 即可：
 
 ```bash
-git clone git@gitlab.caijj.net:risk-acquisition-member/jy-model-agent.git
+git clone <repo-url> risk_model_workbench
 ```

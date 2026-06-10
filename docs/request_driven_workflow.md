@@ -28,12 +28,15 @@ stable atomic actions. The run workspace remains the source of truth.
 Recommended commands:
 
 ```bash
-jm project validate --project <project>
-jm request validate --project <project> --request <request.md>
-jm plan create --project <project> --request <request.md>
-jm run init --project <project> --workflow full_modeling --request <request.md> --plan <execution_plan.yml>
-jm run status --project <project> --run-id <run_id>
+rmw project validate --project <project>
+rmw request validate --project <project> --request <request.md>
+rmw plan create --project <project> --request <request.md>
+rmw run init --project <project> --workflow full_modeling --request <request.md> --plan <execution_plan.yml>
+rmw run status --project <project> --run-id <run_id>
 ```
+
+`jm` remains a compatible CLI alias for existing automation, but new workflow
+docs should prefer `rmw`.
 
 After a real project finishes, review its run workspace before changing the
 generic workbench:
@@ -47,7 +50,7 @@ generic workbench:
 For the current Fujie GCard legacy/example baseline, historical outputs can be normalized with:
 
 ```bash
-jm run import-gcard-model-artifacts \
+rmw run import-gcard-model-artifacts \
   --project projects/2026-05-fujie-gcard-v1 \
   --run-id 2026-06-imported-gcard-main-lgbm
 ```

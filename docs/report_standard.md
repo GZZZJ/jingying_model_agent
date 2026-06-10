@@ -3,7 +3,7 @@
 Reports must be generated from registered artifacts. Missing data must be shown
 as missing or scaffold, not inferred from chat context.
 
-`jm report` always registers lightweight Markdown report placeholders for
+`rmw report` always registers lightweight Markdown report placeholders for
 traceability. When standard train and evaluation artifacts exist, it also writes
 `reports/model_report.xlsx` and marks the report stage as done.
 

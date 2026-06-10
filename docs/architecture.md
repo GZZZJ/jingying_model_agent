@@ -1,8 +1,9 @@
 # Architecture
 
-`jingying_model_agent` is a local business modeling workbench. Codex or Claude
-Code interprets user intent, while this repository provides stable commands,
-workflow definitions, run state, artifact registration, and project templates.
+`risk_model_workbench` is the 风险场景 AI 建模工作台, a local business modeling
+workbench. Codex or Claude Code interprets user intent, while this repository
+provides stable `rmw` commands, workflow definitions, run state, artifact
+registration, and project templates.
 
 The workbench is intentionally split into four layers:
 
@@ -10,7 +11,7 @@ The workbench is intentionally split into four layers:
    `tools/model_request_builder/index.html`.
 2. Agent orchestration layer: Codex or Claude Code validates the request,
    creates an execution plan, initializes a run, and calls stable CLI commands.
-3. Atomic capability layer: reusable modules under `src/jingying_model_agent/`
+3. Atomic capability layer: reusable modules under `src/risk_model_workbench/`
    implement sample checks, feature selection integration, training,
    evaluation, reporting, artifact registry, and run state.
 4. Project workspace layer: every modeling attempt writes code snapshots,
@@ -20,7 +21,7 @@ The workbench is intentionally split into four layers:
 Project-specific scripts are allowed during exploration, but once they become
 repeatable they should be converted into CLI-backed modules. Legacy scripts
 remain under `legacy_scripts/` as provenance, while the workbench API stays in
-`src/jingying_model_agent/`.
+`src/risk_model_workbench/`.
 
 The imported Fujie GCard `main_lgbm` run is the current real-project case for
 this architecture. It proves that external project outputs can be normalized

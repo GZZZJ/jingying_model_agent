@@ -4,7 +4,7 @@ Evaluation outputs must be generated from scored predictions, not from manually
 typed metrics. The scored table should include the label, split column, time
 column, model score, and any benchmark scores that need comparison.
 
-`jm evaluate` writes standard artifacts when a score feather is available:
+`rmw evaluate` writes standard artifacts when a score feather is available:
 
 - `evaluation/evaluation_summary.json`
 - `evaluation/overall_metrics.csv`

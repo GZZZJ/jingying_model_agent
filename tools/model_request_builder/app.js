@@ -6,7 +6,8 @@ const statusDot = document.querySelector(".status-dot");
 const experimentsEl = document.querySelector("#experiments");
 const toast = document.querySelector("#toast");
 
-const STORAGE_KEY = "jingying_model_request_builder";
+const STORAGE_KEY = "risk_model_request_builder";
+const LEGACY_STORAGE_KEY = "jingying_model_request_builder";
 
 const defaults = {
   request_id: "2026-06-fujie-gcard-baseline",
@@ -312,6 +313,17 @@ function update() {
   validationSummary.textContent = missing.length ? `缺少 ${missing.length} 项必填` : "可生成 Markdown";
 }
 
+function loadSavedState() {
+  const saved = localStorage.getItem(STORAGE_KEY);
+  if (saved) return JSON.parse(saved);
+
+  const legacy = localStorage.getItem(LEGACY_STORAGE_KEY);
+  if (!legacy) return null;
+
+  localStorage.setItem(STORAGE_KEY, legacy);
+  return JSON.parse(legacy);
+}
+
 function applyState(state) {
   Object.entries({ ...defaults, ...state }).forEach(([key, value]) => {
     if (["feature_steps", "metrics", "report_sections", "experiments"].includes(key)) return;
@@ -360,6 +372,7 @@ document.querySelector("#copyMarkdown").addEventListener("click", copyMarkdown);
 document.querySelector("#downloadMarkdown").addEventListener("click", downloadMarkdown);
 document.querySelector("#resetForm").addEventListener("click", () => {
   localStorage.removeItem(STORAGE_KEY);
+  localStorage.removeItem(LEGACY_STORAGE_KEY);
   applyState(defaults);
   showToast("已重置");
 });
@@ -378,5 +391,4 @@ document.querySelectorAll(".nav-list a").forEach((link) => {
   });
 });
 
-const saved = localStorage.getItem(STORAGE_KEY);
-applyState(saved ? JSON.parse(saved) : defaults);
+applyState(loadSavedState() || defaults);

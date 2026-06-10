@@ -12,7 +12,7 @@ REPO_ROOT = next(path for path in [SCRIPT_PATH, *SCRIPT_PATH.parents] if (path /
 PROJECT_DIR = SCRIPT_PATH.parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
-from jingying_agent.feature_metadata import main as metadata_main
+from risk_model_workbench.feature_metadata import main as metadata_main
 
 
 if __name__ == "__main__":

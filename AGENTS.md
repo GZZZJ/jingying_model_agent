@@ -2,8 +2,9 @@
 
 ## Project Purpose
 
-This repository is a local business modeling workbench. The canonical entrypoint
-is the `jm` CLI.
+This repository is the `risk_model_workbench` local business modeling
+workbench, also named `风险场景 AI 建模工作台`. The canonical entrypoint is the
+`rmw` CLI. `jm` is a long-term compatibility alias.
 
 The workbench is generic business modeling infrastructure. Fujie GCard is the
 current active case project and regression example; reusable workbench behavior
@@ -19,8 +20,8 @@ As of 2026-06-09:
 - Current objective: `复借G卡主模型产物标准化与连续性交接机制建设`
 - Run workflow/status: `imported_gcard_main_lgbm` / `imported`
 - Run current stage: `report`
-- `jm project status` reports stage counts `done=7, pending=3`.
-- `jm run audit` currently reports verdict `open` because
+- `rmw project status` reports stage counts `done=7, pending=3`.
+- `rmw run audit` currently reports verdict `open` because
   `feature_metadata`, `d01_d02_screening`, and `build_wide_sql` are pending,
   and completed stages are imported evidence.
 
@@ -29,7 +30,7 @@ not local end-to-end rerun evidence.
 
 ## Important Directories
 
-- `src/jingying_model_agent/`: reusable modeling workbench code.
+- `src/risk_model_workbench/`: reusable modeling workbench code.
 - `projects/`: concrete modeling project workspaces.
 - `projects/2026-05-fujie-gcard-v1/`: current Fujie GCard case project.
 - `projects/2026-05-fujie-gcard-v1/project_state.yml`: project-level
@@ -54,33 +55,34 @@ not local end-to-end rerun evidence.
 ## Commands
 
 - Install editable package: `pip install -e ".[modeling]"`
-- Check environment: `jm doctor`
-- Validate project: `jm project validate --project projects/2026-05-fujie-gcard-v1`
-- Show project status: `jm project status --project projects/2026-05-fujie-gcard-v1`
-- Show run state: `jm run status --project projects/2026-05-fujie-gcard-v1 --run-id <run_id>`
-- Audit run closure: `jm run audit --project projects/2026-05-fujie-gcard-v1 --run-id <run_id>`
-- Write handoff: `jm handoff write --project projects/2026-05-fujie-gcard-v1 --run-id <run_id>`
-- Write retrospective: `jm retrospective write --project projects/2026-05-fujie-gcard-v1 --run-id <run_id>`
-- Add lesson: `jm lesson add --project projects/2026-05-fujie-gcard-v1 --title <title> --body <body>`
+- Check environment: `rmw doctor`
+- Validate project: `rmw project validate --project projects/2026-05-fujie-gcard-v1`
+- Show project status: `rmw project status --project projects/2026-05-fujie-gcard-v1`
+- Show run state: `rmw run status --project projects/2026-05-fujie-gcard-v1 --run-id <run_id>`
+- Audit run closure: `rmw run audit --project projects/2026-05-fujie-gcard-v1 --run-id <run_id>`
+- Write handoff: `rmw handoff write --project projects/2026-05-fujie-gcard-v1 --run-id <run_id>`
+- Write retrospective: `rmw retrospective write --project projects/2026-05-fujie-gcard-v1 --run-id <run_id>`
+- Add lesson: `rmw lesson add --project projects/2026-05-fujie-gcard-v1 --title <title> --body <body>`
 - Run tests: `pytest tests -q`
 
-`jm status` still exists as a legacy alias for run state, but prefer
-`jm run status` in documentation and handoffs.
+`jm` remains compatible with these commands, and `jm status` still exists as a
+legacy alias for run state, but prefer `rmw run status` in documentation and
+handoffs.
 
 ## Workflow Rules
 
-- Use `jm` for workflow actions. Do not run project scripts directly unless the
+- Use `rmw` for workflow actions. Do not run project scripts directly unless the
   user explicitly asks for legacy-script inspection or migration.
 - Before resuming work, read `project_state.yml`, `run_state.yml`, and
   `audit/artifact_manifest.json`.
 - Treat `runs/<run_id>/run_state.yml` and registered artifacts as source of
   truth for stage status.
-- Use `jm run audit` before declaring a stage or run closed.
+- Use `rmw run audit` before declaring a stage or run closed.
 - `handoff write` and `retrospective write` are explicit checkpoint actions; do
   not infer session completion from conversation state.
 - When a modeling request Markdown file is provided, validate it with
-  `jm request validate`, create an execution plan with `jm plan create`, and
-  bind the request/plan into a new run with `jm run init`.
+  `rmw request validate`, create an execution plan with `rmw plan create`, and
+  bind the request/plan into a new run with `rmw run init`.
 
 ## Safety Rules
 
@@ -91,7 +93,7 @@ not local end-to-end rerun evidence.
 - Do not overwrite previous runs. Create a new `run_id` or require explicit
   approval.
 - Imported or scaffold artifacts are not local reproduction evidence.
-- Reusable logic belongs under `src/jingying_model_agent/`; project-specific
+- Reusable logic belongs under `src/risk_model_workbench/`; project-specific
   definitions belong in project config, request Markdown, or run workspaces.
 
 ## Done Means

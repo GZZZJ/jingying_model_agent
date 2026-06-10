@@ -17,8 +17,8 @@ def find_repo_root(start: Path) -> Path:
 REPO_ROOT = find_repo_root(Path(__file__).resolve())
 sys.path.insert(0, str(REPO_ROOT))
 
-from jingying_agent.config import load_yaml
-from jingying_agent.manifest import write_manifest
+from risk_model_workbench.config import load_yaml
+from risk_model_workbench.manifest import write_manifest
 
 
 def main() -> None:

@@ -13,7 +13,7 @@ REPO_ROOT = next(path for path in [SCRIPT_PATH, *SCRIPT_PATH.parents] if (path /
 PROJECT_DIR = SCRIPT_PATH.parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
-from jingying_agent.wide_sql import generate_wide_sql
+from risk_model_workbench.wide_sql import generate_wide_sql
 
 
 def parse_args() -> argparse.Namespace:

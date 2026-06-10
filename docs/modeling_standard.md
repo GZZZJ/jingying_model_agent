@@ -3,7 +3,7 @@
 Training commands must read project config and train config, require an explicit
 feature list, and write all outputs into the active run workspace.
 
-`jm train` supports two modes:
+`rmw train` supports two modes:
 
 1. Real training when local feather data, feature list, and train config are
    available.

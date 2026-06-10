@@ -1,0 +1,74 @@
+---
+name: risk-model-workbench
+description: Use this skill for local risk scenario AI modeling workbench workflows, including sample checks, feature selection, model training, evaluation, champion/challenger comparison, and report generation.
+---
+
+# Risk Model Workbench
+
+Use the local `rmw` CLI for the 风险场景 AI 建模工作台. Do not reimplement
+modeling logic in chat. `jm` is a long-term compatibility alias for existing
+automation and handoffs.
+
+## Source Of Truth
+
+For an existing run, always read:
+
+- `projects/<project>/project_state.yml`
+- `projects/<project>/runs/<run_id>/run_state.yml`
+- `projects/<project>/runs/<run_id>/audit/artifact_manifest.json`
+
+Stage status comes from `run_state.yml` and registered artifacts, not from loose
+files in the workspace.
+
+## Preferred Commands
+
+- `rmw doctor`
+- `rmw project validate --project <project>`
+- `rmw request validate --project <project> --request <request.md>`
+- `rmw plan create --project <project> --request <request.md>`
+- `rmw run init --project <project> --workflow full_modeling`
+- `rmw run status --project <project> --run-id <run_id>`
+- `rmw run audit --project <project> --run-id <run_id>`
+- `rmw sample check --project <project> --run-id <run_id>`
+- `rmw feature d01-d02 --project <project> --run-id <run_id> --dry-run-sql`
+- `rmw feature refine --project <project> --run-id <run_id> --dry-run-sql`
+- `rmw train --project <project> --run-id <run_id> --experiment main_lgbm`
+- `rmw evaluate --project <project> --run-id <run_id>`
+- `rmw compare --project <project> --run-id <run_id> --champion <score_column>`
+- `rmw report --project <project> --run-id <run_id>`
+
+For the Fujie GCard legacy/example baseline, use:
+
+- `rmw run import-gcard-model-artifacts --project projects/2026-05-fujie-gcard-v1 --run-id 2026-06-imported-gcard-main-lgbm`
+- `rmw run status --project projects/2026-05-fujie-gcard-v1 --run-id 2026-06-imported-gcard-main-lgbm`
+
+## Stop Rules
+
+Stop and report before training if sample check artifacts are missing, feature
+list is missing, leakage is detected, or SQL approval is required but absent.
+
+Before any DP or `TMLSQLClient` data pull, generate SQL first and require
+explicit approval before using `--sql-approved`.
+
+If local feather training data or scored predictions are unavailable, the CLI
+may create scaffold artifacts. Do not treat scaffold artifacts as real evidence.
+When real artifacts exist, read metrics and reports from the run workspace and
+artifact manifest, not from chat memory.
+
+## Request-Driven Workflow
+
+When the user provides a modeling request Markdown file, treat it as the task
+contract. Validate it first, generate an execution plan, initialize a run, then
+execute tasks from the plan. Do not invent tasks that contradict the request.
+
+If the user needs to create a request interactively, direct them to
+`tools/model_request_builder/index.html`; the downloaded Markdown becomes the
+request contract.
+
+## Hardening Loop
+
+When a project-specific script or notebook is useful across runs, turn the
+reusable part into a CLI-backed module under `src/risk_model_workbench/`. Keep
+project-specific data paths, business definitions, and one-off assumptions in
+the project config, request Markdown, or run workspace. Preserve legacy scripts
+under `legacy_scripts/` for traceability.
