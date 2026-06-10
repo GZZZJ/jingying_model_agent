@@ -54,7 +54,7 @@ def generate_excel_report(
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    run_dir = output_path.parent.parent
+    run_dir = eval_dir.parent if eval_dir.name == "evaluation" else output_path.parent.parent
     sample_dir = run_dir / "sample_check"
 
     wb = Workbook()
@@ -251,11 +251,204 @@ def _build_screening_params_sheet(ws, *, train_dir: Path, feature_dir: Path) -> 
     )
 
 
+def _model_conclusion_summary(eval_dir: Path) -> pd.DataFrame:
+    rows: list[dict[str, str]] = []
+    segment = _read_csv(eval_dir / "segment_metrics.csv")
+    monthly_oos = _read_csv(eval_dir / "monthly_segment_metrics_oos_by_version.csv")
+    decile = _read_csv(eval_dir / "decile_lift_bins_by_version.csv")
+    ftr_rate = _read_csv(eval_dir / "intent_zc_segment_ftr_rate_by_version.csv")
+    amount_risk = _read_csv(eval_dir / "intent_zc_segment_amount_risk_by_version.csv")
+
+    def add(module: str, conclusion: str) -> None:
+        if conclusion:
+            rows.append({"模块": module, "结论": conclusion})
+
+    if segment is not None and not segment.empty:
+        for idx, segment_name in enumerate(["老户次新", "流失户"], start=1):
+            matched = segment[(segment["segment"] == segment_name) & (segment["final_flag"] == "OOT-OOS")]
+            if matched.empty:
+                continue
+            row = matched.iloc[0].to_dict()
+            compare_text = "，".join(_ks_compare_text(row, version) for version in ["gcard_v5", "gcard_v6"])
+            add(
+                "1、每月效果（OOS）",
+                f"（{idx}）在 OOT-OOS 样本上{segment_name}客群上，本轮全客群模型 KS "
+                f"{_fmt_metric(row.get('model_score_ks'))}；{compare_text}。",
+            )
+        overall = segment[(segment["segment"] == "全客群") & (segment["final_flag"] == "OOT-OOS")]
+        if not overall.empty:
+            row = overall.iloc[0].to_dict()
+            add(
+                "1、每月效果（OOS）",
+                "（3）在 OOT-OOS 样本上全客群整体看，本轮模型 KS "
+                f"{_fmt_metric(row.get('model_score_ks'))}，"
+                f"{_ks_compare_text(row, 'gcard_v5')}，{_ks_compare_text(row, 'gcard_v6')}。",
+            )
+        add(
+            "1、每月效果（OOS）",
+            "（4）当前 run 未注册老户次新/流失户专属模型得分，无法复刻历史文档中的“分客群建模 KS”对比；"
+            "本摘要仅比较本轮全客群模型与已注册的 G卡V5/G卡V6 历史版本。",
+        )
+
+    if monthly_oos is not None and not monthly_oos.empty:
+        month_texts = []
+        for segment_name in ["老户次新", "流失户"]:
+            subset = monthly_oos[
+                (monthly_oos["segment"] == segment_name)
+                & (monthly_oos["final_flag"] == "OOT-OOS")
+                & (monthly_oos["score_version"] == "model_score")
+            ].sort_values("mdl_month")
+            if subset.empty:
+                continue
+            pieces = [f"{row.mdl_month} KS {_fmt_metric(row.ks)}" for row in subset.itertuples(index=False)]
+            month_texts.append(f"{segment_name}：" + "、".join(pieces))
+        if month_texts:
+            add(
+                "1、每月效果（OOS）",
+                "（5）DEV-OOS 与 OOT-OOS 已拼接到【模型效果-每月效果】中横向比较；"
+                f"OOT-OOS 本轮模型 by 月结果为：{'；'.join(month_texts)}。",
+            )
+
+    if decile is not None and not decile.empty:
+        for idx, segment_name in enumerate(["老户次新", "流失户"], start=1):
+            model_stat = _top_decile_stat(decile, segment_name, "model_score")
+            v5_stat = _top_decile_stat(decile, segment_name, "gcard_v5")
+            v6_stat = _top_decile_stat(decile, segment_name, "gcard_v6")
+            if model_stat is None or v5_stat is None or v6_stat is None:
+                continue
+            add(
+                "2、模型sloping",
+                f"（{idx}）在 OOT-OOS 样本上{segment_name}客群高分10%分层，本轮模型30天发起率"
+                f"{_fmt_percent(model_stat['bad_rate'])}、lift {_fmt_metric(model_stat['lift'])}；"
+                f"对比G卡V5为{_fmt_percent(v5_stat['bad_rate'])}、lift {_fmt_metric(v5_stat['lift'])}，"
+                f"对比G卡V6为{_fmt_percent(v6_stat['bad_rate'])}、lift {_fmt_metric(v6_stat['lift'])}。",
+            )
+
+    if ftr_rate is not None and amount_risk is not None and not ftr_rate.empty and not amount_risk.empty:
+        add("3、意愿交叉风险（DEV-OOS）", "（1）高、中、低意愿评级为对应模型分数在各客群内三等频分箱得到。")
+        for idx, segment_name in enumerate(["老户", "流失户"], start=2):
+            model_low_ftr = _intent_total_value(ftr_rate, segment_name, "低意愿", "ftr_30d_rate", "model_score")
+            model_high_ftr = _intent_total_value(ftr_rate, segment_name, "高意愿", "ftr_30d_rate", "model_score")
+            v5_low_ftr = _intent_total_value(ftr_rate, segment_name, "低意愿", "ftr_30d_rate", "gcard_v5")
+            v5_high_ftr = _intent_total_value(ftr_rate, segment_name, "高意愿", "ftr_30d_rate", "gcard_v5")
+            v6_low_ftr = _intent_total_value(ftr_rate, segment_name, "低意愿", "ftr_30d_rate", "gcard_v6")
+            v6_high_ftr = _intent_total_value(ftr_rate, segment_name, "高意愿", "ftr_30d_rate", "gcard_v6")
+            model_high_risk = _intent_total_value(amount_risk, segment_name, "高意愿", "amount_overdue_rate", "model_score")
+            v5_high_risk = _intent_total_value(amount_risk, segment_name, "高意愿", "amount_overdue_rate", "gcard_v5")
+            v6_high_risk = _intent_total_value(amount_risk, segment_name, "高意愿", "amount_overdue_rate", "gcard_v6")
+            if None in [
+                model_low_ftr,
+                model_high_ftr,
+                v5_low_ftr,
+                v5_high_ftr,
+                v6_low_ftr,
+                v6_high_ftr,
+                model_high_risk,
+                v5_high_risk,
+                v6_high_risk,
+            ]:
+                continue
+            add(
+                "3、意愿交叉风险（DEV-OOS）",
+                f"（{idx}）{segment_name}客群上，本轮低意愿30天发起率{_fmt_percent(model_low_ftr)}、"
+                f"高意愿30天发起率{_fmt_percent(model_high_ftr)}；"
+                f"对比G卡V5低/高意愿为{_fmt_percent(v5_low_ftr)}/{_fmt_percent(v5_high_ftr)}，"
+                f"对比G卡V6为{_fmt_percent(v6_low_ftr)}/{_fmt_percent(v6_high_ftr)}；"
+                f"高意愿新增订单3期金额逾期率本轮{_fmt_percent(model_high_risk)}，"
+                f"G卡V5/G卡V6分别为{_fmt_percent(v5_high_risk)}/{_fmt_percent(v6_high_risk)}。",
+            )
+
+    if not rows:
+        return pd.DataFrame()
+    return pd.DataFrame({"序号": range(1, len(rows) + 1), "模块": [row["模块"] for row in rows], "结论": [row["结论"] for row in rows]})
+
+
+def _module_conclusion_frame(eval_dir: Path, module: str) -> pd.DataFrame:
+    summary = _model_conclusion_summary(eval_dir)
+    if summary.empty:
+        return pd.DataFrame()
+    subset = summary[summary["模块"] == module].copy()
+    if subset.empty:
+        return pd.DataFrame()
+    subset["序号"] = range(1, len(subset) + 1)
+    return subset[["序号", "结论"]]
+
+
+def _write_module_conclusions(ws, row: int, eval_dir: Path, module: str) -> int:
+    frame = _module_conclusion_frame(eval_dir, module)
+    if frame.empty:
+        return row
+    return _write_table(ws, row, module, frame, apply_color_scale=False)
+
+
+def _ks_compare_text(row: dict[str, Any], score_column: str) -> str:
+    label = VERSION_LABELS.get(score_column, score_column)
+    model_ks = _to_float(row.get("model_score_ks"))
+    version_ks = _to_float(row.get(f"{score_column}_ks"))
+    if model_ks is None or version_ks is None:
+        return f"{label} KS 暂无可比数据"
+    diff = model_ks - version_ks
+    if diff >= 0:
+        return f"对比{label} KS {_fmt_metric(version_ks)} 提升{_fmt_pp(diff)}个百分点"
+    return f"较{label} KS {_fmt_metric(version_ks)} 低{_fmt_pp(abs(diff))}个百分点"
+
+
+def _top_decile_stat(frame: pd.DataFrame, segment_name: str, score_column: str) -> dict[str, float] | None:
+    subset = frame[
+        (frame["segment"] == segment_name)
+        & (frame["final_flag"] == "OOT-OOS")
+        & (frame["score_version"] == score_column)
+    ].copy()
+    if subset.empty:
+        return None
+    total_n = pd.to_numeric(subset["n_samples"], errors="coerce").sum()
+    total_bad = pd.to_numeric(subset["bad"], errors="coerce").sum()
+    top = subset[subset["decile"] == 10]
+    if not total_n or not total_bad or top.empty:
+        return None
+    top_rate = _to_float(top.iloc[0]["bad_rate"])
+    if top_rate is None:
+        return None
+    base_rate = total_bad / total_n
+    return {"bad_rate": top_rate, "lift": top_rate / base_rate if base_rate else 0.0}
+
+
+def _intent_total_value(
+    frame: pd.DataFrame,
+    segment_name: str,
+    intent_level: str,
+    value_col: str,
+    score_column: str = "model_score",
+) -> float | None:
+    subset = frame[
+        (frame["segment"] == segment_name)
+        & (frame["final_flag"] == "DEV-OOS")
+        & (frame["score_version"] == score_column)
+        & (frame["intent_level"] == intent_level)
+        & (frame["zc_level"].astype(str) == "合计")
+    ]
+    if subset.empty or value_col not in subset.columns:
+        return None
+    return _to_float(subset.iloc[0][value_col])
+
+
+def _to_float(value: Any) -> float | None:
+    if value is None or pd.isna(value):
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def _build_monthly_effect_sheet(ws, *, eval_dir: Path) -> None:
     monthly = _read_csv(eval_dir / "monthly_metrics.csv")
     segment = _read_csv(eval_dir / "segment_metrics.csv")
     benchmark = _read_csv(eval_dir / "benchmark_uplift.csv")
+    monthly_segment_oos_versioned = _read_csv(eval_dir / "monthly_segment_metrics_oos_by_version.csv")
+    monthly_segment_versioned = _read_csv(eval_dir / "monthly_segment_metrics_oot_oos_by_version.csv")
     row = 1
+    row = _write_module_conclusions(ws, row, eval_dir, "1、每月效果（OOS）")
 
     if monthly is not None and not monthly.empty:
         for final_flag in _ordered_values(monthly["final_flag"].dropna().unique().tolist()):
@@ -269,6 +462,45 @@ def _build_monthly_effect_sheet(ws, *, eval_dir: Path) -> None:
                 title=title,
                 left_frame=_metric_comparison_frame(subset, row_col="mdl_month", metric="ks", row_label="30天发起Y"),
                 right_frame=_metric_comparison_frame(subset, row_col="mdl_month", metric="auc", row_label="30天发起Y"),
+            )
+
+    if monthly_segment_oos_versioned is not None and not monthly_segment_oos_versioned.empty:
+        row = _write_note(
+            ws,
+            row,
+            "以下为 OOS 客群 by 月效果，DEV-OOS 与 OOT-OOS 按时间顺序拼接，按同一客群横向对比本轮模型与历史 G 卡版本。",
+        )
+        for segment_name in ["全客群", "老户次新", "老户", "次新", "流失户"]:
+            subset = monthly_segment_oos_versioned[
+                (monthly_segment_oos_versioned["segment"] == segment_name)
+                & (monthly_segment_oos_versioned["final_flag"].isin(["DEV-OOS", "OOT-OOS"]))
+            ].copy()
+            if subset.empty:
+                continue
+            title = f"在{segment_name} OOS by月效果（DEV-OOS + OOT-OOS）"
+            row = _write_metric_table_pair(
+                ws,
+                row,
+                title=title,
+                left_frame=_metric_comparison_frame_oos_by_month(subset, metric="ks", row_label="样本月份"),
+                right_frame=_metric_comparison_frame_oos_by_month(subset, metric="auc", row_label="样本月份"),
+            )
+    elif monthly_segment_versioned is not None and not monthly_segment_versioned.empty:
+        row = _write_note(ws, row, "以下为 OOT-OOS 客群 by 月效果，按同一客群横向对比本轮模型与历史 G 卡版本。")
+        for segment_name in ["老户次新", "流失户"]:
+            subset = monthly_segment_versioned[
+                (monthly_segment_versioned["segment"] == segment_name)
+                & (monthly_segment_versioned["final_flag"] == "OOT-OOS")
+            ].copy()
+            if subset.empty:
+                continue
+            title = f"在{segment_name} OOT-OOS by月效果"
+            row = _write_metric_table_pair(
+                ws,
+                row,
+                title=title,
+                left_frame=_metric_comparison_frame_long(subset, row_col="mdl_month", metric="ks", row_label="30天发起Y"),
+                right_frame=_metric_comparison_frame_long(subset, row_col="mdl_month", metric="auc", row_label="30天发起Y"),
             )
 
     if segment is not None and not segment.empty:
@@ -291,7 +523,15 @@ def _build_monthly_effect_sheet(ws, *, eval_dir: Path) -> None:
 
 
 def _build_sloping_sheet(ws, *, eval_dir: Path) -> None:
+    versioned = _read_csv(eval_dir / "decile_lift_bins_by_version.csv")
+    if versioned is not None and not versioned.empty:
+        row = 1
+        row = _write_module_conclusions(ws, row, eval_dir, "2、模型sloping")
+        _build_sloping_sheet_from_versioned(ws, versioned, start_row=row)
+        return
+
     row = 1
+    row = _write_module_conclusions(ws, row, eval_dir, "2、模型sloping")
     for segment_label, segment_key in SEGMENT_FILES.items():
         row = _write_note(ws, row, f"2025-12 至 2026-01 30天发起 OOT/OOS：在{segment_label}效果")
         table_row = row
@@ -319,8 +559,55 @@ def _build_sloping_sheet(ws, *, eval_dir: Path) -> None:
         row = max(max_end + 1, table_row + 1)
 
 
+def _build_sloping_sheet_from_versioned(ws, versioned: pd.DataFrame, *, start_row: int = 1) -> None:
+    row = start_row
+    for segment_label in ["全客群", "老户次新", "流失户"]:
+        subset_segment = versioned[(versioned["segment"] == segment_label) & (versioned["final_flag"] == "OOT-OOS")].copy()
+        if subset_segment.empty:
+            continue
+        row = _write_note(ws, row, f"OOT-OOS 30天发起：在{segment_label}效果")
+        table_row = row
+        max_end = row
+        col = 1
+        for score_column in SCORE_COLUMNS:
+            subset = subset_segment[subset_segment["score_version"] == score_column].copy()
+            if subset.empty:
+                continue
+            end = _write_table(
+                ws,
+                table_row,
+                VERSION_LABELS.get(score_column, score_column),
+                _sloping_display_frame(subset),
+                start_col=col,
+                apply_color_scale=False,
+                plain=True,
+            )
+            max_end = max(max_end, end)
+            col = 8 if col == 1 else 1
+            if col == 1:
+                table_row = max_end
+        row = max(max_end + 1, table_row + 1)
+
+
 def _build_intent_risk_sheet(ws, *, eval_dir: Path) -> None:
+    distribution_by_version = _read_csv(eval_dir / "intent_zc_segment_distribution_by_version.csv")
+    ftr_by_version = _read_csv(eval_dir / "intent_zc_segment_ftr_rate_by_version.csv")
+    amount_by_version = _read_csv(eval_dir / "intent_zc_segment_amount_risk_by_version.csv")
+    if (
+        distribution_by_version is not None
+        and not distribution_by_version.empty
+        and ftr_by_version is not None
+        and not ftr_by_version.empty
+        and amount_by_version is not None
+        and not amount_by_version.empty
+    ):
+        row = 1
+        row = _write_module_conclusions(ws, row, eval_dir, "3、意愿交叉风险（DEV-OOS）")
+        _build_intent_risk_sheet_from_versioned(ws, distribution_by_version, ftr_by_version, amount_by_version, start_row=row)
+        return
+
     row = 1
+    row = _write_module_conclusions(ws, row, eval_dir, "3、意愿交叉风险（DEV-OOS）")
     row = _write_note(
         ws,
         row,
@@ -363,7 +650,52 @@ def _build_intent_risk_sheet(ws, *, eval_dir: Path) -> None:
     _write_table(ws, row, "待补矩阵口径", target, apply_color_scale=False)
 
 
+def _build_intent_risk_sheet_from_versioned(
+    ws,
+    distribution: pd.DataFrame,
+    ftr_rate: pd.DataFrame,
+    amount_risk: pd.DataFrame,
+    *,
+    start_row: int = 1,
+) -> None:
+    row = start_row
+    row = _write_note(
+        ws,
+        row,
+        "以下矩阵均限定 DEV-OOS；意愿评级按对应客群、对应分数版本等频三等分，资产评级为 zc_level 1-7，并保留行列合计。",
+    )
+    matrix_specs = [
+        ("占比", distribution, "sample_pct", True),
+        ("30天发起率", ftr_rate, "ftr_30d_rate", True),
+        ("新增订单3期金额逾期率", amount_risk, "amount_overdue_rate", True),
+    ]
+    for segment_name in ["老户", "流失户"]:
+        row = _write_note(ws, row, f"{segment_name} DEV-OOS 意愿 x 资产评级")
+        for metric_label, frame, value_col, heatmap in matrix_specs:
+            metric_frame = frame[(frame["segment"] == segment_name) & (frame["final_flag"] == "DEV-OOS")].copy()
+            if metric_frame.empty:
+                continue
+            for score_column in SCORE_COLUMNS:
+                subset = metric_frame[metric_frame["score_version"] == score_column].copy()
+                if subset.empty:
+                    continue
+                title = f"{segment_name} - {metric_label} - {VERSION_LABELS.get(score_column, score_column)}"
+                row = _write_table(
+                    ws,
+                    row,
+                    title,
+                    _intent_version_matrix(subset, value_col),
+                    color_scale_data=heatmap,
+                    color_scale_prefer_high=True,
+                )
+
+
 def _build_stability_sheet(ws, *, eval_dir: Path) -> None:
+    distribution = _read_csv(eval_dir / "model_score_bin_distribution_by_month.csv")
+    if distribution is not None and not distribution.empty:
+        _build_stability_sheet_from_distribution(ws, distribution)
+        return
+
     psi = _read_csv(eval_dir / "score_psi_by_month.csv")
     row = 1
     if psi is None or psi.empty:
@@ -389,6 +721,70 @@ def _build_stability_sheet(ws, *, eval_dir: Path) -> None:
     _write_table(ws, row, "待补稳定性分箱明细口径", target, apply_color_scale=False)
 
 
+def _build_stability_sheet_from_distribution(ws, distribution: pd.DataFrame) -> None:
+    row = 1
+    display = distribution.copy()
+    if "score_column" in display.columns:
+        display = display[display["score_column"] == "model_score"].copy()
+    display = display.sort_values(["score_decile", "mdl_month"])
+
+    pct_pivot = _stability_pivot(display, "pct", "占比")
+    row = _write_table(
+        ws,
+        row,
+        "本轮模型分箱占比变化",
+        pct_pivot,
+        color_scale_data=True,
+        color_scale_prefer_high=True,
+        color_scale_start_offset=2,
+    )
+
+    bad_rate_pivot = _stability_pivot(display, "bad_rate", "30天发起率")
+    row = _write_table(
+        ws,
+        row,
+        "本轮模型分箱30天发起率变化",
+        bad_rate_pivot,
+        color_scale_data=True,
+        color_scale_prefer_high=True,
+        color_scale_start_offset=2,
+    )
+
+    psi_cols = ["mdl_month", "month_psi"]
+    if "n_samples" in display.columns:
+        psi_summary = display.groupby("mdl_month", as_index=False).agg({"n_samples": "sum", "month_psi": "first"})
+    else:
+        psi_summary = display[psi_cols].drop_duplicates().copy()
+    psi_summary = psi_summary.rename(columns={"mdl_month": "月份", "n_samples": "样本数", "month_psi": "PSI"})
+    row = _write_table(ws, row, "本轮模型月度 PSI", psi_summary)
+
+    detail_cols = [
+        "mdl_month",
+        "score_decile",
+        "lower_bound",
+        "n_samples",
+        "pct",
+        "bad_rate",
+        "baseline_pct",
+        "psi_component",
+        "month_psi",
+    ]
+    detail = display[[col for col in detail_cols if col in display.columns]].rename(
+        columns={
+            "mdl_month": "月份",
+            "score_decile": "分箱",
+            "lower_bound": "分组",
+            "n_samples": "样本数",
+            "pct": "占比",
+            "bad_rate": "30天发起率",
+            "baseline_pct": "基准占比",
+            "psi_component": "PSI组件",
+            "month_psi": "月度PSI",
+        }
+    )
+    _write_table(ws, row, "本轮模型稳定性分箱明细", detail)
+
+
 def _write_table(
     ws,
     start_row: int,
@@ -399,6 +795,9 @@ def _write_table(
     start_col: int = 1,
     apply_color_scale: bool = True,
     plain: bool = False,
+    color_scale_data: bool = False,
+    color_scale_prefer_high: bool = False,
+    color_scale_start_offset: int = 1,
 ) -> int:
     from openpyxl.styles import Alignment, Font, PatternFill
     from openpyxl.utils import get_column_letter
@@ -446,6 +845,15 @@ def _write_table(
     _style_region(ws, title_row, end_row, ncols, start_col=start_col)
     if apply_color_scale:
         _apply_table_color_scales(ws, header_row, end_row, frame, start_col=start_col)
+    if color_scale_data and ncols > color_scale_start_offset:
+        _apply_color_scale(
+            ws,
+            header_row + 1,
+            end_row,
+            start_col + color_scale_start_offset,
+            start_col + ncols - 1,
+            prefer_high=color_scale_prefer_high,
+        )
     _update_column_widths(ws, frame, ncols, start_col=start_col)
 
     for col_idx in range(start_col, start_col + ncols):
@@ -577,13 +985,44 @@ def _metric_comparison_frame(frame: pd.DataFrame, *, row_col: str, metric: str, 
     return display
 
 
+def _metric_comparison_frame_long(frame: pd.DataFrame, *, row_col: str, metric: str, row_label: str) -> pd.DataFrame:
+    if frame.empty or row_col not in frame.columns or metric not in frame.columns or "score_version" not in frame.columns:
+        return pd.DataFrame()
+    pivot = frame.pivot_table(index=row_col, columns="score_version", values=metric, aggfunc="first").reset_index()
+    pivot.columns.name = None
+    ordered_cols = [row_col] + [score for score in SCORE_COLUMNS if score in pivot.columns]
+    display = pivot[ordered_cols].copy().sort_values(row_col)
+    return display.rename(columns={row_col: row_label, **{score: VERSION_LABELS.get(score, score) for score in SCORE_COLUMNS}})
+
+
+def _metric_comparison_frame_oos_by_month(frame: pd.DataFrame, *, metric: str, row_label: str) -> pd.DataFrame:
+    required = {"final_flag", "mdl_month", "score_version", metric}
+    if frame.empty or not required.issubset(frame.columns):
+        return pd.DataFrame()
+    working = frame.copy()
+    working["_period_label"] = working["final_flag"].astype(str) + " " + working["mdl_month"].astype(str)
+    period_order = (
+        working[["_period_label", "final_flag", "mdl_month"]]
+        .drop_duplicates()
+        .assign(_flag_order=lambda data: data["final_flag"].map({"DEV-OOS": 0, "OOT-OOS": 1}).fillna(99))
+        .sort_values(["_flag_order", "mdl_month", "_period_label"])
+    )
+    pivot = working.pivot_table(index="_period_label", columns="score_version", values=metric, aggfunc="first").reset_index()
+    pivot.columns.name = None
+    display = period_order[["_period_label"]].merge(pivot, on="_period_label", how="left")
+    ordered_cols = ["_period_label"] + [score for score in SCORE_COLUMNS if score in display.columns]
+    return display[ordered_cols].rename(
+        columns={"_period_label": row_label, **{score: VERSION_LABELS.get(score, score) for score in SCORE_COLUMNS}}
+    )
+
+
 def _sloping_display_frame(frame: pd.DataFrame) -> pd.DataFrame:
     display = frame.copy().sort_values("decile", ascending=True).reset_index(drop=True)
     required = {"decile", "n_samples", "bad"}
     if not required.issubset(display.columns):
         return pd.DataFrame(
             {
-                "分组": [f"{int(row.decile):03d}" for row in display.itertuples(index=False)],
+                "分组": [_sloping_group_label(row) for row in display.itertuples(index=False)],
                 "占比": display.get("pct"),
                 "累计发起率": display.get("cum_bad_rate"),
                 "累计lift": display.get("cum_lift"),
@@ -607,7 +1046,7 @@ def _sloping_display_frame(frame: pd.DataFrame) -> pd.DataFrame:
 
     return pd.DataFrame(
         {
-            "分组": [f"{int(row.decile):03d}" for row in display.itertuples(index=False)],
+            "分组": [_sloping_group_label(row) for row in display.itertuples(index=False)],
             "占比": n_samples / total_n if total_n else 0,
             "累计发起率": cum_rate,
             "累计lift": cum_rate / total_rate if total_rate else 0,
@@ -615,6 +1054,27 @@ def _sloping_display_frame(frame: pd.DataFrame) -> pd.DataFrame:
             "剩余lift": remaining_rate / total_rate if total_rate else 0,
         }
     )
+
+
+def _sloping_group_label(row: Any) -> str:
+    decile = int(getattr(row, "decile"))
+    lower_bound = getattr(row, "lower_bound", None)
+    if lower_bound is not None and not pd.isna(lower_bound):
+        return f"{decile:03d}:{lower_bound}"
+    return f"{decile:03d}"
+
+
+def _intent_version_matrix(frame: pd.DataFrame, value_col: str) -> pd.DataFrame:
+    if frame.empty or value_col not in frame.columns:
+        return pd.DataFrame()
+    pivot = frame.pivot_table(index="intent_level", columns="zc_level", values=value_col, aggfunc="first").reset_index()
+    pivot.columns.name = None
+    pivot = pivot.rename(columns={"intent_level": "意愿"})
+    pivot = _sort_intent_matrix(pivot)
+    preferred_cols: list[Any] = ["意愿"] + [str(value) for value in range(1, 8)] + ["合计"]
+    existing_cols = [col for col in preferred_cols if col in pivot.columns]
+    remaining_cols = [col for col in pivot.columns if col not in existing_cols]
+    return pivot[existing_cols + remaining_cols]
 
 
 def _intent_sum_matrix(frame: pd.DataFrame, value_col: str) -> pd.DataFrame:
@@ -669,11 +1129,28 @@ def _intent_rate_matrix(frame: pd.DataFrame, numerator_col: str, denominator_col
 def _sort_intent_matrix(frame: pd.DataFrame) -> pd.DataFrame:
     if "意愿" not in frame.columns:
         return frame
-    order = {"低意愿": 0, "中意愿": 1, "高意愿": 2, "sum": 3}
+    order = {"低意愿": 0, "中意愿": 1, "高意愿": 2, "sum": 3, "合计": 3}
     sorted_frame = frame.copy()
     sorted_frame["_sort"] = sorted_frame["意愿"].map(order).fillna(99)
     sorted_frame = sorted_frame.sort_values("_sort").drop(columns="_sort").reset_index(drop=True)
     return sorted_frame
+
+
+def _stability_pivot(frame: pd.DataFrame, value_col: str, value_label: str) -> pd.DataFrame:
+    if frame.empty or value_col not in frame.columns:
+        return pd.DataFrame()
+    work = frame.copy()
+    work["分组"] = work.apply(
+        lambda row: f"{int(row['score_decile']):03d}:{row.get('lower_bound', '')}"
+        if pd.notna(row.get("lower_bound", None))
+        else f"{int(row['score_decile']):03d}",
+        axis=1,
+    )
+    pivot = work.pivot_table(index=["score_decile", "分组"], columns="mdl_month", values=value_col, aggfunc="first").reset_index()
+    pivot.columns.name = None
+    pivot = pivot.sort_values("score_decile").drop(columns=["score_decile"])
+    pivot.insert(0, "指标", value_label)
+    return pivot
 
 
 def _ordered_values(values: list[Any]) -> list[Any]:
@@ -727,7 +1204,8 @@ def _number_format(column_name: str, value: Any) -> str:
     if _is_count_column(column_name):
         return "#,##0"
     lowered = column_name.lower()
-    if any(token in lowered for token in ["amount", "principal", "overdue", "amt"]):
+    name = str(column_name)
+    if any(token in lowered for token in ["amount", "principal", "overdue", "amt"]) or any(token in name for token in ["金额", "本金", "逾期"]):
         return "#,##0.000"
     if _is_percent_column(column_name):
         return "0.0%"
@@ -746,6 +1224,9 @@ def _alignment(column_name: str):
 
 def _is_count_column(column_name: str) -> bool:
     lowered = str(column_name).lower()
+    name = str(column_name)
+    if any(token in name for token in ["样本数", "样本量", "样本总量", "发起数", "发起量", "正样本", "风险数"]):
+        return True
     return any(token in lowered for token in ["count", "samples", "positive", "bad", "split", "unique"]) and not any(
         token in lowered for token in ["rate", "ratio", "pct", "lift", "auc", "ks"]
     )
@@ -884,7 +1365,9 @@ def _update_column_widths(ws, frame: pd.DataFrame, ncols: int, *, start_col: int
         for value in sample_values:
             if value is not None and not pd.isna(value):
                 max_len = max(max_len, len(str(value)))
-        if any(token in col_name.lower() for token in ["feature", "desc", "data_source", "内容"]):
+        if any(token in col_name.lower() for token in ["feature", "desc", "data_source", "内容"]) or any(
+            token in col_name for token in ["结论", "摘要"]
+        ):
             width = min(max(max_len * 1.1, 18), 52)
         elif _looks_metric_column(col_name) or _is_count_column(col_name):
             width = min(max(max_len * 0.85, 10), 16)
@@ -940,6 +1423,8 @@ def _write_model_reports(
     benchmark = _read_csv(eval_dir / "benchmark_uplift.csv")
     segment = _read_csv(eval_dir / "segment_metrics.csv")
     psi = _read_csv(eval_dir / "score_psi_by_month.csv")
+    versioned_intent = _read_csv(eval_dir / "intent_zc_segment_distribution_by_version.csv")
+    model_score_stability = _read_csv(eval_dir / "model_score_bin_distribution_by_month.csv")
     importance = _read_csv(train_dir / "feature_importance.csv")
     sample_split = _read_csv(sample_dir / "sample_split_summary.csv")
 
@@ -964,9 +1449,8 @@ def _write_model_reports(
         f"- 算法：{run_config.get('algorithm', 'N/A')}；最终入模变量 {final_features} 个；best iteration {run_config.get('best_iteration', 'N/A')}。",
         f"- 验证集效果：AUC {valid_auc}，KS {valid_ks}，Train/Valid AUC gap {auc_gap}。",
         "",
-        "## 二、变量筛选过程",
-        "",
     ]
+    lines.extend(["## 二、变量筛选过程", ""])
     if screening_process.get("feature_select_v2_alignment", {}).get("summary"):
         lines.append(f"- {screening_process['feature_select_v2_alignment']['summary']}")
         lines.append("")
@@ -1003,26 +1487,28 @@ def _write_model_reports(
         lines.extend(_markdown_table(benchmark[[col for col in display_cols if col in benchmark.columns]]))
         lines.append("")
 
-    lines.extend(["## 四、分客群效果", ""])
-    if segment is not None:
-        seg_cols = ["segment", "final_flag", "n_samples", "bad_rate", "model_score_auc", "model_score_ks", "ks_uplift_vs_gcard_v2"]
-        lines.extend(_markdown_table(segment[[col for col in seg_cols if col in segment.columns]].head(20)))
-        lines.append("")
+    lines.extend(["## 四、模型效果", ""])
+    _append_monthly_effect_markdown(lines, eval_dir)
+    _append_sloping_markdown(lines, eval_dir)
+    _append_intent_risk_markdown(lines, eval_dir)
 
-    lines.extend(
-        [
-            "## 五、模型 sloping、意愿交叉风险与稳定性",
-            "",
-            "- sloping 详见 Excel 中 `模型效果-模型sloping`，已按全客群、老户次新、流失户分别横向对比本轮模型和历史 G 卡版本；累计和剩余 lift 按参考文档口径从低分尾部开始累计。",
-            "- 意愿交叉风险详见 Excel 中 `模型效果-意愿交叉风险（DEV-OOS）`。当前 artifact 缺少老户/流失户、score version、final_flag 和金额风险 x 资产评级维度，不伪造缺失矩阵。",
-        ]
-    )
+    lines.extend(["## 五、模型稳定性", ""])
     if psi is not None and not psi.empty:
-        if "score_column" in psi.columns:
-            psi = psi[psi["score_column"] == "model_score"].copy()
-        max_psi = psi.sort_values("psi", ascending=False).head(5)
-        lines.append("- 本轮模型 PSI 最高的 5 个观测如下；分箱占比变化明细需补充产出后回填：")
-        lines.extend(_markdown_table(max_psi))
+        if model_score_stability is not None and not model_score_stability.empty:
+            max_psi = (
+                model_score_stability[["mdl_month", "month_psi"]]
+                .drop_duplicates()
+                .sort_values("month_psi", ascending=False)
+                .head(5)
+            )
+            lines.append("- 本轮模型稳定性已补齐分箱占比、分箱发起率和 PSI 组件；月度 PSI 最高的 5 个观测如下：")
+            lines.extend(_markdown_table(max_psi))
+        else:
+            if "score_column" in psi.columns:
+                psi = psi[psi["score_column"] == "model_score"].copy()
+            max_psi = psi.sort_values("psi", ascending=False).head(5)
+            lines.append("- 本轮模型 PSI 最高的 5 个观测如下：")
+            lines.extend(_markdown_table(max_psi))
     lines.extend(
         [
             "",
@@ -1037,7 +1523,7 @@ def _write_model_reports(
         [
             "## 七、待补充事项",
             "",
-            "- 历史文档中的变量分布/分箱图、变量中文描述与业务标签、MOB1/MOB3 历史风险精确定义仍需在另一环境补充计算。",
+            "- 当前仍不可补齐：变量分布/分箱图、变量中文描述与业务标签、MOB1/MOB3 历史风险精确定义；这些需要原始特征值、业务字典或未来期还款表现数据。",
             "- 详见 `model_report_missing_results.md`。",
         ]
     )
@@ -1046,6 +1532,94 @@ def _write_model_reports(
     md_path.write_text(markdown, encoding="utf-8")
     html_path.write_text(_markdown_to_simple_html(markdown), encoding="utf-8")
     return md_path, html_path
+
+
+def _append_module_conclusions_markdown(lines: list[str], eval_dir: Path, module: str) -> None:
+    frame = _module_conclusion_frame(eval_dir, module)
+    if frame.empty:
+        return
+    lines.extend(_markdown_table(frame, limit=50))
+    lines.append("")
+
+
+def _append_monthly_effect_markdown(lines: list[str], eval_dir: Path) -> None:
+    monthly_segment_oos = _read_csv(eval_dir / "monthly_segment_metrics_oos_by_version.csv")
+    if monthly_segment_oos is None or monthly_segment_oos.empty:
+        return
+    lines.extend(["1、每月效果（OOS）", ""])
+    _append_module_conclusions_markdown(lines, eval_dir, "1、每月效果（OOS）")
+    for segment_name in ["全客群", "老户次新", "老户", "次新", "流失户"]:
+        subset = monthly_segment_oos[
+            (monthly_segment_oos["segment"] == segment_name)
+            & (monthly_segment_oos["final_flag"].isin(["DEV-OOS", "OOT-OOS"]))
+        ].copy()
+        if subset.empty:
+            continue
+        lines.append(f"在{segment_name} OOS by月效果（KS）")
+        lines.extend(_markdown_table(_metric_comparison_frame_oos_by_month(subset, metric="ks", row_label="样本月份"), limit=50))
+        lines.append("")
+        lines.append(f"在{segment_name} OOS by月效果（AUC）")
+        lines.extend(_markdown_table(_metric_comparison_frame_oos_by_month(subset, metric="auc", row_label="样本月份"), limit=50))
+        lines.append("")
+
+
+def _append_sloping_markdown(lines: list[str], eval_dir: Path) -> None:
+    versioned = _read_csv(eval_dir / "decile_lift_bins_by_version.csv")
+    if versioned is None or versioned.empty:
+        return
+    lines.extend(["2、模型sloping", ""])
+    _append_module_conclusions_markdown(lines, eval_dir, "2、模型sloping")
+    for segment_name in ["全客群", "老户次新", "流失户"]:
+        subset_segment = versioned[(versioned["segment"] == segment_name) & (versioned["final_flag"] == "OOT-OOS")].copy()
+        if subset_segment.empty:
+            continue
+        lines.append(f"OOT-OOS 30天发起：在{segment_name}效果")
+        lines.append("")
+        for score_column in SCORE_COLUMNS:
+            subset = subset_segment[subset_segment["score_version"] == score_column].copy()
+            if subset.empty:
+                continue
+            lines.append(VERSION_LABELS.get(score_column, score_column))
+            lines.extend(_markdown_table(_sloping_display_frame(subset), limit=20))
+            lines.append("")
+
+
+def _append_intent_risk_markdown(lines: list[str], eval_dir: Path) -> None:
+    distribution = _read_csv(eval_dir / "intent_zc_segment_distribution_by_version.csv")
+    ftr_rate = _read_csv(eval_dir / "intent_zc_segment_ftr_rate_by_version.csv")
+    amount_risk = _read_csv(eval_dir / "intent_zc_segment_amount_risk_by_version.csv")
+    if (
+        distribution is None
+        or distribution.empty
+        or ftr_rate is None
+        or ftr_rate.empty
+        or amount_risk is None
+        or amount_risk.empty
+    ):
+        return
+    lines.extend(["3、意愿交叉风险（DEV-OOS）", ""])
+    _append_module_conclusions_markdown(lines, eval_dir, "3、意愿交叉风险（DEV-OOS）")
+    matrix_specs = [
+        ("占比", distribution, "sample_pct"),
+        ("30天发起率", ftr_rate, "ftr_30d_rate"),
+        ("新增订单3期金额逾期率", amount_risk, "amount_overdue_rate"),
+    ]
+    for segment_name in ["老户", "流失户"]:
+        lines.append(f"{segment_name} DEV-OOS 意愿 x 资产评级")
+        lines.append("")
+        for metric_label, frame, value_col in matrix_specs:
+            metric_frame = frame[(frame["segment"] == segment_name) & (frame["final_flag"] == "DEV-OOS")].copy()
+            if metric_frame.empty:
+                continue
+            lines.append(metric_label)
+            lines.append("")
+            for score_column in SCORE_COLUMNS:
+                subset = metric_frame[metric_frame["score_version"] == score_column].copy()
+                if subset.empty:
+                    continue
+                lines.append(f"{segment_name} - {metric_label} - {VERSION_LABELS.get(score_column, score_column)}")
+                lines.extend(_markdown_table(_intent_version_matrix(subset, value_col), limit=20))
+                lines.append("")
 
 
 def _fmt_list(values: Any) -> str:
@@ -1105,6 +1679,20 @@ def _fmt_metric(value: Any) -> str:
         return f"{float(value):.3f}"
     except (TypeError, ValueError):
         return str(value)
+
+
+def _fmt_pp(value: Any) -> str:
+    try:
+        return f"{float(value) * 100:.1f}"
+    except (TypeError, ValueError):
+        return "N/A"
+
+
+def _fmt_percent(value: Any) -> str:
+    try:
+        return f"{float(value):.1%}"
+    except (TypeError, ValueError):
+        return "N/A"
 
 
 def _markdown_to_simple_html(markdown: str) -> str:
@@ -1183,21 +1771,41 @@ def _write_missing_results_doc(output_path: Path) -> Path:
 
 本文件只记录当前已注册 run artifact 无法可靠还原的内容，不伪造指标。
 
-| 缺少字段/结果 | 期望粒度 | 建议产出文件 | 可填入目标 sheet |
-|---|---|---|---|
-| 历史文档中的图片化变量分布/分箱图 | 每个重要变量、每个分箱 | `reports/variable_bin_plots/*.png` 或 `evaluation/variable_bins.csv` | `重要变量` |
-| 变量中文描述、业务标签 | feature 级别 | `feature_selection/feature_metadata.csv`，字段建议包含 `feature,desc,label` | `重要变量` |
-| MOB1/MOB3 历史风险精确定义 | final_flag、segment、score、decile、intent_level、zc_level | `evaluation/mob_risk_metrics.csv` | `模型效果-模型sloping`、`模型效果-意愿交叉风险（DEV-OOS）` |
-| sloping 分箱上下界 | `segment`、`score/version`、`decile`、`lower_bound`、`upper_bound`，需要能展示为 `001:(-inf, x]` 这类区间 | `evaluation/decile_lift_bins.csv`，或在各 `decile_lift_*.csv` 增加 `score_min,score_max` | `模型效果-模型sloping` |
-| 明确 DEV-OOS 过滤后的意愿资产交叉结果 | `segment in (老户, 流失户)`、`score/version`、`intent_level`、`zc_level`，限定 `final_flag=DEV-OOS` | `evaluation/intent_zc_dev_oos_*.csv` | `模型效果-意愿交叉风险（DEV-OOS）` |
-| 老户/流失户意愿资产占比矩阵 | `segment in (老户, 流失户)`、`score/version`、`intent_level`、`zc_level`，意愿按对应模型分等频三份；指标包含 `n_samples,sample_pct,row_pct,col_pct` 和行/列 sum | `evaluation/intent_zc_segment_distribution.csv` | `模型效果-意愿交叉风险（DEV-OOS）` |
-| 老户/流失户意愿资产 30 天发起率矩阵 | `segment in (老户, 流失户)`、`score/version`、`intent_level`、`zc_level`；指标包含 `n_samples,ftr_30d_count,ftr_30d_rate` 和行/列加权整体 | `evaluation/intent_zc_segment_ftr_rate.csv` | `模型效果-意愿交叉风险（DEV-OOS）` |
-| 老户/流失户意愿资产新增订单 3 期金额逾期率矩阵 | `segment in (老户, 流失户)`、`score/version`、`intent_level`、`zc_level`；指标包含 `total_principal,total_overdue,amount_overdue_rate` 和行/列加权整体 | `evaluation/intent_zc_segment_amount_risk.csv` | `模型效果-意愿交叉风险（DEV-OOS）` |
-| 老户次新、流失户 OOT-OOS 客群 by 月模型效果 | `mdl_month`、`segment in (老户次新, 流失户)`、`final_flag=OOT-OOS`、`score/version`，指标包含 `n_samples, positive, bad_rate, AUC, KS` | `evaluation/monthly_segment_metrics.csv` 或 `evaluation/monthly_segment_metrics_oot_oos.csv` | `模型效果-每月效果` |
-| 分客群训练模型与全客群模型的同口径对比 | segment、final_flag、score、AUC、KS、lift | `evaluation/segment_model_comparison.csv` | `模型效果-每月效果`、`模型效果-模型sloping` |
-| 本轮模型分箱稳定性明细 | `score_column=model_score`、`month`、`score_bin/decile`；指标包含 `n_samples,pct,bad_rate,psi_component`，需能展示每个分箱占比随月份变化 | `evaluation/model_score_bin_distribution_by_month.csv` | `模型稳定性` |
+## 不可补齐（3 项）
 
-补齐这些文件后，应继续通过 `jm report` 统一生成报告，避免人工改写 xlsx 中的计算结果。
+| # | 缺少字段/结果 | 原因 |
+|---|---|---|
+| 1 | 变量分布/分箱图 | 当前评分 feather 仅含模型分数和标签，不含原始特征值 |
+| 2 | 变量中文描述、业务标签 | 需要业务知识和 D01/D02 特征字典 |
+| 3 | MOB1/MOB3 历史风险 | 需要未来期还款表现数据，当前数据仅含 30 天发起标签和观察风险字段 |
+
+## 已补齐 — 本轮 model_score
+
+| 产出文件 | 内容 |
+|---|---|
+| `evaluation/decile_lift_bins.csv` | 分客群 x final_flag 十分位 lift，含 score 边界 |
+| `evaluation/intent_zc_segment_distribution.csv` | 老户/流失户 DEV-OOS 意愿资产占比矩阵 |
+| `evaluation/intent_zc_segment_ftr_rate.csv` | 老户/流失户 DEV-OOS 30天发起率矩阵 |
+| `evaluation/intent_zc_segment_amount_risk.csv` | 老户/流失户 DEV-OOS 新增订单3期金额逾期率矩阵 |
+| `evaluation/monthly_segment_metrics_oot_oos.csv` | 老户次新/流失户 OOT-OOS 按月 AUC/KS |
+| `evaluation/segment_model_comparison.csv` | 分客群 vs 全客群同口径对比 |
+| `evaluation/model_score_bin_distribution_by_month.csv` | 本轮模型按月分箱占比、发起率和 PSI 组件 |
+
+## 已补齐 — 历史版本横向对比
+
+覆盖 score_version：`model_score`、`gcard_v2`、`gcard_v4`、`gcard_v5`、`gcard_v6`。
+
+| 产出文件 | 内容 |
+|---|---|
+| `evaluation/intent_zc_segment_distribution_by_version.csv` | 各版本老户/流失户 DEV-OOS 意愿资产占比矩阵 |
+| `evaluation/intent_zc_segment_ftr_rate_by_version.csv` | 各版本老户/流失户 DEV-OOS 30天发起率矩阵 |
+| `evaluation/intent_zc_segment_amount_risk_by_version.csv` | 各版本老户/流失户 DEV-OOS 新增订单3期金额逾期率矩阵 |
+| `evaluation/decile_lift_bins_by_version.csv` | 各版本 sloping 分箱上下界 |
+| `evaluation/monthly_segment_metrics_oos_by_version.csv` | 全客群/老户次新/老户/次新/流失户 DEV-OOS + OOT-OOS 按月版本横向效果 |
+| `evaluation/monthly_segment_metrics_oot_oos_by_version.csv` | 老户次新/流失户 OOT-OOS 按月版本横向效果 |
+| `evaluation/score_bin_distribution_by_month_by_version.csv` | 各版本按月稳定性分箱 |
+
+后续继续通过 `jm report` 统一生成报告，避免人工改写 xlsx 中的计算结果。
 """
     missing_path.write_text(text, encoding="utf-8")
     return missing_path

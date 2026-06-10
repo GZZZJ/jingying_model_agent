@@ -76,6 +76,7 @@ stages:
     - evaluation/intent_zc_ftr_rate.csv
     - evaluation/intent_zc_headcount_risk.csv
     - evaluation/score_psi_by_month.csv
+    - evaluation/monthly_segment_metrics_oos_by_version.csv
     finished_at: '2026-06-09T11:09:34'
   compare:
     status: done
@@ -91,8 +92,8 @@ stages:
     - reports/executive_summary.md
     - reports/model_report_missing_results.md
     - reports/model_report.html
-    finished_at: '2026-06-09T17:18:49'
-    started_at: '2026-06-09T17:18:44'
+    finished_at: '2026-06-09T19:26:42'
+    started_at: '2026-06-09T19:26:39'
 decisions:
 - stage: train_baseline
   decision: imported
@@ -126,4 +127,36 @@ decisions:
   decision: done
   reason: Excel report generated from standard train and evaluation artifacts
   created_at: '2026-06-09T17:18:49'
-updated_at: '2026-06-09T17:18:49'
+- stage: report
+  decision: done
+  reason: Excel report generated from standard train and evaluation artifacts
+  created_at: '2026-06-09T17:28:54'
+- stage: report
+  decision: done
+  reason: Excel report generated from standard train and evaluation artifacts
+  created_at: '2026-06-09T17:36:56'
+- stage: report
+  decision: done
+  reason: Excel report generated from standard train and evaluation artifacts
+  created_at: '2026-06-09T18:16:15'
+- stage: report
+  decision: done
+  reason: Excel report generated from standard train and evaluation artifacts
+  created_at: '2026-06-09T18:34:37'
+- stage: report
+  decision: done
+  reason: Excel report generated from standard train and evaluation artifacts
+  created_at: '2026-06-09T18:44:01'
+- stage: report
+  decision: done
+  reason: Excel report generated from standard train and evaluation artifacts
+  created_at: '2026-06-09T18:58:20'
+- stage: report
+  decision: done
+  reason: Excel report generated from standard train and evaluation artifacts
+  created_at: '2026-06-09T19:07:03'
+- stage: report
+  decision: done
+  reason: Excel report generated from standard train and evaluation artifacts
+  created_at: '2026-06-09T19:26:42'
+updated_at: '2026-06-09T19:26:42'

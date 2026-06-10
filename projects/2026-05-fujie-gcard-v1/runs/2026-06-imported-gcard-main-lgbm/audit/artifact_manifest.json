@@ -486,71 +486,82 @@
       "registered_at": "2026-06-09T11:09:34"
     },
     {
+      "path": "evaluation/monthly_segment_metrics_oos_by_version.csv",
+      "size_bytes": 22753,
+      "mtime": "2026-06-10T09:52:30",
+      "sha256": "03d47e3c9b24ad67575a37a6aa001d6368574757a31b20e1d66046275569a998",
+      "stage": "evaluate",
+      "kind": "file",
+      "source": "imported",
+      "description": "DEV-OOS and OOT-OOS monthly segment metrics by score version from external scored artifact calculation",
+      "registered_at": "2026-06-09T18:15:49"
+    },
+    {
       "path": "reports/model_card.md",
       "size_bytes": 31,
-      "mtime": "2026-06-09T17:18:44",
+      "mtime": "2026-06-09T19:26:39",
       "sha256": "8693a334b0696c44b611f5b1a33c2c39712fe275922ea731bb1ea1ac87e31d72",
       "stage": "report",
       "kind": "file",
       "source": "generated",
       "description": "",
-      "registered_at": "2026-06-09T17:18:45"
+      "registered_at": "2026-06-09T19:26:39"
     },
     {
       "path": "reports/executive_summary.md",
       "size_bytes": 38,
-      "mtime": "2026-06-09T17:18:44",
+      "mtime": "2026-06-09T19:26:39",
       "sha256": "c54d4c904fb8477b5659fb8080bf52ce4b47ba156736b5bb53a2f8995fe9467b",
       "stage": "report",
       "kind": "file",
       "source": "generated",
       "description": "",
-      "registered_at": "2026-06-09T17:18:45"
+      "registered_at": "2026-06-09T19:26:39"
     },
     {
       "path": "reports/model_report.xlsx",
-      "size_bytes": 46412,
-      "mtime": "2026-06-09T17:18:47",
-      "sha256": "3a11c89eb8b93872fee6d59953125b47825638f7196255359d0c7b2de86924f7",
+      "size_bytes": 75312,
+      "mtime": "2026-06-09T19:26:42",
+      "sha256": "b8e88a54d132c9860dd6af0811eacb9b2ce928666a634631fcecd78c6cea7fae",
       "stage": "report",
       "kind": "file",
       "source": "generated",
       "description": "",
-      "registered_at": "2026-06-09T17:18:48"
+      "registered_at": "2026-06-09T19:26:42"
     },
     {
       "path": "reports/model_report.md",
-      "size_bytes": 6220,
-      "mtime": "2026-06-09T17:18:48",
-      "sha256": "7b33d682681563d7f7122c9d758a9182d7abd6a3db5fcee21f19fc9632718c4e",
+      "size_bytes": 38652,
+      "mtime": "2026-06-09T19:26:42",
+      "sha256": "eeae2ce4942746604113a10db3fc627102ea7a3765781b2b283c212447ecd743",
       "stage": "report",
       "kind": "file",
       "source": "generated",
       "description": "",
-      "registered_at": "2026-06-09T17:18:48"
+      "registered_at": "2026-06-09T19:26:42"
     },
     {
       "path": "reports/model_report.html",
-      "size_bytes": 9391,
-      "mtime": "2026-06-09T17:18:48",
-      "sha256": "b53c2e4e50753f62848df33a9871e66ec7addf47e50c3a382229cb497cae445b",
+      "size_bytes": 60232,
+      "mtime": "2026-06-09T19:26:42",
+      "sha256": "9a9d76195010d01b0e7624a74a6ba17a9366a4666579088c6255545c29c7f349",
       "stage": "report",
       "kind": "file",
       "source": "generated",
       "description": "",
-      "registered_at": "2026-06-09T17:18:48"
+      "registered_at": "2026-06-09T19:26:42"
     },
     {
       "path": "reports/model_report_missing_results.md",
-      "size_bytes": 3278,
-      "mtime": "2026-06-09T17:18:48",
-      "sha256": "ef5eb0caab69ac6583181e6a6bf8484a223443521973a777f4b0b4acf386ee0e",
+      "size_bytes": 2436,
+      "mtime": "2026-06-09T19:26:42",
+      "sha256": "464fca6d8c2e20cceca1760ed0a125a93e1be188ca1ae48e289c9ea1909edc91",
       "stage": "report",
       "kind": "file",
       "source": "generated",
       "description": "",
-      "registered_at": "2026-06-09T17:18:49"
+      "registered_at": "2026-06-09T19:26:42"
     }
   ],
-  "updated_at": "2026-06-09T17:18:49"
+  "updated_at": "2026-06-09T19:26:42"
 }

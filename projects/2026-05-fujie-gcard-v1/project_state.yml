@@ -1,0 +1,14 @@
+project: /Users/guzijun/Desktop/AI攻坚/jingying_model_agent/projects/2026-05-fujie-gcard-v1
+active_run_id: 2026-06-imported-gcard-main-lgbm
+current_objective: 复借G卡主模型产物标准化与连续性交接机制建设
+status: active
+next_actions:
+- 核对 imported run 中 pending 阶段是否需要标记为 skipped/imported
+- 把高频 lessons 进一步提升为 CLI guardrail、测试或 skill 规则
+risks:
+- imported run 不是本地全链路重跑证据
+- imported run is not proof that the full workflow was rerun locally
+version: 1
+updated_at: '2026-06-09T20:20:06'
+last_handoff: /Users/guzijun/Desktop/AI攻坚/jingying_model_agent/projects/2026-05-fujie-gcard-v1/handoffs/20260609_201140-2026-06-imported-gcard-main-lgbm.md
+last_retrospective: /Users/guzijun/Desktop/AI攻坚/jingying_model_agent/projects/2026-05-fujie-gcard-v1/retrospectives/20260609_201910-session-2026-06-imported-gcard-main-lgbm.md

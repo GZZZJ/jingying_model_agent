@@ -18,6 +18,17 @@ from jingying_model_agent.manifest import make_run_id
 from jingying_model_agent.paths import REPO_ROOT, project_config_path, resolve_project_path, workflow_path
 from jingying_model_agent.planning import create_execution_plan, save_execution_plan
 from jingying_model_agent.project import create_project
+from jingying_model_agent.project_state import (
+    append_lesson,
+    audit_run,
+    format_run_audit,
+    format_project_summary,
+    summarize_project,
+    update_project_state,
+    write_handoff,
+    write_project_state_from_summary,
+    write_retrospective,
+)
 from jingying_model_agent.request import parse_model_request, validate_model_request
 from jingying_model_agent.state import (
     append_decision,
@@ -123,6 +134,94 @@ def cmd_project_validate(args: argparse.Namespace) -> int:
             print(f"- {error}")
         return 1
     print(f"project validation ok: {project_dir}")
+    return 0
+
+
+def cmd_project_status(args: argparse.Namespace) -> int:
+    project_dir = resolve_project_path(args.project)
+    summary = summarize_project(project_dir, run_id=args.run_id)
+    print(format_project_summary(summary), end="")
+    if args.write_state:
+        command = f"jm project status --project {args.project}"
+        if args.run_id:
+            command += f" --run-id {args.run_id}"
+        path = write_project_state_from_summary(project_dir, summary, commands=[command])
+        print(f"project_state: {path}")
+    return 0
+
+
+def cmd_project_update_state(args: argparse.Namespace) -> int:
+    project_dir = resolve_project_path(args.project)
+    state = update_project_state(
+        project_dir,
+        active_run_id=args.active_run_id,
+        current_objective=args.objective,
+        status=args.status,
+        next_actions=args.next_action,
+        blockers=args.blocker,
+        risks=args.risk,
+    )
+    print(f"project_state: {project_dir / 'project_state.yml'}")
+    if state.get("active_run_id"):
+        print(f"active_run_id: {state['active_run_id']}")
+    return 0
+
+
+def cmd_handoff_write(args: argparse.Namespace) -> int:
+    project_dir = resolve_project_path(args.project)
+    path = write_handoff(project_dir, run_id=args.run_id, note=args.note or "", output=args.output)
+    print(f"handoff: {path}")
+    return 0
+
+
+def cmd_lesson_add(args: argparse.Namespace) -> int:
+    project_dir = resolve_project_path(args.project)
+    body = args.body or ""
+    if args.body_file:
+        body_path = Path(args.body_file)
+        body_path = body_path if body_path.is_absolute() else (REPO_ROOT / body_path)
+        body = body_path.read_text(encoding="utf-8")
+    try:
+        path = append_lesson(
+            project_dir,
+            title=args.title,
+            body=body,
+            kind=args.kind,
+            scope=args.scope,
+            source=args.source or "",
+            tags=args.tag or [],
+        )
+    except ValueError as exc:
+        print(f"lesson add failed: {exc}")
+        return 1
+    print(f"lesson: {path}")
+    return 0
+
+
+def cmd_run_audit(args: argparse.Namespace) -> int:
+    project_dir = resolve_project_path(args.project)
+    audit = audit_run(project_dir, args.run_id, stage=args.stage)
+    print(format_run_audit(audit), end="")
+    return 0
+
+
+def cmd_retrospective_write(args: argparse.Namespace) -> int:
+    project_dir = resolve_project_path(args.project)
+    try:
+        path = write_retrospective(
+            project_dir,
+            run_id=args.run_id,
+            scope=args.scope,
+            stage=args.stage,
+            outcome=args.outcome or "",
+            note=args.note or "",
+            lessons=args.lesson or [],
+            output=args.output,
+        )
+    except ValueError as exc:
+        print(f"retrospective write failed: {exc}")
+        return 1
+    print(f"retrospective: {path}")
     return 0
 
 
@@ -652,6 +751,61 @@ def _add_project_parser(subparsers: argparse._SubParsersAction[argparse.Argument
     validate = project_sub.add_parser("validate", help="validate project config")
     validate.add_argument("--project", required=True)
     validate.set_defaults(func=cmd_project_validate)
+    status = project_sub.add_parser("status", help="show project continuity state")
+    status.add_argument("--project", required=True)
+    status.add_argument("--run-id", default=None)
+    status.add_argument("--write-state", action="store_true", help="write or refresh project_state.yml")
+    status.set_defaults(func=cmd_project_status)
+    update = project_sub.add_parser("update-state", help="update project_state.yml with handoff metadata")
+    update.add_argument("--project", required=True)
+    update.add_argument("--active-run-id", default=None)
+    update.add_argument("--objective", default=None)
+    update.add_argument("--status", default=None)
+    update.add_argument("--next-action", action="append")
+    update.add_argument("--blocker", action="append")
+    update.add_argument("--risk", action="append")
+    update.set_defaults(func=cmd_project_update_state)
+
+
+def _add_handoff_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    handoff = subparsers.add_parser("handoff", help="session handoff commands")
+    handoff_sub = handoff.add_subparsers(dest="handoff_command", required=True)
+    write = handoff_sub.add_parser("write", help="write a resumable project handoff")
+    write.add_argument("--project", required=True)
+    write.add_argument("--run-id", default=None)
+    write.add_argument("--note", default="")
+    write.add_argument("--output", default=None)
+    write.set_defaults(func=cmd_handoff_write)
+
+
+def _add_lesson_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    lesson = subparsers.add_parser("lesson", help="project and workbench lesson commands")
+    lesson_sub = lesson.add_subparsers(dest="lesson_command", required=True)
+    add = lesson_sub.add_parser("add", help="append a lesson learned")
+    add.add_argument("--project", required=True)
+    add.add_argument("--title", required=True)
+    add.add_argument("--body", default=None)
+    add.add_argument("--body-file", default=None)
+    add.add_argument("--kind", choices=["pitfall", "method", "guardrail", "decision"], default="method")
+    add.add_argument("--scope", choices=["project", "workbench"], default="project")
+    add.add_argument("--source", default="")
+    add.add_argument("--tag", action="append")
+    add.set_defaults(func=cmd_lesson_add)
+
+
+def _add_retrospective_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    retrospective = subparsers.add_parser("retrospective", help="explicit retrospective checkpoint commands")
+    retrospective_sub = retrospective.add_subparsers(dest="retrospective_command", required=True)
+    write = retrospective_sub.add_parser("write", help="write a session, stage, or project retrospective")
+    write.add_argument("--project", required=True)
+    write.add_argument("--run-id", default=None)
+    write.add_argument("--scope", choices=["session", "stage", "project"], default="session")
+    write.add_argument("--stage", default=None)
+    write.add_argument("--outcome", default="")
+    write.add_argument("--note", default="")
+    write.add_argument("--lesson", action="append")
+    write.add_argument("--output", default=None)
+    write.set_defaults(func=cmd_retrospective_write)
 
 
 def _add_workflow_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -689,6 +843,11 @@ def _add_run_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentPars
     status.add_argument("--project", required=True)
     status.add_argument("--run-id", required=True)
     status.set_defaults(func=cmd_status)
+    audit = run_sub.add_parser("audit", help="audit run or stage closure readiness")
+    audit.add_argument("--project", required=True)
+    audit.add_argument("--run-id", required=True)
+    audit.add_argument("--stage", default=None)
+    audit.set_defaults(func=cmd_run_audit)
 
 
 def _add_request_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -747,6 +906,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     subparsers.add_parser("doctor", help="check local scaffold and dependencies").set_defaults(func=cmd_doctor)
     _add_project_parser(subparsers)
+    _add_handoff_parser(subparsers)
+    _add_lesson_parser(subparsers)
+    _add_retrospective_parser(subparsers)
     _add_workflow_parser(subparsers)
     _add_run_parser(subparsers)
     _add_request_parser(subparsers)
