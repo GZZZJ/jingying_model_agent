@@ -2,9 +2,9 @@ from pathlib import Path
 
 import yaml
 
-from jingying_model_agent.cli import main
-from jingying_model_agent.project_state import audit_run
-from jingying_model_agent.state import mark_stage_done, register_artifact
+from risk_model_workbench.cli import main
+from risk_model_workbench.project_state import audit_run
+from risk_model_workbench.state import mark_stage_done, register_artifact
 
 
 def test_project_status_writes_project_state(tmp_path):

@@ -1,7 +1,7 @@
 import shutil
 from pathlib import Path
 
-from jingying_model_agent.cli import main
+from risk_model_workbench.cli import main
 
 
 def test_cli_doctor():

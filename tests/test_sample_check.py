@@ -1,7 +1,7 @@
 from pathlib import Path
 import shutil
 
-from jingying_model_agent.cli import main
+from risk_model_workbench.cli import main
 
 
 def test_sample_check_scaffold(tmp_path):

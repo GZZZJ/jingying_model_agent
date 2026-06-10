@@ -1,4 +1,4 @@
-from jingying_model_agent.paths import project_config_path, resolve_project_path
+from risk_model_workbench.paths import project_config_path, resolve_project_path
 
 
 def test_project_config_path_prefers_yml():

@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from jingying_model_agent.config import load_yaml
+from risk_model_workbench.config import load_yaml
 
 
 def test_load_yaml_project_config():

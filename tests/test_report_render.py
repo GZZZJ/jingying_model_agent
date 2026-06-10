@@ -3,8 +3,8 @@ import shutil
 
 from openpyxl import load_workbook
 
-from jingying_model_agent.cli import main
-from jingying_model_agent.reporting.excel_report import REPORT_SHEETS, generate_excel_report
+from risk_model_workbench.cli import main
+from risk_model_workbench.reporting.excel_report import REPORT_SHEETS, generate_excel_report
 
 
 def test_report_scaffold():

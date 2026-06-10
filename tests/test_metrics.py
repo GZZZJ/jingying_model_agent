@@ -1,8 +1,8 @@
 import pandas as pd
 
-from jingying_model_agent.evaluation.decile_lift import compute_decile_lift
-from jingying_model_agent.evaluation.metrics import auc_score, ks_score, psi_score
-from jingying_model_agent.evaluation.stability import compute_score_psi
+from risk_model_workbench.evaluation.decile_lift import compute_decile_lift
+from risk_model_workbench.evaluation.metrics import auc_score, ks_score, psi_score
+from risk_model_workbench.evaluation.stability import compute_score_psi
 
 
 def test_auc_ks_and_psi_scores():

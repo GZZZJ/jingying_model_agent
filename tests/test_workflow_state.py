@@ -1,4 +1,4 @@
-from jingying_model_agent.state import create_run_state, mark_stage_done, save_run_state
+from risk_model_workbench.state import create_run_state, mark_stage_done, save_run_state
 
 
 def test_create_run_state_contains_stages():

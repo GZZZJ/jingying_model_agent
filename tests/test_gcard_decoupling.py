@@ -4,11 +4,11 @@ from pathlib import Path
 
 import yaml
 
-from jingying_model_agent.cli import main
-from jingying_model_agent.planning import create_execution_plan
-from jingying_model_agent.project.create import create_project
-from jingying_model_agent.reporting.excel_report import generate_excel_report
-from jingying_model_agent.request import parse_model_request
+from risk_model_workbench.cli import main
+from risk_model_workbench.planning import create_execution_plan
+from risk_model_workbench.project.create import create_project
+from risk_model_workbench.reporting.excel_report import generate_excel_report
+from risk_model_workbench.request import parse_model_request
 
 
 def test_generic_project_templates_do_not_default_to_gcard(tmp_path):

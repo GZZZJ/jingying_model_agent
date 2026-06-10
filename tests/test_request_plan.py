@@ -1,8 +1,8 @@
 from pathlib import Path
 
-from jingying_model_agent.cli import main
-from jingying_model_agent.planning import create_execution_plan
-from jingying_model_agent.request import parse_model_request, validate_model_request
+from risk_model_workbench.cli import main
+from risk_model_workbench.planning import create_execution_plan
+from risk_model_workbench.request import parse_model_request, validate_model_request
 
 
 def test_parse_and_validate_gcard_request_template():
