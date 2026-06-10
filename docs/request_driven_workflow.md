@@ -44,7 +44,7 @@ generic workbench:
 4. Import historical artifacts into a standard run if they came from an older
    layout.
 
-For the current Fujie GCard baseline, historical outputs can be normalized with:
+For the current Fujie GCard legacy/example baseline, historical outputs can be normalized with:
 
 ```bash
 jm run import-gcard-model-artifacts \

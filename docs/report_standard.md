@@ -19,7 +19,8 @@ The Excel report should contain at least:
 - top features and dropped-feature detail
 - source-data summaries
 
-For Fujie GCard, MOB1/MOB3 historical risk definitions are still not fully
-confirmed. Current amount-risk and headcount-risk tables are useful diagnostic
-views, but they should not be described as exact historical MOB1/MOB3 metrics
-until the business definition is confirmed.
+Project-specific historical risk definitions belong in project config or
+project docs. For the Fujie GCard case, MOB1/MOB3 historical risk definitions
+are still not fully confirmed. Current amount-risk and headcount-risk tables are
+useful diagnostic views, but they should not be described as exact historical
+MOB1/MOB3 metrics until the business definition is confirmed.

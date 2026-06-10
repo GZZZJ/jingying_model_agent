@@ -1,6 +1,8 @@
 # jy-model-agent
 
-经营场景模型本地建模工作台。当前主线是把复借 G 卡项目沉淀成可复用的本地建模流程：项目初始化、需求校验、执行计划、样本检查、特征筛选、模型训练、评估、对比、报告生成，以及跨会话连续性交接。
+经营场景模型本地建模工作台。工作台提供可复用的本地建模流程：项目初始化、需求校验、执行计划、样本检查、特征筛选、模型训练、评估、对比、报告生成，以及跨会话连续性交接。
+
+复借 G 卡是当前已承接的活跃案例项目，用于验证真实历史产物标准化、评估报告和连续性交接机制；工作台能力不与该项目强绑定。
 
 标准入口是 `jm` CLI。`agent.py` 和 `jingying-agent` 仅作为兼容入口保留。
 
@@ -13,7 +15,7 @@
 - 通用工作台代码在 `src/jingying_model_agent/`。
 - 项目模板在 `templates/project/`。
 - 工作流定义在 `workflows/`。
-- 当前项目是 `projects/2026-05-fujie-gcard-v1/`。
+- 当前活跃案例项目是 `projects/2026-05-fujie-gcard-v1/`。
 - 当前项目断点文件是 `projects/2026-05-fujie-gcard-v1/project_state.yml`。
 - 当前 active run 是 `2026-06-imported-gcard-main-lgbm`。
 - 当前目标是 `复借G卡主模型产物标准化与连续性交接机制建设`。
@@ -22,7 +24,7 @@
 
 active run 是远端真实复借 G 卡训练、评估和报告产物导入后的标准 run。它是真实历史产物的标准化登记，不是当前本地环境端到端重跑证据。
 
-## 复借 G 卡现状
+## 当前案例：复借 G 卡
 
 - 样本表：`ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_sample`
 - 特征表：70 张，见 `projects/2026-05-fujie-gcard-v1/configs/feature_tables.txt`
@@ -59,7 +61,7 @@ jm project validate --project projects/2026-05-fujie-gcard-v1
 pytest tests -q
 ```
 
-`jm doctor` 会检查规划文档、历史模型资料、vendored feature-select-v2、项目模板和核心 workflow 是否存在。
+`jm doctor` 会检查规划文档、模型资产索引、vendored feature-select-v2、项目模板和核心 workflow 是否存在；复借 G 卡历史工作簿只作为 legacy/example 资料提示。
 
 ## 常用命令
 

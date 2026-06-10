@@ -15,25 +15,10 @@ from jingying_model_agent.config import load_yaml
 
 DEFAULT_BASE_COLUMNS = [
     "uid",
-    "mdl_dte",
-    "ds",
-    "blue_customer_flag",
-    "ftr_30d_ord_flag",
-    "ftr_30d_ord_amt",
-    "prc_amt_xz_30d_3m",
-    "ovd_amt_xz_30d_3m",
+    "sample_date",
+    "sample_month",
+    "target",
     "final_flag",
-    "zc_level",
-    "gcard_v2",
-    "gcard_v4",
-    "gcard_v5",
-    "gcard_v6",
-    "rand_flag0",
-    "rand_flag1",
-    "rand_flag2",
-    "rand_flag3",
-    "rand_flag4",
-    "rand_flag5",
 ]
 
 DEFAULT_JOIN_KEYS = ["uid", "mdl_dte"]
@@ -85,9 +70,6 @@ def table_alias(index: int) -> str:
 
 def table_short_name(table_name: str) -> str:
     name = table_name.split(".")[-1]
-    marker = "backtrack_fj_gcard_model_v6_1_"
-    if marker in name:
-        name = name.split(marker, 1)[1]
     name = re.sub(r"[^A-Za-z0-9_]+", "_", name).strip("_")
     return name or "feature_table"
 

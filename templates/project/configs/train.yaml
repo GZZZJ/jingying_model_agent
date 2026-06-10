@@ -21,6 +21,9 @@ training:
       algorithm: lightgbm
       sample_weight: null
 
+input:
+  historical_score_columns: []
+
 lightgbm:
   objective: binary
   metric: auc

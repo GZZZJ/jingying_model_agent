@@ -5,11 +5,15 @@
 This repository is a local business modeling workbench. The canonical entrypoint
 is the `jm` CLI.
 
+The workbench is generic business modeling infrastructure. Fujie GCard is the
+current active case project and regression example; reusable workbench behavior
+must not depend on that project unless explicitly scoped as legacy/example.
+
 ## Current State
 
 As of 2026-06-09:
 
-- Active project: `projects/2026-05-fujie-gcard-v1/`
+- Active case project: `projects/2026-05-fujie-gcard-v1/`
 - Active run: `2026-06-imported-gcard-main-lgbm`
 - Project checkpoint: `projects/2026-05-fujie-gcard-v1/project_state.yml`
 - Current objective: `复借G卡主模型产物标准化与连续性交接机制建设`
@@ -27,7 +31,7 @@ not local end-to-end rerun evidence.
 
 - `src/jingying_model_agent/`: reusable modeling workbench code.
 - `projects/`: concrete modeling project workspaces.
-- `projects/2026-05-fujie-gcard-v1/`: current Fujie GCard modeling project.
+- `projects/2026-05-fujie-gcard-v1/`: current Fujie GCard case project.
 - `projects/2026-05-fujie-gcard-v1/project_state.yml`: project-level
   continuity checkpoint.
 - `projects/2026-05-fujie-gcard-v1/handoffs/`: explicit session handoffs.

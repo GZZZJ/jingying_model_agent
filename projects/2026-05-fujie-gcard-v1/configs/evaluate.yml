@@ -6,6 +6,12 @@ evaluation:
     - gcard_v4
     - gcard_v5
     - gcard_v6
+  score_labels:
+    model_score: 本轮模型
+    gcard_v2: G卡V2
+    gcard_v4: G卡V4
+    gcard_v5: G卡V5
+    gcard_v6: G卡V6
   split_column: final_flag
   time_column: mdl_dte
   period_column: ds

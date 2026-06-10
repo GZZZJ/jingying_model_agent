@@ -2,10 +2,8 @@ evaluation:
   label_column: {{target_column}}
   score_columns:
     - model_score
-    - gcard_v2
-    - gcard_v4
-    - gcard_v5
-    - gcard_v6
+  score_labels:
+    model_score: 本轮模型
   split_column: final_flag
   time_column: {{time_column}}
   period_column: {{period_column}}

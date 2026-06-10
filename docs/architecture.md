@@ -22,7 +22,7 @@ repeatable they should be converted into CLI-backed modules. Legacy scripts
 remain under `legacy_scripts/` as provenance, while the workbench API stays in
 `src/jingying_model_agent/`.
 
-The imported Fujie GCard `main_lgbm` run is the first real-project baseline for
+The imported Fujie GCard `main_lgbm` run is the current real-project case for
 this architecture. It proves that external project outputs can be normalized
 into a standard run and then used to harden generic train, evaluate, and report
-capabilities.
+capabilities without making GCard the default workbench behavior.

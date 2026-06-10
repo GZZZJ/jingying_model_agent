@@ -154,7 +154,10 @@ def build_feature_screening_summary(project_dir: str | Path) -> dict[str, Any]:
         },
         "feature_select_v2_alignment": {
             "status": "concept_aligned_not_exact_reimplementation",
-            "summary": "当前复借G卡 Feather 主线借鉴 feature-select-v2 的随机重要性、Null Importance、Top Importance 思路，但阈值和局部实现为项目内自定义。",
+            "summary": (
+                f"当前{project_config['project']['display_name']} Feather 主线借鉴 feature-select-v2 的随机重要性、"
+                "Null Importance、Top Importance 思路，但阈值和局部实现为项目内自定义。"
+            ),
             "local_reference_paths": [
                 "my-skills/develop/feature-select-v2",
                 "vendor/feature-select-v2",

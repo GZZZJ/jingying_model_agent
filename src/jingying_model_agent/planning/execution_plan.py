@@ -22,6 +22,24 @@ def _as_list(value: Any, default: list[Any] | None = None) -> list[Any]:
     return [value]
 
 
+def _load_project_yaml(project_path: str | Path) -> dict[str, Any]:
+    project_dir = Path(project_path)
+    for name in ["project.yml", "project.yaml"]:
+        path = project_dir / name
+        if path.exists():
+            data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+            return data if isinstance(data, dict) else {}
+    return {}
+
+
+def _project_champions(project_path: str | Path) -> list[Any]:
+    config = _load_project_yaml(project_path)
+    champions = config.get("champions") or {}
+    if isinstance(champions, dict):
+        return _as_list(champions.get("score_columns"))
+    return _as_list(champions)
+
+
 def _task(
     *,
     task_id: str,
@@ -136,13 +154,18 @@ def create_execution_plan(request_doc: dict[str, Any], project_path: str | Path)
     )
 
     champions = _as_list((metadata.get("evaluation") or {}).get("champions"))
-    champion = champions[-1] if champions else "gcard_v6"
+    if not champions:
+        champions = _project_champions(project_path)
+    champion = champions[-1] if champions else None
+    compare_args = ["compare", "--project", project, "--run-id", run_arg]
+    if champion:
+        compare_args.extend(["--champion", str(champion)])
     tasks.append(
         _task(
             task_id="compare_final",
             task_type="compare",
             depends_on=["evaluate_final"],
-            args=["compare", "--project", project, "--run-id", run_arg, "--champion", str(champion)],
+            args=compare_args,
             outputs=["evaluation/champion_challenger.json"],
         )
     )

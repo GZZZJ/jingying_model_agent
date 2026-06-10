@@ -96,9 +96,10 @@ def train_lightgbm_from_feather(
     candidate_features = [line.strip() for line in feature_list_path.read_text(encoding="utf-8").splitlines() if line.strip()]
     id_cols = input_cfg.get("id_columns", ["uid", "mdl_dte"])
     base_cols = input_cfg.get("base_columns", [])
+    configured_historical_scores = input_cfg.get("historical_score_columns", [])
     label_col = input_cfg["label_column"]
     split_col = input_cfg["split_column"]
-    read_cols = list(dict.fromkeys(id_cols + base_cols + [label_col, split_col] + candidate_features))
+    read_cols = list(dict.fromkeys(id_cols + base_cols + configured_historical_scores + [label_col, split_col] + candidate_features))
     all_cols = pd.read_feather(input_feather, columns=None).columns.tolist()
     raw = pd.read_feather(input_feather, columns=[column for column in read_cols if column in all_cols])
 
@@ -221,7 +222,7 @@ def train_lightgbm_from_feather(
         "prc_amt_xz_30d_3m",
         "ovd_amt_xz_30d_3m",
     ]
-    historical_scores = [column for column in ["gcard_v2", "gcard_v4", "gcard_v5", "gcard_v6"] if column in raw.columns]
+    historical_scores = [column for column in configured_historical_scores if column in raw.columns]
     scores = raw[[column for column in desired_base if column in raw.columns]].copy()
     for column in historical_scores:
         scores[column] = raw[column]

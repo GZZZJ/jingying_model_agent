@@ -30,7 +30,7 @@ def evaluate_scores_from_feather(*, scores_feather: str | Path, output_dir: str 
         if column in df.columns:
             df[column] = pd.to_numeric(df[column], errors="coerce")
 
-    desired_scores = eval_cfg.get("score_columns", ["model_score", "gcard_v2", "gcard_v4", "gcard_v5", "gcard_v6"])
+    desired_scores = eval_cfg.get("score_columns", ["model_score"])
     score_cols = [column for column in desired_scores if column in df.columns]
     for column in score_cols:
         df[column] = pd.to_numeric(df[column], errors="coerce")

@@ -19,9 +19,10 @@ column, model score, and any benchmark scores that need comparison.
 - `evaluation/score_psi_by_month.csv`
 
 The standard metrics are AUC, KS, bad rate, decile lift, benchmark uplift,
-score PSI, segment-level effects, and configured risk-profile cuts. The Fujie
-GCard imported run evaluates `model_score` against `gcard_v2`, `gcard_v4`,
-`gcard_v5`, and `gcard_v6` across `DEV`, `DEV-OOS`, `OOT`, and `OOT-OOS`.
+score PSI, segment-level effects, and configured risk-profile cuts. Benchmark
+score columns are project configuration, not workbench defaults. The Fujie GCard
+case config evaluates `model_score` against `gcard_v2`, `gcard_v4`, `gcard_v5`,
+and `gcard_v6` across `DEV`, `DEV-OOS`, `OOT`, and `OOT-OOS`.
 
 If prediction data is unavailable, the command may write a scaffold summary.
 Scaffold summaries must clearly state missing inputs and must not fabricate

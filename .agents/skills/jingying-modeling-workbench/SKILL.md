@@ -27,10 +27,10 @@ For an existing run, always read:
 - `jm feature refine --project <project> --run-id <run_id> --dry-run-sql`
 - `jm train --project <project> --run-id <run_id> --experiment main_lgbm`
 - `jm evaluate --project <project> --run-id <run_id>`
-- `jm compare --project <project> --run-id <run_id> --champion gcard_v6`
+- `jm compare --project <project> --run-id <run_id> --champion <score_column>`
 - `jm report --project <project> --run-id <run_id>`
 
-For the imported Fujie GCard real-project baseline, use:
+For the imported Fujie GCard legacy/example baseline, use:
 
 - `jm run import-gcard-model-artifacts --project projects/2026-05-fujie-gcard-v1 --run-id 2026-06-imported-gcard-main-lgbm`
 - `jm run status --project projects/2026-05-fujie-gcard-v1 --run-id 2026-06-imported-gcard-main-lgbm`

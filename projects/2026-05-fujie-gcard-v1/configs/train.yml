@@ -44,6 +44,11 @@ input:
     - gcard_v6
   label_column: ftr_30d_ord_flag
   split_column: final_flag
+  historical_score_columns:
+    - gcard_v2
+    - gcard_v4
+    - gcard_v5
+    - gcard_v6
 
 preprocessing:
   missing_sentinels: [-999, -998]

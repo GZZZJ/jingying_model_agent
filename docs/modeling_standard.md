@@ -21,8 +21,8 @@ The standard LightGBM path writes:
 - `modeling/<experiment>/run_config.json`
 - optional scored feather and score-column summary
 
-The current reusable implementation is based on the real Fujie GCard
-`main_lgbm` run. It handles numeric coercion, configured missing sentinels,
+The current reusable implementation was hardened with the real Fujie GCard
+`main_lgbm` case run, but is not GCard-specific. It handles numeric coercion, configured missing sentinels,
 low-availability and constant-feature drops, median fill from train, LightGBM
 training, feature importance, and all-split scoring.
 

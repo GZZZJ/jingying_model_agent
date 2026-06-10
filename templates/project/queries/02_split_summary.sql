@@ -6,9 +6,7 @@ select
   min({{period_column}}) as min_ds,
   max({{period_column}}) as max_ds,
   count(1) as cnt,
-  avg(cast({{target_column}} as double)) as ftr_30d_ord_rate,
-  avg(cast(ftr_30d_ord_amt as double)) as avg_ftr_30d_ord_amt,
-  avg(cast(gcard_v6 as double)) as avg_gcard_v6
+  avg(cast({{target_column}} as double)) as target_rate
 from {{sample_table}}
 group by final_flag
 order by final_flag;

@@ -78,10 +78,12 @@ def cmd_doctor(_: argparse.Namespace) -> int:
     checks = {
         "planning_doc": REPO_ROOT / "docs" / "legacy" / "AI经营建模Agent规划.md",
         "model_inventory": REPO_ROOT / "docs" / "legacy" / "现有经营模型梳理.md",
-        "gcard_workbook": REPO_ROOT / "docs" / "legacy" / "复借G卡模型文档.xlsx",
         "feature_select_v2_code": REPO_ROOT / "vendor" / "feature-select-v2" / "scripts" / "code" / "main.py",
         "project_template": REPO_ROOT / "templates" / "project" / "project.yml",
         "workflow_full_modeling": REPO_ROOT / "workflows" / "full_modeling.yml",
+    }
+    optional_checks = {
+        "legacy_gcard_workbook": REPO_ROOT / "docs" / "legacy" / "复借G卡模型文档.xlsx",
     }
 
     ok = True
@@ -89,6 +91,9 @@ def cmd_doctor(_: argparse.Namespace) -> int:
         exists = path.exists()
         ok = ok and exists
         print(f"{'OK' if exists else 'MISSING':7} {name}: {path}")
+    for name, path in optional_checks.items():
+        exists = path.exists()
+        print(f"{'OK' if exists else 'MISSING':7} optional {name}: {path}")
 
     yaml_available = importlib.util.find_spec("yaml") is not None
     ok = ok and yaml_available
@@ -585,6 +590,14 @@ def cmd_evaluate(args: argparse.Namespace) -> int:
 def cmd_compare(args: argparse.Namespace) -> int:
     path = _run_path(args)
     mark_stage_started(path, "compare")
+    if not args.champion:
+        payload = {"status": "skipped", "reason": "no champion configured", "champion": ""}
+        _write_json(path / "evaluation" / "champion_challenger.json", payload)
+        register_artifact(path, "compare", "evaluation/champion_challenger.json")
+        append_decision(path, stage="compare", decision="skipped", reason=payload["reason"])
+        mark_stage_done(path, "compare")
+        print(f"compare skipped: {path / 'evaluation' / 'champion_challenger.json'}")
+        return 0
     payload = {"status": "scaffold", "reason": "candidate and champion predictions not available", "champion": args.champion}
     _write_json(path / "evaluation" / "champion_challenger.json", payload)
     register_artifact(path, "compare", "evaluation/champion_challenger.json")
@@ -628,6 +641,7 @@ def cmd_report(args: argparse.Namespace) -> int:
                 input_dir=path / "modeling_input",
                 feature_dir=path / "feature_selection",
                 output_path=path / "reports" / "model_report.xlsx",
+                project_dir=project_dir,
             )
             register_artifact(path, "report", excel_path)
             for sidecar in [
@@ -831,11 +845,14 @@ def _add_run_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentPars
     init.add_argument("--plan", default=None, help="optional execution plan YAML copied into the run")
     init.add_argument("--force", action="store_true")
     init.set_defaults(func=cmd_run_init)
-    imported = run_sub.add_parser("import-gcard-artifacts", help="import existing Fujie GCard artifacts")
+    imported = run_sub.add_parser("import-gcard-artifacts", help="legacy/example: import existing Fujie GCard artifacts")
     imported.add_argument("--project", default="projects/2026-05-fujie-gcard-v1")
     imported.add_argument("--run-id", default="2026-05-imported-feature-screening")
     imported.set_defaults(func=cmd_import_gcard)
-    imported_model = run_sub.add_parser("import-gcard-model-artifacts", help="import existing Fujie GCard training/evaluation/report artifacts")
+    imported_model = run_sub.add_parser(
+        "import-gcard-model-artifacts",
+        help="legacy/example: import existing Fujie GCard training/evaluation/report artifacts",
+    )
     imported_model.add_argument("--project", default="projects/2026-05-fujie-gcard-v1")
     imported_model.add_argument("--run-id", default="2026-06-imported-gcard-main-lgbm")
     imported_model.set_defaults(func=cmd_import_gcard_model)
@@ -948,7 +965,7 @@ def build_parser() -> argparse.ArgumentParser:
     compare = subparsers.add_parser("compare")
     compare.add_argument("--project", required=True)
     compare.add_argument("--run-id", required=True)
-    compare.add_argument("--champion", required=True)
+    compare.add_argument("--champion", default="")
     compare.set_defaults(func=cmd_compare)
 
     report = subparsers.add_parser("report")
