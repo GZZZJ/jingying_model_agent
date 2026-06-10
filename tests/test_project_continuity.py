@@ -15,7 +15,7 @@ def test_project_status_writes_project_state(tmp_path):
 
     state = yaml.safe_load((project / "project_state.yml").read_text(encoding="utf-8"))
     assert state["active_run_id"] == "run1"
-    assert state["last_verified_commands"] == [f"jm project status --project {project}"]
+    assert state["last_verified_commands"] == [f"rmw project status --project {project}"]
     assert state["next_actions"]
 
 

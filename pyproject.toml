@@ -1,7 +1,7 @@
 [project]
-name = "jingying-model-agent"
+name = "risk-model-workbench"
 version = "0.1.0"
-description = "Local agent scaffold for business scenario model development."
+description = "Risk scenario AI modeling workbench."
 requires-python = ">=3.9"
 dependencies = [
   "pyyaml>=6.0",
@@ -19,8 +19,9 @@ modeling = [
 ]
 
 [project.scripts]
-jingying-agent = "jingying_model_agent.cli:main"
-jm = "jingying_model_agent.cli:main"
+rmw = "risk_model_workbench.cli:main"
+jm = "risk_model_workbench.cli:main"
+jingying-agent = "risk_model_workbench.cli:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

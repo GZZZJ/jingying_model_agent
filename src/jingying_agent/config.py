@@ -1,1 +1,1 @@
-from jingying_model_agent.config import *  # noqa: F401,F403
+from risk_model_workbench.config import *  # noqa: F401,F403
