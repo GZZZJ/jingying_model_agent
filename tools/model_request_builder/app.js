@@ -11,7 +11,7 @@ const STORAGE_KEY = "jingying_model_request_builder";
 const defaults = {
   request_id: "2026-06-fujie-gcard-baseline",
   title: "复借 G 卡 baseline 建模需求",
-  owner: "牧羊咕",
+  owner: "辜子骏",
   workflow: "full_modeling",
   objective: "训练候选复借意愿模型，并与历史 GCard 分数进行 champion/challenger 对比。",
   sample_location: "ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_sample",
