@@ -16,6 +16,7 @@ from risk_model_workbench.config import load_yaml
 REPORT_SHEETS = [
     "模型描述",
     "重要变量",
+    "Top变量WOE",
     "变量筛选过程和模型参数",
     "模型效果-每月效果",
     "模型效果-模型sloping",
@@ -82,6 +83,7 @@ def generate_excel_report(
             feature_dir=feature_dir,
         )
         _build_features_sheet(wb["重要变量"], train_dir=train_dir, feature_dir=feature_dir)
+        _build_woe_sheet(wb["Top变量WOE"], train_dir=train_dir, report_dir=output_path.parent)
         _build_screening_params_sheet(wb["变量筛选过程和模型参数"], train_dir=train_dir, feature_dir=feature_dir)
         _build_monthly_effect_sheet(wb["模型效果-每月效果"], eval_dir=eval_dir)
         _build_sloping_sheet(wb["模型效果-模型sloping"], eval_dir=eval_dir)
@@ -92,7 +94,7 @@ def generate_excel_report(
             _finalize_sheet(worksheet)
 
         wb.save(str(output_path))
-        _write_missing_results_doc(output_path)
+        _write_missing_results_doc(output_path, train_dir=train_dir)
         _write_model_reports(
             output_path=output_path,
             train_dir=train_dir,
@@ -275,6 +277,60 @@ def _build_features_sheet(ws, *, train_dir: Path, feature_dir: Path) -> None:
         dropped = drop_detail[drop_detail["drop_reason"].notna() & (drop_detail["drop_reason"].astype(str) != "")]
         if not dropped.empty:
             _write_table(ws, row, "被删除特征", dropped)
+
+
+def _build_woe_sheet(ws, *, train_dir: Path, report_dir: Path) -> None:
+    summary_path = _find_woe_summary(train_dir=train_dir, report_dir=report_dir)
+    if summary_path is None:
+        _write_note(ws, 1, "WOE charts require row-level feature values. No registered Top feature WOE artifacts were found.")
+        return
+
+    summary = _read_csv(summary_path)
+    if summary is None or summary.empty:
+        _write_note(ws, 1, "WOE charts require row-level feature values. The WOE summary artifact is empty.")
+        return
+
+    ok = summary[summary.get("status", "") == "ok"].copy()
+    if ok.empty:
+        row = _write_note(ws, 1, "WOE charts require row-level feature values. No Top feature produced a renderable WOE chart.")
+        _write_table(ws, row, "WOE skipped features", summary[[col for col in ["feature", "rank", "status", "skip_reason"] if col in summary.columns]], apply_color_scale=False)
+        return
+
+    row = 1
+    image_dir = summary_path.parent / "images"
+    for (_, feature), feature_rows in ok.groupby(["rank", "feature"], sort=True):
+        rank = int(feature_rows["rank"].iloc[0])
+        gain = feature_rows["gain"].iloc[0]
+        base_split = "DEV" if "DEV" in set(feature_rows["split_value"].astype(str)) else str(feature_rows["split_value"].iloc[0])
+        base_rows = feature_rows[feature_rows["split_value"].astype(str) == base_split]
+        iv = base_rows.groupby("bin_label", as_index=False)["iv_component"].first()["iv_component"].sum()
+        missing_rate = base_rows.loc[base_rows["is_missing_bin"].astype(bool), "pop_pct"].sum() if "is_missing_bin" in base_rows else 0
+        image_path = _find_woe_image(image_dir, rank)
+        row = _write_kv_section(
+            ws,
+            row,
+            f"Top {rank}: {feature}",
+            [
+                ("Gain", gain),
+                ("Base split", base_split),
+                ("IV", iv),
+                ("Missing rate", missing_rate),
+                ("Image", image_path.name if image_path else "missing"),
+            ],
+        )
+        if image_path:
+            try:
+                from openpyxl.drawing.image import Image as OpenpyxlImage
+
+                image = OpenpyxlImage(str(image_path))
+                image.width = 900
+                image.height = 420
+                ws.add_image(image, f"A{row}")
+                row += 24
+            except Exception as exc:
+                row = _write_note(ws, row, f"WOE image could not be embedded: {image_path.name}; {exc}")
+        else:
+            row = _write_note(ws, row, f"WOE image missing for Top {rank}: {feature}")
 
 
 def _build_screening_params_sheet(ws, *, train_dir: Path, feature_dir: Path) -> None:
@@ -1016,6 +1072,25 @@ def _write_note(ws, start_row: int, text: str) -> int:
     return start_row + 2
 
 
+def _find_woe_summary(*, train_dir: Path, report_dir: Path | None = None) -> Path | None:
+    candidates = []
+    if report_dir is not None:
+        candidates.append(report_dir / "woe_top_features")
+    candidates.append(train_dir / "woe_top_features")
+    for directory in candidates:
+        for path in sorted(directory.glob("woe_top*_summary.csv")):
+            if path.exists():
+                return path
+    return None
+
+
+def _find_woe_image(image_dir: Path, rank: int) -> Path | None:
+    if not image_dir.exists():
+        return None
+    matches = sorted(image_dir.glob(f"{rank:03d}_*_WOE.png"))
+    return matches[0] if matches else None
+
+
 def _screening_steps_frame(stage_summary: dict[str, Any], feature_dir: Path) -> pd.DataFrame:
     process = _read_feature_screening_process(feature_dir)
     if process:
@@ -1519,6 +1594,8 @@ def _write_model_reports(
     model_score_stability = _read_csv(eval_dir / "model_score_bin_distribution_by_month.csv")
     importance = _read_csv(train_dir / "feature_importance.csv")
     sample_split = _read_csv(sample_dir / "sample_split_summary.csv")
+    woe_summary_path = _find_woe_summary(train_dir=train_dir, report_dir=output_path.parent)
+    woe_summary = _read_csv(woe_summary_path) if woe_summary_path else None
 
     md_path = output_path.with_name("model_report.md")
     html_path = output_path.with_name("model_report.html")
@@ -1606,7 +1683,27 @@ def _write_model_reports(
         lines.append("")
     lines.extend(
         [
-            "## 七、待补充事项",
+            "## 七、Top变量WOE",
+            "",
+        ]
+    )
+    if woe_summary is not None and not woe_summary.empty and "status" in woe_summary.columns and (woe_summary["status"] == "ok").any():
+        lines.append("- Top20 WOE 图见 Excel sheet `Top变量WOE`，PNG 和汇总 CSV 见 `reports/woe_top_features/` 或训练产物目录。")
+        display = (
+            woe_summary[woe_summary["status"] == "ok"]
+            .groupby(["rank", "feature"], as_index=False)
+            .agg({"gain": "first", "iv_component": "sum"})
+            .rename(columns={"rank": "排名", "feature": "变量", "gain": "Gain", "iv_component": "IV"})
+            .sort_values("排名")
+        )
+        lines.extend(_markdown_table(display, limit=20))
+        lines.append("")
+    else:
+        lines.append("- 暂无 Top20 WOE 图；该产物需要训练阶段保留 row-level 特征值后生成。")
+        lines.append("")
+    lines.extend(
+        [
+            "## 八、待补充事项",
             "",
             "- 当前仍不可补齐：变量分布/分箱图、变量中文描述与业务标签、MOB1/MOB3 历史风险精确定义；这些需要原始特征值、业务字典或未来期还款表现数据。",
             "- 详见 `model_report_missing_results.md`。",
@@ -1854,7 +1951,7 @@ def _markdown_to_simple_html(markdown: str) -> str:
     return "\n".join(html_lines)
 
 
-def _write_missing_results_doc(output_path: Path) -> Path:
+def _write_missing_results_doc(output_path: Path, *, train_dir: Path | None = None) -> Path:
     missing_path = output_path.with_name("model_report_missing_results.md")
     comparison_scores = _comparison_score_columns()
     historical_section = ""
@@ -1899,11 +1996,40 @@ def _write_missing_results_doc(output_path: Path) -> Path:
 | `evaluation/segment_model_comparison.csv` | 分客群 vs 全客群同口径对比 |
 | `evaluation/model_score_bin_distribution_by_month.csv` | 本轮模型按月分箱占比、发起率和 PSI 组件 |
 {historical_section}
+{_woe_missing_results_section(train_dir=train_dir, report_dir=output_path.parent)}
 
 后续继续通过 `rmw report` 统一生成报告，避免人工改写 xlsx 中的计算结果。
 """
     missing_path.write_text(text, encoding="utf-8")
     return missing_path
+
+
+def _woe_missing_results_section(*, train_dir: Path | None, report_dir: Path) -> str:
+    summary_path = _find_woe_summary(train_dir=train_dir, report_dir=report_dir) if train_dir is not None else None
+    if summary_path and any((summary_path.parent / "images").glob("*_WOE.png")):
+        return """
+## 已补齐 — Top20 变量 WOE
+
+| 产出文件 | 内容 |
+|---|---|
+| `reports/woe_top_features/woe_top20_summary.csv` | Top20 变量分箱、WOE、IV 和人群占比 |
+| `reports/woe_top_features/images/` | Top20 变量 WOE 折线与人群占比柱图 |
+"""
+    if summary_path:
+        return """
+## 部分生成 — Top20 变量 WOE
+
+| 产出文件 | 内容 |
+|---|---|
+| `reports/woe_top_features/woe_top20_summary.csv` | Top20 变量分箱、WOE、IV 和人群占比 |
+
+WOE 汇总表已生成，但 PNG 图未生成或未注册。通常原因是当前环境缺少 `matplotlib`。
+"""
+    return """
+## 待生成 — Top20 变量 WOE
+
+Top20 变量 WOE 图需要训练阶段保留 row-level 特征值。当前已注册 artifact 不包含原始特征值，因此报告只写缺失说明，不伪造 WOE 图。
+"""
 
 
 def _read_json(path: Path) -> dict[str, Any]:

@@ -69,6 +69,23 @@ def _copy_if_exists(source: Path, target: Path) -> Path | None:
     return target
 
 
+def _register_woe_artifacts(path: Path, stage: str, artifact_dir: Path) -> None:
+    if not artifact_dir.exists():
+        return
+    for artifact in sorted([*artifact_dir.glob("woe_top*_summary.csv"), *artifact_dir.glob("images/*.png")]):
+        register_artifact(path, stage, artifact)
+
+
+def _copy_woe_artifacts(source_dir: Path, target_dir: Path) -> None:
+    if not source_dir.exists():
+        return
+    for source in sorted([*source_dir.glob("woe_top*_summary.csv"), *source_dir.glob("images/*.png")]):
+        relative = source.relative_to(source_dir)
+        target = target_dir / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+
+
 def _load_project_config(project_dir: Path) -> dict[str, Any]:
     return load_yaml(project_config_path(project_dir))
 
@@ -511,6 +528,7 @@ def cmd_train(args: argparse.Namespace) -> int:
                 "model.pkl",
             ]:
                 register_artifact(path, "train_baseline", f"modeling/{args.experiment}/{artifact}")
+            _register_woe_artifacts(path, "train_baseline", output_dir / "woe_top_features")
             append_decision(path, stage="train_baseline", decision="done", reason="LightGBM training completed from local feather data")
             mark_stage_done(path, "train_baseline")
             print(f"train complete: {output_dir}")
@@ -635,6 +653,7 @@ def cmd_report(args: argparse.Namespace) -> int:
         try:
             from risk_model_workbench.reporting.excel_report import generate_excel_report
 
+            _copy_woe_artifacts(train_dirs[0] / "woe_top_features", path / "reports" / "woe_top_features")
             excel_path = generate_excel_report(
                 eval_dir=path / "evaluation",
                 train_dir=train_dirs[0],
@@ -651,6 +670,7 @@ def cmd_report(args: argparse.Namespace) -> int:
             ]:
                 if sidecar.exists():
                     register_artifact(path, "report", sidecar)
+            _register_woe_artifacts(path, "report", path / "reports" / "woe_top_features")
         except Exception as exc:
             append_decision(path, stage="report", decision="excel_scaffold", reason=f"Excel report not generated: {exc}")
     if excel_path:

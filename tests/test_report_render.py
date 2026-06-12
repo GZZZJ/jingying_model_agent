@@ -1,4 +1,5 @@
 from pathlib import Path
+import base64
 import shutil
 
 from openpyxl import load_workbook
@@ -89,6 +90,9 @@ def test_imported_excel_report_layout(tmp_path):
     assert _find_cell(stability, "本轮模型分箱占比变化") is not None
     assert _find_cell_contains(stability, "001:") is not None
 
+    woe = workbook["Top变量WOE"]
+    assert _find_cell_contains(woe, "WOE charts require row-level feature values") is not None
+
     missing_text = output_path.with_name("model_report_missing_results.md").read_text(encoding="utf-8")
     assert "已补齐 — 历史版本横向对比" in missing_text
     assert "monthly_segment_metrics_oos_by_version.csv" in missing_text
@@ -104,6 +108,58 @@ def test_imported_excel_report_layout(tmp_path):
     assert len(workbook["模型效果-模型sloping"].conditional_formatting) == 0
     assert len(workbook["模型效果-意愿交叉风险（DEV-OOS）"].conditional_formatting) > 0
     assert len(workbook["模型稳定性"].conditional_formatting) > 0
+
+
+def test_report_embeds_top_feature_woe_sheet(tmp_path):
+    eval_dir = tmp_path / "evaluation"
+    train_dir = tmp_path / "modeling" / "main_lgbm"
+    input_dir = tmp_path / "modeling_input"
+    feature_dir = tmp_path / "feature_selection"
+    for directory in [eval_dir, train_dir, input_dir, feature_dir]:
+        directory.mkdir(parents=True)
+
+    woe_dir = train_dir / "woe_top_features"
+    image_dir = woe_dir / "images"
+    image_dir.mkdir(parents=True)
+    (woe_dir / "woe_top20_summary.csv").write_text(
+        "\n".join(
+            [
+                "feature,rank,gain,split_importance,bin_order,bin_label,lower_bound,upper_bound,is_missing_bin,split_value,good,bad,total,bad_rate,pop_pct,woe,iv_component,status,skip_reason",
+                "feature_a,1,30,5,0,Missing,,,True,DEV,10,1,11,0.0909,0.1,-1.2,0.02,ok,",
+                "feature_a,1,30,5,1,\"(-inf, 1]\",-inf,1,False,DEV,5,5,10,0.5,0.2,0.5,0.01,ok,",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    _write_tiny_png(image_dir / "001_feature_a_WOE.png")
+
+    output_path = tmp_path / "reports" / "model_report.xlsx"
+    generate_excel_report(
+        eval_dir=eval_dir,
+        train_dir=train_dir,
+        input_dir=input_dir,
+        feature_dir=feature_dir,
+        output_path=output_path,
+    )
+
+    workbook = load_workbook(output_path)
+    woe = workbook["Top变量WOE"]
+    assert _find_cell(woe, "Top 1: feature_a") is not None
+    assert _find_cell(woe, "Gain") is not None
+    assert len(woe._images) == 1
+
+    report_text = output_path.with_name("model_report.md").read_text(encoding="utf-8")
+    assert "## 七、Top变量WOE" in report_text
+    assert "feature_a" in report_text
+
+
+def _write_tiny_png(path: Path) -> None:
+    path.write_bytes(
+        base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="
+        )
+    )
 
 
 def _cell_below_header(ws, header: str):

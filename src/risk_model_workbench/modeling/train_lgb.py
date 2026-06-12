@@ -187,6 +187,22 @@ def train_lightgbm_from_feather(
         }
     ).sort_values("gain", ascending=False)
     importance.to_csv(output_dir / "feature_importance.csv", index=False, encoding="utf-8-sig")
+
+    explainability_cfg = config.get("explainability", {}).get("top_feature_woe", {})
+    if explainability_cfg.get("enabled", True):
+        from risk_model_workbench.explainability.woe import generate_top_feature_woe
+
+        generate_top_feature_woe(
+            raw,
+            importance,
+            output_dir=output_dir / "woe_top_features",
+            label_col=label_col,
+            split_col=split_col,
+            top_n=int(explainability_cfg.get("top_n", 20)),
+            n_bins=int(explainability_cfg.get("n_bins", 10)),
+            base_split_value=explainability_cfg.get("base_split_value", "DEV"),
+            missing_values=explainability_cfg.get("missing_sentinels", sentinels),
+        )
     with (output_dir / "model.pkl").open("wb") as handle:
         pickle.dump(model, handle)
 
