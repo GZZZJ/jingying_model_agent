@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from risk_model_workbench.config import load_yaml
+from risk_model_workbench.planning.steps import resolve_step_configuration
 from risk_model_workbench.paths import project_config_path
 
 
@@ -13,9 +14,7 @@ REQUIRED_FIELDS = [
     "request_id",
     "project",
     "target_column",
-    "id_columns",
     "split_column",
-    "experiments",
     "evaluation",
     "reports",
 ]
@@ -39,6 +38,10 @@ def validate_model_request(request_doc: dict[str, Any], project_dir: str | Path 
         if field not in metadata or metadata.get(field) in (None, "", []):
             errors.append(f"missing required field: {field}")
 
+    experiments = metadata.get("experiments")
+    experiment_description = str(metadata.get("experiment_description") or "").strip()
+    if experiments in (None, "", []) and not experiment_description:
+        errors.append("missing required field: experiments")
     if "experiments" in metadata and not isinstance(metadata.get("experiments"), list):
         errors.append("experiments must be a list")
     if "id_columns" in metadata and not isinstance(metadata.get("id_columns"), list):
@@ -56,6 +59,14 @@ def validate_model_request(request_doc: dict[str, Any], project_dir: str | Path 
     elif not _as_list(reports.get("outputs")):
         warnings.append("reports.outputs is empty")
 
+    try:
+        step_config = resolve_step_configuration(metadata, project_dir)
+        if not metadata.get("scenario_profile"):
+            warnings.append(f"scenario_profile inferred as {step_config['scenario_profile']}")
+    except ValueError as exc:
+        errors.append(str(exc))
+
+    configured_ids: list[Any] = []
     if project_dir:
         project_path = Path(project_dir).resolve()
         config_path = project_config_path(project_path)
@@ -74,6 +85,12 @@ def validate_model_request(request_doc: dict[str, Any], project_dir: str | Path 
             configured_ids = configured_data.get("id_columns") or []
             if configured_ids and metadata.get("id_columns") and metadata.get("id_columns") != configured_ids:
                 warnings.append(f"request id_columns differs from project.yml: {metadata.get('id_columns')} != {configured_ids}")
+
+    request_ids = _as_list(metadata.get("id_columns"))
+    if not request_ids and configured_ids:
+        warnings.append("request id_columns omitted; using project.yml data.id_columns")
+    elif not request_ids and not configured_ids:
+        errors.append("missing required field: id_columns (not found in request or project.yml)")
 
     return {
         "status": "ok" if not errors else "failed",

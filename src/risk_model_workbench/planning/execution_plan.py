@@ -8,6 +8,8 @@ from typing import Any
 
 import yaml
 
+from risk_model_workbench.planning.steps import implemented_step_ids_for_stage, resolve_step_configuration, step_params_for
+
 
 class _NoAliasDumper(yaml.SafeDumper):
     def ignore_aliases(self, data: Any) -> bool:
@@ -40,6 +42,25 @@ def _project_champions(project_path: str | Path) -> list[Any]:
     return _as_list(champions)
 
 
+def _experiments_from_metadata(metadata: dict[str, Any]) -> list[Any]:
+    experiments = metadata.get("experiments")
+    if isinstance(experiments, list) and experiments:
+        return experiments
+
+    description = str(metadata.get("experiment_description") or "").strip()
+    if not description:
+        return []
+
+    return [
+        {
+            "name": "baseline_from_description",
+            "method": "custom",
+            "segment": "all",
+            "description": description,
+        }
+    ]
+
+
 def _task(
     *,
     task_id: str,
@@ -47,6 +68,9 @@ def _task(
     depends_on: list[str],
     args: list[str],
     outputs: list[str],
+    scenario_profile: str,
+    step_ids: list[str],
+    step_params: dict[str, dict[str, Any]],
     workspace: str | None = None,
 ) -> dict[str, Any]:
     return {
@@ -60,6 +84,9 @@ def _task(
             "args": args,
         },
         "outputs": outputs,
+        "scenario_profile": scenario_profile,
+        "step_ids": step_ids,
+        "step_params": step_params,
     }
 
 
@@ -71,9 +98,12 @@ def create_execution_plan(request_doc: dict[str, Any], project_path: str | Path)
     workflow = metadata.get("workflow", "full_modeling")
     run_arg = "<run_id>"
     tasks: list[dict[str, Any]] = []
+    step_config = resolve_step_configuration(metadata, project_path)
+    scenario_profile = step_config["scenario_profile"]
 
     sample_checks = _as_list(metadata.get("sample_checks"), default=["sample_check_001"])
     sample_task_ids: list[str] = []
+    sample_step_ids = implemented_step_ids_for_stage(step_config, "sample_check")
     for index, item in enumerate(sample_checks, start=1):
         name = item.get("name") if isinstance(item, dict) else str(item)
         task_id = name or f"sample_check_{index:03d}"
@@ -85,6 +115,9 @@ def create_execution_plan(request_doc: dict[str, Any], project_path: str | Path)
                 depends_on=[],
                 args=["sample", "check", "--project", project, "--run-id", run_arg],
                 outputs=["sample_check/sample_summary.json", "sample_check/sample_check_report.md"],
+                scenario_profile=scenario_profile,
+                step_ids=sample_step_ids,
+                step_params=step_params_for(step_config, sample_step_ids),
             )
         )
 
@@ -99,18 +132,23 @@ def create_execution_plan(request_doc: dict[str, Any], project_path: str | Path)
             task_id = "feature_metadata"
             args = ["feature", "metadata", "--project", project, "--run-id", run_arg]
             outputs = ["feature_selection/feature_table_summary.csv", "feature_selection/feature_columns.csv"]
+            stage = "feature_metadata"
         elif normalized in {"d01_d02", "d01d02"}:
             task_id = "feature_d01_d02"
             args = ["feature", "d01-d02", "--project", project, "--run-id", run_arg, "--dry-run-sql"]
             outputs = ["feature_selection/d01_d02_run_summary.json", "feature_selection/d01_d02_final_remain_features.json"]
+            stage = "d01_d02_screening"
         elif normalized == "refine":
             task_id = "feature_refine"
             args = ["feature", "refine", "--project", project, "--run-id", run_arg, "--dry-run-sql"]
             outputs = ["feature_selection/stage_summary.json", "feature_selection/final_features.txt"]
+            stage = "feature_refine"
         else:
             task_id = f"feature_{normalized}"
             args = ["feature", normalized, "--project", project, "--run-id", run_arg]
             outputs = []
+            stage = "feature_refine"
+        step_ids = implemented_step_ids_for_stage(step_config, stage)
         tasks.append(
             _task(
                 task_id=task_id,
@@ -118,6 +156,9 @@ def create_execution_plan(request_doc: dict[str, Any], project_path: str | Path)
                 depends_on=feature_dependency,
                 args=args,
                 outputs=outputs,
+                scenario_profile=scenario_profile,
+                step_ids=step_ids,
+                step_params=step_params_for(step_config, step_ids),
             )
         )
         feature_dependency = [task_id]
@@ -125,7 +166,8 @@ def create_execution_plan(request_doc: dict[str, Any], project_path: str | Path)
 
     train_dep = feature_task_ids[-1:] or sample_task_ids[-1:]
     train_task_ids: list[str] = []
-    for experiment in metadata.get("experiments", []):
+    train_step_ids = implemented_step_ids_for_stage(step_config, "train_baseline")
+    for experiment in _experiments_from_metadata(metadata):
         name = experiment.get("name") if isinstance(experiment, dict) else str(experiment)
         task_id = f"train_{name}"
         train_task_ids.append(task_id)
@@ -140,9 +182,13 @@ def create_execution_plan(request_doc: dict[str, Any], project_path: str | Path)
                     f"modeling/{name}/prediction.parquet",
                     f"modeling/{name}/train_metrics.json",
                 ],
+                scenario_profile=scenario_profile,
+                step_ids=train_step_ids,
+                step_params=step_params_for(step_config, train_step_ids),
             )
         )
 
+    evaluate_step_ids = implemented_step_ids_for_stage(step_config, "evaluate")
     tasks.append(
         _task(
             task_id="evaluate_final",
@@ -150,6 +196,9 @@ def create_execution_plan(request_doc: dict[str, Any], project_path: str | Path)
             depends_on=train_task_ids,
             args=["evaluate", "--project", project, "--run-id", run_arg],
             outputs=["evaluation/evaluation_summary.json"],
+            scenario_profile=scenario_profile,
+            step_ids=evaluate_step_ids,
+            step_params=step_params_for(step_config, evaluate_step_ids),
         )
     )
 
@@ -160,6 +209,7 @@ def create_execution_plan(request_doc: dict[str, Any], project_path: str | Path)
     compare_args = ["compare", "--project", project, "--run-id", run_arg]
     if champion:
         compare_args.extend(["--champion", str(champion)])
+    compare_step_ids = implemented_step_ids_for_stage(step_config, "compare")
     tasks.append(
         _task(
             task_id="compare_final",
@@ -167,9 +217,13 @@ def create_execution_plan(request_doc: dict[str, Any], project_path: str | Path)
             depends_on=["evaluate_final"],
             args=compare_args,
             outputs=["evaluation/champion_challenger.json"],
+            scenario_profile=scenario_profile,
+            step_ids=compare_step_ids,
+            step_params=step_params_for(step_config, compare_step_ids),
         )
     )
 
+    report_step_ids = implemented_step_ids_for_stage(step_config, "report")
     tasks.append(
         _task(
             task_id="report_final",
@@ -177,6 +231,9 @@ def create_execution_plan(request_doc: dict[str, Any], project_path: str | Path)
             depends_on=["compare_final"],
             args=["report", "--project", project, "--run-id", run_arg],
             outputs=["reports/model_report.md", "reports/model_card.md", "reports/executive_summary.md"],
+            scenario_profile=scenario_profile,
+            step_ids=report_step_ids,
+            step_params=step_params_for(step_config, report_step_ids),
         )
     )
 
@@ -187,6 +244,11 @@ def create_execution_plan(request_doc: dict[str, Any], project_path: str | Path)
         "request_path": request_doc["path"],
         "project": project,
         "workflow": workflow,
+        "scenario_profile": scenario_profile,
+        "stage_steps": step_config["stage_steps"],
+        "step_params": step_config["step_params"],
+        "resolved_steps": step_config["resolved_steps"],
+        "planned_steps": step_config["planned_steps"],
         "created_at": datetime.now().isoformat(timespec="seconds"),
         "run_id_placeholder": run_arg,
         "tasks": tasks,

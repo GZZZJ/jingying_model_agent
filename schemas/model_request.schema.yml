@@ -5,20 +5,27 @@ required_fields:
   - request_id
   - project
   - target_column
-  - id_columns
   - split_column
-  - experiments
   - evaluation
   - reports
 field_notes:
-  request_id: Stable id for this modeling request.
+  request_id: Stable id for this modeling request. Builders may generate it automatically.
   project: Project workspace name, usually matching project.yml project.name.
+  workflow: CLI workflow value. UI builders may expose this as a localized task mode.
+  task_mode: Optional localized, human-readable task mode label.
   target_column: Label column.
-  id_columns: Primary key columns.
+  id_columns: Optional primary key columns. If omitted, validation may use project.yml data.id_columns.
   split_column: Train/OOS/OOT split column.
+  splits.oos: Optional OOS split values.
+  splits.oot: Optional OOT split values.
   sample_checks: Optional ordered sample-check task ids.
+  business_domain: Optional coarse business domain. Supported values are acquisition, preloan, inloan_risk, inloan_operation.
+  scenario_profile: Optional business-domain profile. Supported values include acquisition, preloan_credit_card, inloan_behavior_card, inloan_operation, acquisition_quality, acquisition_conversion, feature_gain_eval, credit_product_eval, fujie_gcard_main_lgbm.
+  stage_steps: Optional mapping from existing workflow stage names to registered step ids. Feature refine can include availability, missing-rate, constant-value, IV, correlation, random-noise importance, null-importance, and baseline-importance filters.
+  step_params: Optional mapping from registered step ids to parameter overrides, for example missing_rate_filter.threshold, constant_value_filter.max_unique_values, iv_filter.min_iv, or correlation_dedup.max_abs_corr.
   feature_selection.rounds: Ordered feature-selection rounds. Supported first-stage values are metadata, d01_d02, refine.
-  experiments: List of model experiments to train.
+  experiment_description: Optional one-line experiment description. If experiments is empty, planners may derive a baseline_from_description experiment.
+  experiments: List of model experiments to train. Each experiment may include an optional description.
   evaluation.metrics: Metrics required for evaluation.
   evaluation.champions: Existing score columns used for champion/challenger comparison.
   reports.outputs: Required final report artifacts.

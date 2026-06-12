@@ -23,42 +23,38 @@
           <a href="#modeling">建模实验</a>
           <a href="#evaluation">评估报告</a>
           <a href="#notes">补充说明</a>
+          <a href="#stageSteps">执行总览</a>
         </nav>
-        <div class="status-panel">
-          <span class="status-dot"></span>
-          <span id="validationSummary">等待填写</span>
-        </div>
       </aside>
 
       <main class="workspace">
         <header class="topbar">
-          <div class="project-strip">
-            <label for="projectSelect">项目</label>
-            <select id="projectSelect">
-              <option value="2026-05-fujie-gcard-v1">复借 G 卡</option>
-              <option value="">自定义项目</option>
-            </select>
-            <input id="customProject" class="compact-input hidden" placeholder="projects/<project>" />
+          <div class="template-strip">
+            <label for="templateSelect">模板</label>
+            <button type="button" id="newBlankRequest" class="new-document">新建空白需求</button>
+            <select id="templateSelect"></select>
+            <button type="button" id="applyTemplate">应用模板</button>
+            <input id="templateName" class="template-name-input" placeholder="自定义模板名称" />
+            <button type="button" id="saveTemplate">保存为模板</button>
+            <button type="button" id="deleteTemplate">删除模板</button>
+            <button type="button" id="restoreDraft">恢复草稿</button>
           </div>
           <div class="actions">
-            <button type="button" id="loadGcard">导入复借G卡模板</button>
+            <button type="button" id="previewMarkdown">预览 Markdown</button>
             <button type="button" id="copyMarkdown">复制 Markdown</button>
-            <button type="button" id="downloadMarkdown" class="primary">下载 .md</button>
+            <button type="button" id="downloadMarkdown" class="primary">下载 Markdown</button>
           </div>
         </header>
 
         <div class="content-grid">
           <form id="requestForm" class="form-stack">
-            <section id="basic" class="section">
+            <section id="basic" class="section is-active">
               <div class="section-head">
                 <h2>基本信息</h2>
                 <span>定义任务合同和建模目标</span>
               </div>
+              <input type="hidden" name="request_id" />
               <div class="field-grid two">
-                <label>
-                  <span>需求 ID</span>
-                  <input name="request_id" required />
-                </label>
                 <label>
                   <span>标题</span>
                   <input name="title" required />
@@ -68,13 +64,23 @@
                   <input name="owner" />
                 </label>
                 <label>
-                  <span>Workflow</span>
+                  <span>任务模式</span>
                   <select name="workflow">
-                    <option value="full_modeling">full_modeling</option>
-                    <option value="feature_selection">feature_selection</option>
-                    <option value="train_baseline">train_baseline</option>
-                    <option value="challenger_evaluation">challenger_evaluation</option>
+                    <option value="full_modeling">完整建模</option>
+                    <option value="feature_selection">特征筛选</option>
+                    <option value="train_baseline">训练基线</option>
+                    <option value="challenger_evaluation">挑战者评估</option>
                   </select>
+                </label>
+                <label>
+                  <span>业务域</span>
+                  <select name="business_domain">
+                    <option value="acquisition">获客</option>
+                    <option value="preloan">贷前</option>
+                    <option value="inloan_risk">贷中风险</option>
+                    <option value="inloan_operation">贷中经营</option>
+                  </select>
+                  <input type="hidden" name="scenario_profile" />
                 </label>
               </div>
               <label>
@@ -86,32 +92,23 @@
             <section id="sample" class="section">
               <div class="section-head">
                 <h2>样本与切分</h2>
-                <span>数据位置、标签、主键、DEV/OOT/OOS 口径</span>
+                <span>数据位置、标签、时间和 DEV/OOS/OOT 口径</span>
               </div>
-              <div class="field-grid three">
+              <input type="hidden" name="feature_location" />
+              <input type="hidden" name="id_columns" />
+              <input type="hidden" name="period_column" />
+              <div class="field-grid two">
                 <label>
                   <span>样本位置</span>
                   <input name="sample_location" placeholder="表名或 data/raw/sample.feather" />
-                </label>
-                <label>
-                  <span>特征数据位置</span>
-                  <input name="feature_location" placeholder="表名、目录或 feather/parquet" />
                 </label>
                 <label>
                   <span>标签字段</span>
                   <input name="target_column" required />
                 </label>
                 <label>
-                  <span>主键字段</span>
-                  <input name="id_columns" placeholder="uid, mdl_dte" required />
-                </label>
-                <label>
                   <span>时间字段</span>
                   <input name="time_column" />
-                </label>
-                <label>
-                  <span>分区字段</span>
-                  <input name="period_column" />
                 </label>
                 <label>
                   <span>切分字段</span>
@@ -122,8 +119,12 @@
                   <input name="dev_values" placeholder="DEV" />
                 </label>
                 <label>
-                  <span>OOT/OOS 取值</span>
-                  <input name="oot_values" placeholder="DEV-OOS, OOT, OOT-OOS" />
+                  <span>OOS 取值</span>
+                  <input name="oos_values" placeholder="DEV-OOS" />
+                </label>
+                <label>
+                  <span>OOT 取值</span>
+                  <input name="oot_values" placeholder="OOT, OOT-OOS" />
                 </label>
               </div>
               <label>
@@ -135,28 +136,159 @@
             <section id="features" class="section">
               <div class="section-head">
                 <h2>特征筛选</h2>
-                <span>选择默认步骤，也可以添加自定义要求</span>
+                <span>选择筛选方法和阈值；可用性过滤在执行阶段默认启用</span>
               </div>
-              <div class="check-grid" data-group="feature_steps">
-                <label><input type="checkbox" value="metadata" checked /> 特征元数据</label>
-                <label><input type="checkbox" value="d01_d02" checked /> D01/D02</label>
-                <label><input type="checkbox" value="refine" checked /> 宽表后收敛</label>
-                <label><input type="checkbox" value="leakage_check" /> 泄漏检查</label>
-                <label><input type="checkbox" value="stability_check" /> 稳定性检查</label>
+              <div class="system-step-note">
+                <div>
+                  <span>执行默认</span>
+                  <strong>可用性过滤</strong>
+                  <p>执行阶段默认剔除主键、标签、切分字段、历史分、随机列等非特征字段，不需要在需求新建阶段勾选。</p>
+                </div>
+                <button
+                  type="button"
+                  class="info-tip"
+                  aria-label="可用性过滤说明"
+                  data-tooltip="复借 G 卡链路会先按 base_columns、id_columns、标签、切分字段、历史分和随机列做排除，只保留能进入模型训练的真实特征。"
+                >?</button>
               </div>
-              <div class="field-grid two">
-                <label>
-                  <span>候选特征来源</span>
-                  <input name="feature_sources" placeholder="70张特征表、本地目录、特征字典等" />
-                </label>
-                <label class="switch-row">
-                  <input type="checkbox" name="require_sql_approval" checked />
-                  <span>真实拉数前必须 SQL 审批</span>
-                </label>
+              <div class="feature-method-grid" data-group="feature_refine_steps">
+                <div class="method-card">
+                  <div class="method-check">
+                    <label>
+                      <input type="checkbox" value="missing_rate_filter" checked />
+                      <span>缺失率过滤</span>
+                    </label>
+                    <button
+                      type="button"
+                      class="info-tip"
+                      aria-label="缺失率过滤说明"
+                      data-tooltip="剔除缺失率高于阈值的特征。GCard D01/D02 曾使用 empty < 0.95，三域默认口径通常为缺失率不超过 0.90。"
+                    >?</button>
+                  </div>
+                  <label class="method-param">
+                    <span>最大缺失率</span>
+                    <input name="missing_rate_threshold" type="number" min="0" max="1" step="0.01" />
+                  </label>
+                </div>
+                <div class="method-card">
+                  <div class="method-check">
+                    <label>
+                      <input type="checkbox" value="constant_value_filter" checked />
+                      <span>恒一值过滤</span>
+                    </label>
+                    <button
+                      type="button"
+                      class="info-tip"
+                      aria-label="恒一值过滤说明"
+                      data-tooltip="剔除非空取值过少的特征。GCard Feather 收敛中默认 drop_constant=true，即非空唯一取值数小于等于 1 时剔除。"
+                    >?</button>
+                  </div>
+                  <label class="method-param">
+                    <span>最大唯一值数</span>
+                    <input name="constant_max_unique_values" type="number" min="1" step="1" />
+                  </label>
+                </div>
+                <div class="method-card">
+                  <div class="method-check">
+                    <label>
+                      <input type="checkbox" value="iv_filter" checked />
+                      <span>IV 过滤</span>
+                    </label>
+                    <button
+                      type="button"
+                      class="info-tip"
+                      aria-label="IV 过滤说明"
+                      data-tooltip="剔除单变量区分度不足的特征。AIAgent 三域默认 IV 下限为 0.005，GCard D01/D02 也使用 IV >= 0.005。"
+                    >?</button>
+                  </div>
+                  <label class="method-param">
+                    <span>IV 下限</span>
+                    <input name="iv_min" type="number" min="0" step="0.001" />
+                  </label>
+                </div>
+                <div class="method-card">
+                  <div class="method-check">
+                    <label>
+                      <input type="checkbox" value="correlation_dedup" checked />
+                      <span>相关性去重</span>
+                    </label>
+                    <button
+                      type="button"
+                      class="info-tip"
+                      aria-label="相关性去重说明"
+                      data-tooltip="剔除高度相关的冗余特征。GCard 全局相关性阈值为 0.80，并按单变量 AUC 保留更强特征。"
+                    >?</button>
+                  </div>
+                  <div class="method-param-row">
+                    <label class="method-param">
+                      <span>相关性阈值</span>
+                      <input name="correlation_max_abs" type="number" min="0" max="1" step="0.01" />
+                    </label>
+                    <label class="method-param">
+                      <span>相关性方法</span>
+                      <select name="correlation_method">
+                        <option value="spearman">spearman</option>
+                        <option value="pearson">pearson</option>
+                      </select>
+                    </label>
+                  </div>
+                </div>
+                <div class="method-card">
+                  <div class="method-check">
+                    <label>
+                      <input type="checkbox" value="random_noise_importance" checked />
+                      <span>随机噪声重要性</span>
+                    </label>
+                    <button
+                      type="button"
+                      class="info-tip"
+                      aria-label="随机噪声重要性说明"
+                      data-tooltip="向训练数据注入随机噪声特征，用模型重要性判断真实特征是否强于噪声。GCard D03 使用 3 轮、5 个随机噪声特征、存活率 >= 0.50。"
+                    >?</button>
+                  </div>
+                  <p>适合在宽表后进一步压缩大量候选特征。</p>
+                </div>
+                <div class="method-card">
+                  <div class="method-check">
+                    <label>
+                      <input type="checkbox" value="null_importance_filter" checked />
+                      <span>空标签重要性</span>
+                    </label>
+                    <button
+                      type="button"
+                      class="info-tip"
+                      aria-label="空标签重要性说明"
+                      data-tooltip="打乱 Y 标后重复训练，比较真实重要性和空标签重要性，过滤伪相关特征。GCard D04 使用 20 轮空标签、75 分位阈值。"
+                    >?</button>
+                  </div>
+                  <p>用于降低偶然相关和过拟合风险。</p>
+                </div>
+                <div class="method-card">
+                  <div class="method-check">
+                    <label>
+                      <input type="checkbox" value="baseline_importance_filter" checked />
+                      <span>基线模型重要性</span>
+                    </label>
+                    <button
+                      type="button"
+                      class="info-tip"
+                      aria-label="基线模型重要性说明"
+                      data-tooltip="训练 LightGBM baseline 后按 gain importance 保留核心特征。GCard D05 配置 keep_top_n=500，实际最终入模 96 个特征。"
+                    >?</button>
+                  </div>
+                  <p>作为最终入模特征收敛和排序依据。</p>
+                </div>
+              </div>
+              <div class="system-step-note">
+                <div>
+                  <span>安全默认</span>
+                  <strong>真实拉数前必须 SQL 审批</strong>
+                  <p>涉及 DP 或 TMLSQLClient 的真实取数会先生成 dry-run SQL，获得明确批准后才允许执行。</p>
+                </div>
               </div>
               <label>
                 <span>特征筛选补充要求</span>
-                <textarea name="feature_notes" rows="3" placeholder="例如禁止字段、抽样策略、分批策略、相关性阈值等"></textarea>
+                <textarea name="feature_notes" rows="3" placeholder="例如候选特征来源、禁止字段、抽样策略、分批策略、筛选口径等"></textarea>
               </label>
             </section>
 
@@ -175,6 +307,10 @@
                   <input name="sample_variants" placeholder="all, e2e3, b2, ..." />
                 </label>
               </div>
+              <label>
+                <span>实验一句话描述</span>
+                <textarea name="experiment_description" rows="3" placeholder="例如先训练全客群 LightGBM baseline，再观察 OOS/OOT 稳定性和分客群表现。"></textarea>
+              </label>
               <div class="experiment-panel">
                 <div class="panel-title">
                   <span>实验列表</span>
@@ -249,20 +385,144 @@
                 <textarea name="extra_notes" rows="5" placeholder="例如 MOB1/MOB3 口径待确认、禁止修改 vendor、缺少真实数据时只能 scaffold"></textarea>
               </label>
             </section>
+
+            <section id="stageSteps" class="section">
+              <div class="section-head">
+                <h2>执行总览</h2>
+                <span>根据业务域、特征筛选、实验和评估配置自动整理 stage_steps</span>
+              </div>
+              <div class="execution-summary-note">
+                <p>前面已经选择或填写过的内容不会在这里重复勾选。这里用于最终确认执行步骤，未实现能力只进入 plan 元数据，不会生成假命令。</p>
+              </div>
+              <div class="execution-summary-grid" aria-label="执行步骤总览">
+                <div class="summary-panel">
+                  <h3>样本检查</h3>
+                  <ul class="summary-list" data-stage-summary="sample_check"></ul>
+                </div>
+                <div class="summary-panel">
+                  <h3>特征元数据</h3>
+                  <ul class="summary-list" data-stage-summary="feature_metadata"></ul>
+                </div>
+                <div class="summary-panel">
+                  <h3>D01/D02 筛选</h3>
+                  <ul class="summary-list" data-stage-summary="d01_d02_screening"></ul>
+                </div>
+                <div class="summary-panel">
+                  <h3>宽表 SQL</h3>
+                  <ul class="summary-list" data-stage-summary="build_wide_sql"></ul>
+                </div>
+                <div class="summary-panel">
+                  <h3>特征筛选</h3>
+                  <ul class="summary-list" data-stage-summary="feature_refine"></ul>
+                </div>
+                <div class="summary-panel">
+                  <h3>训练</h3>
+                  <ul class="summary-list" data-stage-summary="train_baseline"></ul>
+                </div>
+                <div class="summary-panel">
+                  <h3>评估</h3>
+                  <ul class="summary-list" data-stage-summary="evaluate"></ul>
+                </div>
+                <div class="summary-panel">
+                  <h3>对比</h3>
+                  <ul class="summary-list" data-stage-summary="compare"></ul>
+                </div>
+                <div class="summary-panel">
+                  <h3>报告</h3>
+                  <ul class="summary-list" data-stage-summary="report"></ul>
+                </div>
+              </div>
+              <details class="param-panel advanced-config">
+                <summary>
+                  <span>高级参数</span>
+                  <small>默认使用场景 profile 参数；只在明确需要覆盖时填写。</small>
+                </summary>
+                <div class="field-grid three">
+                  <label>
+                    <span>月最小样本量</span>
+                    <input name="sample_min_monthly_count" type="number" min="0" step="1" />
+                  </label>
+                  <label>
+                    <span>分数 PSI 告警线</span>
+                    <input name="score_psi_warn" type="number" min="0" step="0.01" />
+                  </label>
+                  <label>
+                    <span>月 KS 标准差上限</span>
+                    <input name="monthly_max_ks_std" type="number" min="0" step="0.01" />
+                  </label>
+                  <label class="switch-row">
+                    <input type="checkbox" name="sql_block_high_risk" checked />
+                    <span>SQL 高风险时阻断</span>
+                  </label>
+                </div>
+              </details>
+            </section>
+
+            <div class="form-nav-controls" aria-label="填写步骤控制">
+              <button type="button" id="prevSection">上一步</button>
+              <span id="sectionProgress">1 / 7 基本信息</span>
+              <button type="button" id="nextSection" class="primary">下一步</button>
+            </div>
           </form>
 
-          <aside class="preview-pane">
-            <div class="preview-head">
-              <div>
-                <h2>Markdown 预览</h2>
-                <p id="filenameHint">model_request.md</p>
-              </div>
-              <button type="button" id="resetForm">重置</button>
+          <aside class="helper-pane" aria-label="填写助手">
+            <div class="helper-card stage-helper">
+              <p class="eyebrow">当前填写阶段</p>
+              <h2 id="currentStageTitle">基本信息</h2>
+              <p id="currentStageHint">先定义需求合同、业务域和建模目标。</p>
             </div>
-            <pre id="markdownPreview"></pre>
+            <div class="helper-card">
+              <p class="eyebrow">需求摘要</p>
+              <p id="summaryText" class="summary-text">空白需求，等待填写。</p>
+              <div class="metric-grid" aria-label="需求配置概览">
+                <div>
+                  <span>业务域</span>
+                  <strong id="domainBadge">贷前</strong>
+                </div>
+                <div>
+                  <span>Profile</span>
+                  <strong id="profileBadge">preloan_credit_card</strong>
+                </div>
+                <div>
+                  <span>模板</span>
+                  <strong id="templateBadge">空白模板</strong>
+                </div>
+                <div>
+                  <span>步骤</span>
+                  <strong id="stepCountBadge">0</strong>
+                </div>
+              </div>
+            </div>
+            <div class="helper-card">
+              <div class="helper-title">
+                <h3>已选执行步骤</h3>
+                <span>stage_steps</span>
+              </div>
+              <ul id="stepSummary" class="helper-list"></ul>
+            </div>
+            <div class="helper-card">
+              <div class="helper-title">
+                <h3>下一步检查</h3>
+                <span>draft check</span>
+              </div>
+              <ul id="nextActions" class="helper-list"></ul>
+            </div>
           </aside>
         </div>
       </main>
+    </div>
+
+    <div id="markdownModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="markdownModalTitle">
+      <div class="markdown-modal">
+        <div class="modal-head">
+          <div>
+            <h2 id="markdownModalTitle">Markdown 预览</h2>
+            <p id="filenameHint">model_request.md</p>
+          </div>
+          <button type="button" id="closeMarkdownPreview" aria-label="关闭 Markdown 预览">关闭</button>
+        </div>
+        <pre id="markdownPreview"></pre>
+      </div>
     </div>
 
     <div id="toast" role="status" aria-live="polite"></div>
