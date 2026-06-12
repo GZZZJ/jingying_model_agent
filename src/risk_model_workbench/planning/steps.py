@@ -171,9 +171,9 @@ STEP_REGISTRY: dict[str, dict[str, Any]] = {
     "random_noise_importance": {
         "id": "random_noise_importance",
         "stage": "feature_refine",
-        "description": "Filter features using random-noise feature importance survival checks.",
-        "default_params": {"random_feature_count": 5, "rounds": 3, "min_survival_rate": 0.5},
-        "source_reference": "Fujie GCard D03 random importance flow",
+        "description": "Filter features using feature-select-v2 compatible random-column importance checks.",
+        "default_params": {"mode": "feature_select_v2", "bagging_rounds": 5, "bagging_fraction": 0.5, "thresholds": 0.95, "importance_types": ["split", "gain"]},
+        "source_reference": "feature-select-v2 D03 random importance flow",
         "implementation_status": "implemented",
     },
     "null_importance_filter": {

@@ -37,6 +37,25 @@ def _read_top_features(path: Path, limit: int = 20) -> list[dict[str, Any]]:
     return rows
 
 
+def _describe_d03(d03: dict[str, Any]) -> str:
+    mode = str(d03.get("mode", "feature_select_v2"))
+    if mode in {"feature_select_v2", "feature_select_v2_compatible", "v2"}:
+        importance_types = "/".join(d03.get("importance_types", ["split", "gain"]))
+        thresholds = d03.get("thresholds", d03.get("d03_thresholds", 0.95))
+        threshold_text = "不启用累计重要性尾部阈值" if thresholds is None else f"累计重要性阈值 {float(thresholds):.2f}"
+        return (
+            "随机数重要性筛选（feature-select-v2兼容）："
+            f"{int(d03.get('bagging_rounds', d03.get('d03_bagging_round', 5)))}轮bagging，"
+            f"采样比例 {float(d03.get('bagging_fraction', d03.get('d03_bagging_fraction', 0.5))):.2f}，"
+            f"单随机列，对比 {importance_types}，{threshold_text}"
+        )
+    return (
+        "随机噪声重要性筛选："
+        f"{int(d03.get('rounds', 3))}轮，{int(d03.get('random_feature_count', 5))}个随机噪声特征，"
+        f"存活率 >= {float(d03.get('min_survival_rate', 0.5)):.2f}"
+    )
+
+
 def build_feature_screening_summary(project_dir: str | Path) -> dict[str, Any]:
     """Build a source-backed summary of the current completed screening flow."""
     project_path = Path(project_dir).resolve()
@@ -47,7 +66,7 @@ def build_feature_screening_summary(project_dir: str | Path) -> dict[str, Any]:
     d01_d02 = _read_json(project_path / "runs" / "d01_d02_batch_select" / "results" / "d01_d02_run_summary.json")
     preferred_refine_dir = project_path / "runs" / "feature_refine_feather"
     configured_refine_dir = project_path / refine_config.get("output_dir", "runs/feature_refine_wide")
-    refine_dir = preferred_refine_dir if (preferred_refine_dir / "stage_summary.json").exists() else configured_refine_dir
+    refine_dir = configured_refine_dir if (configured_refine_dir / "stage_summary.json").exists() else preferred_refine_dir
     refine_summary_path = refine_dir / "stage_summary.json"
     refine_summary = _read_json(refine_summary_path)
     final_features_path = refine_dir / "final_500_features.txt"
@@ -65,7 +84,11 @@ def build_feature_screening_summary(project_dir: str | Path) -> dict[str, Any]:
     )
     d02_threshold = f"{train_value} vs {valid_value}，PSI <= {float(thresholds.get('psi', 0.10)):.2f}"
     global_corr = refine_config["global_corr"]
-    d03 = refine_config["d03_random_importance"]
+    d03 = dict(refine_config["d03_random_importance"])
+    if refine_summary.get("d03_mode"):
+        d03["mode"] = refine_summary["d03_mode"]
+    elif refine_dir.name == "feature_refine_feather":
+        d03["mode"] = "noise_survival"
     d04 = refine_config["d04_null_importance"]
     d05 = refine_config["d05_baseline_importance"]
 
@@ -107,11 +130,7 @@ def build_feature_screening_summary(project_dir: str | Path) -> dict[str, Any]:
         },
         {
             "step": 5,
-            "method": (
-                "随机噪声重要性筛选："
-                f"{int(d03['rounds'])}轮，{int(d03['random_feature_count'])}个随机噪声特征，"
-                f"存活率 >= {float(d03['min_survival_rate']):.2f}"
-            ),
+            "method": _describe_d03(d03),
             "remaining_features": int(refine_summary["after_d03_random_importance"]),
             "source": str(refine_summary_path.relative_to(project_path)),
         },
@@ -153,11 +172,12 @@ def build_feature_screening_summary(project_dir: str | Path) -> dict[str, Any]:
             "stage_summary": str(refine_summary_path.relative_to(project_path)),
         },
         "feature_select_v2_alignment": {
-            "status": "concept_aligned_not_exact_reimplementation",
-            "summary": (
-                f"当前{project_config['project']['display_name']} Feather 主线借鉴 feature-select-v2 的随机重要性、"
-                "Null Importance、Top Importance 思路，但阈值和局部实现为项目内自定义。"
+            "status": (
+                "d03_feature_select_v2_compatible"
+                if str(d03.get("mode", "feature_select_v2")) in {"feature_select_v2", "feature_select_v2_compatible", "v2"}
+                else "concept_aligned_not_exact_reimplementation"
             ),
+            "summary": _describe_d03(d03),
             "local_reference_paths": [
                 "my-skills/develop/feature-select-v2",
                 "vendor/feature-select-v2",

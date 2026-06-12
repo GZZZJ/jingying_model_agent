@@ -271,6 +271,16 @@ def lgb_params(cfg: dict[str, Any], seed: int) -> tuple[dict[str, Any], int, int
     return params, int(lgb_cfg.get("num_boost_round", 400)), int(lgb_cfg.get("early_stopping_rounds", 50))
 
 
+def screening_lgb_params(cfg: dict[str, Any], seed: int) -> tuple[dict[str, Any], int]:
+    """feature-select-v2 style screening params: no row/column sampling."""
+    params, num_boost_round, _ = lgb_params(cfg, seed)
+    params["subsample"] = 1.0
+    params["colsample_bytree"] = 1.0
+    params["feature_fraction"] = 1.0
+    params["bagging_fraction"] = 1.0
+    return params, num_boost_round
+
+
 def train_lgbm(parts: DatasetParts, features: list[str], cfg: dict[str, Any], seed: int):
     import lightgbm as lgb
     from sklearn.metrics import roc_auc_score
@@ -286,6 +296,20 @@ def train_lgbm(parts: DatasetParts, features: list[str], cfg: dict[str, Any], se
     return model, auc
 
 
+def train_feature_select_v2_model(train_x: pd.DataFrame, train_y: pd.Series, features: list[str], cfg: dict[str, Any], seed: int):
+    import lightgbm as lgb
+    from sklearn.metrics import roc_auc_score
+
+    params, num_boost_round = screening_lgb_params(cfg, seed)
+    num_boost_round = int(cfg.get("d03_random_importance", {}).get("num_boost_round", num_boost_round))
+    train_set = lgb.Dataset(train_x.loc[:, features], label=train_y, feature_name=features, free_raw_data=False)
+    callbacks = [lgb.log_evaluation(period=0)]
+    model = lgb.train(params=params, train_set=train_set, valid_sets=[train_set], valid_names=["INS"], num_boost_round=num_boost_round, callbacks=callbacks)
+    pred = model.predict(train_x.loc[:, features])
+    auc = float(roc_auc_score(train_y, pred))
+    return model, auc
+
+
 def model_importance(model, features: list[str]) -> pd.DataFrame:
     return pd.DataFrame(
         {
@@ -296,11 +320,74 @@ def model_importance(model, features: list[str]) -> pd.DataFrame:
     )
 
 
-def d03_random_importance(parts: DatasetParts, features: list[str], cfg: dict[str, Any]) -> tuple[list[str], pd.DataFrame]:
-    step_cfg = cfg["d03_random_importance"]
-    if not step_cfg.get("enabled", True):
-        return features, pd.DataFrame()
+def select_feature_select_v2_drops(
+    importance: pd.DataFrame,
+    random_col: str,
+    *,
+    thresholds: float | None,
+    importance_types: list[str],
+    weight: float = 1.0,
+) -> tuple[dict[str, set[str]], pd.DataFrame]:
+    """Replicate feature-select-v2 D03 random/zero/tail drop rules for one fitted model."""
+    if random_col not in set(importance["feature"]):
+        raise ValueError(f"random column {random_col!r} missing from importance frame")
 
+    random_row = importance.loc[importance["feature"] == random_col].iloc[0]
+    ranked_input = importance.copy()
+    real = ranked_input.loc[ranked_input["feature"] != random_col].copy()
+    random_thresholds = {kind: float(random_row[kind]) for kind in importance_types}
+
+    random_drop: set[str] = set()
+    zero_drop: set[str] = set()
+    for kind in importance_types:
+        values = pd.to_numeric(ranked_input[kind], errors="coerce").fillna(0)
+        random_imp = random_thresholds[kind]
+        random_drop.update(ranked_input.loc[(values < random_imp * weight) & (values > 0), "feature"])
+        zero_drop.update(ranked_input.loc[values == 0, "feature"])
+
+    threshold_drop: set[str] = set()
+    active = ranked_input.loc[~ranked_input["feature"].isin(random_drop | zero_drop)].copy()
+    if thresholds is not None and not active.empty:
+        threshold_value = float(thresholds)
+        for kind in importance_types:
+            ranked = active.sort_values(by=kind, ascending=False)
+            total = float(pd.to_numeric(ranked[kind], errors="coerce").fillna(0).sum())
+            if total <= 0:
+                continue
+            cumsum_pct = pd.to_numeric(ranked[kind], errors="coerce").fillna(0).cumsum() / total
+            threshold_drop.update(ranked.loc[cumsum_pct > threshold_value, "feature"])
+
+    dropped = random_drop | zero_drop | threshold_drop
+    rows = []
+    for row in real.itertuples(index=False):
+        reasons = []
+        if row.feature in random_drop:
+            reasons.append("random_importance")
+        if row.feature in zero_drop:
+            reasons.append("zero_importance")
+        if row.feature in threshold_drop:
+            reasons.append("threshold_tail")
+        rows.append(
+            {
+                "feature": row.feature,
+                "split": float(row.split),
+                "gain": float(row.gain),
+                "random_split_threshold": random_thresholds.get("split", float("nan")),
+                "random_gain_threshold": random_thresholds.get("gain", float("nan")),
+                "random_drop": row.feature in random_drop,
+                "zero_drop": row.feature in zero_drop,
+                "threshold_drop": row.feature in threshold_drop,
+                "dropped": row.feature in dropped,
+                "survives": row.feature not in dropped,
+                "drop_reason": ";".join(reasons),
+            }
+        )
+
+    return {"random": random_drop, "zero": zero_drop, "thresholds": threshold_drop}, pd.DataFrame(rows)
+
+
+def d03_noise_survival(parts: DatasetParts, features: list[str], cfg: dict[str, Any]) -> tuple[list[str], pd.DataFrame]:
+    step_cfg = cfg["d03_random_importance"]
     rng = np.random.default_rng(int(cfg["random_seed"]))
     random_count = int(step_cfg.get("random_feature_count", 5))
     rounds = int(step_cfg.get("rounds", 3))
@@ -348,6 +435,95 @@ def d03_random_importance(parts: DatasetParts, features: list[str], cfg: dict[st
     min_survival = math.ceil(rounds * min_survival_rate)
     kept = [feature for feature in features if survival[feature] >= min_survival]
     return kept, pd.DataFrame(rows)
+
+
+def d03_feature_select_v2(parts: DatasetParts, features: list[str], cfg: dict[str, Any]) -> tuple[list[str], pd.DataFrame]:
+    step_cfg = cfg["d03_random_importance"]
+    rng = np.random.default_rng(int(cfg["random_seed"]))
+    random_col = str(step_cfg.get("random_column", "random_col"))
+    if random_col in features:
+        raise ValueError(f"D03 random_column conflicts with real feature: {random_col}")
+
+    bagging_rounds = int(step_cfg.get("bagging_rounds", step_cfg.get("d03_bagging_round", 5)))
+    bagging_fraction = float(step_cfg.get("bagging_fraction", step_cfg.get("d03_bagging_fraction", 0.5)))
+    thresholds = step_cfg.get("thresholds", step_cfg.get("d03_thresholds", 0.95))
+    importance_types = list(step_cfg.get("importance_types", ["split", "gain"]))
+    weight = float(step_cfg.get("weight", 1.0))
+    iter_rounds = int(step_cfg.get("iter_rounds", step_cfg.get("iter_round_num", 1)))
+    random_low = int(step_cfg.get("random_low", 1))
+    random_high = int(step_cfg.get("random_high", 10))
+
+    train_x = parts.train_x.loc[:, features].copy()
+    train_x[random_col] = rng.integers(random_low, random_high + 1, size=len(train_x))
+    train_frame = train_x.copy()
+    target_col = "__d03_target"
+    train_frame[target_col] = parts.train_y.reset_index(drop=True).to_numpy()
+    dropped_all: set[str] = set()
+    rows = []
+
+    for bagging_index in range(bagging_rounds):
+        sample_seed = int(rng.integers(10000))
+        bag_frame = train_frame.sample(frac=bagging_fraction, random_state=sample_seed).reset_index(drop=True)
+        bag_x = bag_frame.drop(columns=[target_col])
+        bag_y = bag_frame[target_col].astype(int)
+        model_features = features + [random_col]
+        final_drop_sets = {"random": set(), "zero": set(), "thresholds": set()}
+        final_detail = pd.DataFrame()
+        final_iter_index = 0
+        train_auc = float("nan")
+
+        for iter_index in range(iter_rounds):
+            final_iter_index = iter_index
+            model, train_auc = train_feature_select_v2_model(
+                bag_x.loc[:, model_features],
+                bag_y,
+                model_features,
+                cfg,
+                seed=int(cfg["random_seed"]) + 100 + bagging_index * 100 + iter_index,
+            )
+            importance = model_importance(model, model_features)
+            final_drop_sets, final_detail = select_feature_select_v2_drops(
+                importance,
+                random_col,
+                thresholds=thresholds,
+                importance_types=importance_types,
+                weight=weight,
+            )
+            dropped_this_iter = set().union(*final_drop_sets.values())
+            model_features = sorted(dropped_this_iter) + [random_col]
+            if not dropped_this_iter:
+                break
+
+        dropped_round = set().union(*final_drop_sets.values())
+        real_dropped_round = dropped_round - {random_col}
+        dropped_all.update(real_dropped_round)
+        print(f"[D03-v2] bagging_round={bagging_index} n_feat={len(features)} train_auc={train_auc:.4f} "
+              f"dropped={len(real_dropped_round)} kept={len(features) - len(real_dropped_round)}")
+        if not final_detail.empty:
+            final_detail = final_detail.copy()
+            final_detail.insert(0, "round", bagging_index)
+            final_detail.insert(1, "iteration", final_iter_index)
+            final_detail["mode"] = "feature_select_v2"
+            final_detail["train_auc"] = train_auc
+            final_detail["valid_auc"] = train_auc
+            final_detail["bagging_fraction"] = bagging_fraction
+            rows.extend(final_detail.to_dict("records"))
+
+    kept = [feature for feature in features if feature not in dropped_all]
+    return kept, pd.DataFrame(rows)
+
+
+def d03_random_importance(parts: DatasetParts, features: list[str], cfg: dict[str, Any]) -> tuple[list[str], pd.DataFrame]:
+    step_cfg = cfg["d03_random_importance"]
+    if not step_cfg.get("enabled", True):
+        return features, pd.DataFrame()
+
+    mode = str(step_cfg.get("mode", "feature_select_v2"))
+    if mode in {"feature_select_v2", "feature_select_v2_compatible", "v2"}:
+        return d03_feature_select_v2(parts, features, cfg)
+    if mode in {"noise_survival", "workbench_noise_survival"}:
+        return d03_noise_survival(parts, features, cfg)
+    raise ValueError(f"Unknown d03_random_importance mode: {mode}")
 
 
 def d04_null_importance(parts: DatasetParts, features: list[str], cfg: dict[str, Any]) -> tuple[list[str], pd.DataFrame]:
@@ -529,6 +705,7 @@ def main(argv: list[str] | None = None) -> int:
             "initial_features": len(initial_features),
             "available_features": len(available_features),
             "after_global_corr": len(corr_features),
+            "d03_mode": str(cfg.get("d03_random_importance", {}).get("mode", "feature_select_v2")),
             "after_d03_random_importance": len(d03_features),
             "after_d04_null_importance": len(d04_features),
             "final_features": len(final_features),

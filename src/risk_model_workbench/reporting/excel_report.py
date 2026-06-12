@@ -1104,13 +1104,18 @@ def _screening_steps_frame(stage_summary: dict[str, Any], feature_dir: Path) -> 
                     "来源": [row.get("source") for row in rows],
                 }
             )
+    d03_mode = str(stage_summary.get("d03_mode", "noise_survival"))
+    if d03_mode in {"feature_select_v2", "feature_select_v2_compatible", "v2"}:
+        d03_label = "随机数重要性筛选（feature-select-v2兼容）：单随机列对比 split/gain 并剔除尾部重要性特征"
+    else:
+        d03_label = "随机噪声重要性筛选：剔除弱于噪声的真实特征"
     rows = [
         ("原始候选变量总数", "original_candidate_features"),
         ("分表基础预筛：缺失率、相关性、IV", "d01_kept_features"),
         ("稳定性筛选：DEV vs OOT PSI", "d02_kept_features"),
         ("Feather观察样本可用特征", "feather_available_features"),
         ("全局相关性去重：按单变量AUC保留更强特征", "after_global_corr"),
-        ("随机噪声重要性筛选：剔除弱于噪声的真实特征", "after_d03_random_importance"),
+        (d03_label, "after_d03_random_importance"),
         ("空标签重要性筛选：保留显著高于空标签分布的特征", "after_d04_null_importance"),
         ("最终训练特征", "final_training_features"),
     ]

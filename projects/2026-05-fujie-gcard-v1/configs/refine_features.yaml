@@ -61,11 +61,19 @@ feature_refine:
 
   d03_random_importance:
     enabled: true
-    random_feature_count: 5
-    rounds: 3
-    random_threshold: max
-    min_survival_rate: 0.50
-    zero_importance_drop: true
+    mode: feature_select_v2
+    random_column: random_col
+    random_low: 1
+    random_high: 10
+    bagging_rounds: 5
+    bagging_fraction: 0.50
+    num_boost_round: 1000
+    thresholds: 0.95
+    importance_types:
+      - split
+      - gain
+    weight: 1.0
+    iter_rounds: 1
 
   d04_null_importance:
     enabled: true

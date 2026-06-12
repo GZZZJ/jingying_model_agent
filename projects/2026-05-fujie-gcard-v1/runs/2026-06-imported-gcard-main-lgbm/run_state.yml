@@ -3,7 +3,7 @@ project: /Users/guzijun/Desktop/AI攻坚/jingying_model_agent/projects/2026-05-f
 workflow: imported_gcard_main_lgbm
 created_at: '2026-06-09T11:09:33'
 status: imported
-current_stage: report
+current_stage: feature_refine
 stages:
   validate_config:
     status: done
@@ -27,12 +27,13 @@ stages:
     status: pending
     artifacts: []
   feature_refine:
-    status: done
+    status: scaffold
     artifacts:
     - feature_selection/final_features.txt
     - feature_selection/feature_availability.csv
     - feature_selection/feature_stage_summary.json
-    finished_at: '2026-06-09T11:09:34'
+    finished_at: '2026-06-12T17:53:50'
+    started_at: '2026-06-12T17:53:49'
   train_baseline:
     status: done
     artifacts:
@@ -159,4 +160,4 @@ decisions:
   decision: done
   reason: Excel report generated from standard train and evaluation artifacts
   created_at: '2026-06-09T19:26:42'
-updated_at: '2026-06-09T19:26:42'
+updated_at: '2026-06-12T17:53:50'
