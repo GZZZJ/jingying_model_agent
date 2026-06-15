@@ -1,6 +1,6 @@
 {
-  "sql_path": "/Users/guzijun/Desktop/AI攻坚/jingying_model_agent/projects/2026-05-fujie-gcard-v1/queries/06_build_d01_d02_wide_table.sql",
-  "feature_map_path": "/Users/guzijun/Desktop/AI攻坚/jingying_model_agent/projects/2026-05-fujie-gcard-v1/runs/d01_d02_batch_select/results/d01_d02_wide_feature_map.csv",
+  "sql_path": "/root/notebook/自动化建模/jy-model-agent/projects/2026-05-fujie-gcard-v1/queries/06_build_d01_d02_wide_table.sql",
+  "feature_map_path": "/root/notebook/自动化建模/jy-model-agent/projects/2026-05-fujie-gcard-v1/runs/d01_d02_batch_select/results/d01_d02_wide_feature_map.csv",
   "feature_tables": 59,
   "features": 2843,
   "renamed_duplicate_features": 44

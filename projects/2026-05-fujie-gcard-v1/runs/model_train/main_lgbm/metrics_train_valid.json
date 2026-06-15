@@ -1,13 +1,13 @@
 {
-  "train_auc": 0.9386036640514402,
-  "valid_auc": 0.9363136508774058,
-  "train_ks": 0.7342545813811397,
-  "valid_ks": 0.7356204499371735,
-  "auc_gap": 0.002290013174034433,
-  "train_samples": 3600000,
-  "valid_samples": 1200000,
-  "train_bad_rate": 0.15294916666666666,
-  "valid_bad_rate": 0.12839333333333333,
-  "best_iteration": 1000,
-  "train_time_seconds": 167.0
+  "train_auc": 0.9422270496708375,
+  "valid_auc": 0.9352197575734192,
+  "train_ks": 0.7411840255486482,
+  "valid_ks": 0.7349731351317208,
+  "auc_gap": 0.0070072920974182384,
+  "train_samples": 365051,
+  "valid_samples": 121681,
+  "train_bad_rate": 0.15267455780151268,
+  "valid_bad_rate": 0.1290258955794249,
+  "best_iteration": 340,
+  "train_time_seconds": 30.5
 }

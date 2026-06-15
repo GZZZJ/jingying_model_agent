@@ -1,0 +1,7 @@
+{
+  "sql_path": "/root/notebook/自动化建模/jy-model-agent/projects/2026-05-fujie-gcard-v1/queries/07_build_300_feature_wide_table.sql",
+  "feature_map_path": "/root/notebook/自动化建模/jy-model-agent/projects/2026-05-fujie-gcard-v1/runs/d01_d02_batch_select/results/d01_d02_wide_feature_map_300.csv",
+  "feature_tables": 48,
+  "features": 300,
+  "renamed_duplicate_features": 0
+}

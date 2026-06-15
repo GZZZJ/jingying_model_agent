@@ -35,6 +35,10 @@ from jingying_agent.feature_refine import (
 
 FEATHER_PATH = "/root/notebook/draft/十分之一观察样本.feather"
 OUTPUT_DIR_NAME = "runs/feature_refine_feather"
+# Features flagged for potential data leakage (e.g. future-dependent). NOT auto-dropped.
+LEAKAGE_FLAGGED_FEATURES = [
+    "unpaid_principal_future_light_add_heavy",
+]
 
 
 def resolve_project_path(project_dir: Path, value: str | Path) -> Path:
@@ -345,6 +349,12 @@ def main() -> int:
     d05_importance.to_csv(output_dir / "d05_baseline_importance.csv", index=False, encoding="utf-8-sig")
     (output_dir / "final_500_features.txt").write_text("\n".join(final_features) + "\n", encoding="utf-8")
 
+    # Write leakage-flagged final features (with annotations) for modeling input
+    leakage_in_final = [f for f in LEAKAGE_FLAGGED_FEATURES if f in final_features]
+    final_txt_lines = [f"# LEAKAGE-WARN: {f} - contains indicators that may depend on future information; review before production use" for f in leakage_in_final]
+    final_txt_lines += final_features
+    (output_dir / "final_features.txt").write_text("\n".join(final_txt_lines) + "\n", encoding="utf-8")
+
     # Summary
     summary = {
         "source": "feather",
@@ -357,10 +367,12 @@ def main() -> int:
         "after_d04_null_importance": len(d04_features),
         "final_features": len(final_features),
         "d05_valid_auc": d05_auc,
-        "rand_flag_threshold": 0.02,
+        "rand_flag_threshold": rand_threshold,
         "train_samples": len(parts.train_x),
         "valid_samples": len(parts.valid_x),
         "config": str(config_path),
+        "leakage_flagged_features": LEAKAGE_FLAGGED_FEATURES,
+        "leakage_flagged_in_final": leakage_in_final,
     }
     with (output_dir / "stage_summary.json").open("w", encoding="utf-8") as f:
         json.dump(summary, f, ensure_ascii=False, indent=2)

@@ -1,6 +1,6 @@
 {
   "experiment": "main_lgbm",
-  "data_source": "/root/notebook/draft/筛选96维度特征样本.feather",
+  "data_source": "/root/notebook/draft/十分之一观察样本.feather",
   "train_values": [
     "DEV"
   ],
@@ -14,8 +14,8 @@
   "label_column": "ftr_30d_ord_flag",
   "split_column": "final_flag",
   "feature_list_path": "/root/notebook/自动化建模/jy-model-agent/projects/2026-05-fujie-gcard-v1/runs/modeling_feature_set/feature_list.txt",
-  "candidate_feature_count": 96,
-  "actual_feature_count": 96,
+  "candidate_feature_count": 300,
+  "actual_feature_count": 300,
   "algorithm": "lightgbm",
   "params": {
     "objective": "binary",
@@ -31,9 +31,9 @@
     "verbose": -1
   },
   "random_seed": 0,
-  "train_samples": 3600000,
-  "valid_samples": 1200000,
-  "train_bad_rate": 0.15294916666666666,
-  "valid_bad_rate": 0.12839333333333333,
-  "best_iteration": 1000
+  "train_samples": 365051,
+  "valid_samples": 121681,
+  "train_bad_rate": 0.15267455780151268,
+  "valid_bad_rate": 0.1290258955794249,
+  "best_iteration": 340
 }

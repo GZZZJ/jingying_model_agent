@@ -1,0 +1,398 @@
+{
+  "ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_final_7fst_9all_10cur_11lst_orders_info_df_feature": [
+    "ord_apl_sum_prc_amt_90_day",
+    "ord_apl_max_prc_amt_180_day",
+    "his_90_day_csh_apl_ord_cnt_his_rto",
+    "ord_apl_sum_prc_amt_360_day",
+    "his_180_day_csh_apl_ord_cnt_his_rto",
+    "his_360_day_csh_apl_ord_cnt",
+    "ord_apl_fal_cnt_his",
+    "ord_apl_min_prc_amt_his",
+    "ddf_ato_fst_ord_crt_dte",
+    "ddf_mdl_lst_ord_crt_dte",
+    "pst_ord_apl_suc_max_prc_amt_180_day",
+    "max_ddf_lag_crt_dte",
+    "ddf_fst_adt_fst_ord_crt_dte_mnt",
+    "max_ddf_suc_lag_crt_dte",
+    "ord_apl_suc_max_stg_num_his",
+    "fst_fal_ord_prc_amt",
+    "ord_apl_suc_max_prc_amt_his",
+    "ddf_fst_lst_ord_crt_dte",
+    "min_ddf_lag_crt_tim_mnt",
+    "ord_apl_fal_cnt_360_day",
+    "ord_apl_suc_sum_prc_amt_90_day"
+  ],
+  "ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_30light_cross_heavy_inner_behaviour_df_feature": [
+    "unpaid_principal_future_light_add_heavy",
+    "his_light_limit_divide_btch_avl_limit",
+    "light_d720_sum_faqi_stg_num_divide_heavy_d720_sum_faqi_stg_num"
+  ],
+  "ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_pdm_risk_dz_model_final_order_info_df_feature": [
+    "d360_apl_ord_ddf_mdl_ord_crt_dte_min",
+    "d180_apl_ord_days_cnt_all",
+    "d30_d60_apl_ord_cnt_rat",
+    "d360_apl_ord_cnt_all",
+    "d30_d360_suc_ord_prc_amt_avg_rat_all",
+    "d7_d360_suc_ord_prc_amt_avg_rat_all",
+    "d180_suc_ord_cnt_all",
+    "d30_d90_suc_ord_prc_amt_avg_rat_all",
+    "d15_suc_ord_prc_amt_avg_all",
+    "d30_apl_ord_ddf_mdl_ord_crt_dte_min",
+    "d360_apl_ord_ddf_mdl_ord_crt_dte_max",
+    "d360_suc_ord_ddf_mdl_ord_crt_dte_min",
+    "d180_apl_ord_ddf_mdl_ord_crt_dte_max",
+    "d60_d90_apl_ord_cnt_rat_all",
+    "d90_apl_ord_prc_amt_avg",
+    "d60_apl_ord_prc_amt_per_stg_avg_all",
+    "d90_d180_apl_ord_cnt_rat",
+    "d360_apl_ord_prc_amt_min",
+    "d15_d360_apl_ord_prc_amt_avg_rat",
+    "d60_apl_ord_prc_amt_min"
+  ],
+  "ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_final_22pip_heavy_cross_info_df_feature": [
+    "cnt_event_result_1_uid_recent_days_120",
+    "cnt_other_info_cash_uid_recent_days_30",
+    "first_day_diff_event_result_0_event_type_loan_all",
+    "max_amt_other_info_manual_repay",
+    "n_unique_other_info_event_type_credit",
+    "succloan_stage_num_mean_all",
+    "per_event_type_limit_all",
+    "min_amt_event_type_credit_event_result_1",
+    "median_amt_channel_hb_microcredit_lv1_all",
+    "first_amt_event_type_credit_all",
+    "div_amt_event_type_repay_loan",
+    "cnt_event_type_limit_type_heavy_all",
+    "cnt_event_type_loan_type_heavy_all",
+    "stddev_day_diff_shift1_event_type_repay_all",
+    "last_amt_channel_hb_microcredit_lv1_all",
+    "min_amt_event_type_repay_recent_180",
+    "max_amt_type_light",
+    "succloan_day_diff_reud_stage_num_sum_all",
+    "max_amt_event_type_repay_recent_60"
+  ],
+  "ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_final_8active_dau_feature": [
+    "dau_90d",
+    "max_con_dau_7d",
+    "ddf_mdl_max_con_dau_dt_90d",
+    "ddf_mdl_max_con_dau_dt_30d"
+  ],
+  "ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_final_22order_calculate_stage_order_info_df_feature": [
+    "cnt_avg_ord_span_30d",
+    "mdt_lst_30d_90d_ord_cnt_typ_btch_rte",
+    "cnt_avg_ord_span_30d_90d"
+  ],
+  "ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_final_8active_device_extra_1_df_feature": [
+    "ddf_lst_app_str_tim_to_mdl_tim_sec"
+  ],
+  "ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_final_7fst_9all_10cur_11lst_orders_info_new_df_feature": [
+    "his_720_day_csh_apl_ord_cnt_his_rto",
+    "ord_apl_cnt_07_12",
+    "ord_apl_cnt_13_18"
+  ],
+  "ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_pdm_risk_dz_model_account_lmt_feature_sample_final_df_feature": [
+    "rsk_avl_lmt_ch_les_10000_cnt_3m",
+    "rsk_avl_lmt_ch_les_500_cnt_12m",
+    "rsk_avl_lmt_ch_les_1000_cnt_3m",
+    "rsk_avl_lmt_ch_les_5000_rate_1m",
+    "used_rate_ch_grt_0p95_rate_1m",
+    "used_rate_ch_grt_0p5_cnt_3m_suc",
+    "used_rate_ch_grt_0p8_cnt_1m_suc",
+    "min_rsk_lmt_rate_bt_ch_3m"
+  ],
+  "ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_final_12his_rep_ability_df_feature": [
+    "stg_pln_max_rep_prc_1m_his",
+    "stg_pln_sum_rep_prc_his_fst_ord",
+    "lst_rep_prc"
+  ],
+  "ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_final_8active_page_view_n_click_cnt_feature": [
+    "clk_cnt_14d"
+  ],
+  "ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_account_lmt_feature_sample_all_final_df_feature": [
+    "min_rsk_lmt_rate_12m_bt_ch",
+    "avg_avl_lmt_lft_rep_prc_3m_cash_1m",
+    "max_avl_lmt_lft_rep_prc_1m_cash_3m",
+    "min_avl_lmt_lft_rep_prc_2m_cash_3m",
+    "rsk_lmt_rate_ch_1m_grt_0p2_rate_6m",
+    "min_rsk_avl_lmt_12m_bt_ch",
+    "rsk_avl_lmt_ch_1m_les_10000_cnt_12m",
+    "min_rsk_avl_lmt_3m_bt_ch",
+    "rsk_avl_lmt_ch_1m_les_500_cnt_3m",
+    "rsk_lmt_rate_ch_1m_grt_0p9_cnt_6m",
+    "rsk_avl_lmt_ch_1m_les_500_cnt_12m",
+    "avg_avl_lmt_lft_rep_prc_all_cash_12m",
+    "rsk_lmt_rate_ch_1m_grt_0p5_rate_6m",
+    "rsk_avl_lmt_ch_1m_les_1000_rate_6m",
+    "rsk_lmt_rate_ch_1m_grt_0p8_cnt_1m",
+    "rsk_avl_lmt_ch_1m_les_500_rate_3m"
+  ],
+  "ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_final_5account_extra_df_feature": [
+    "sum_avb_lmt_2m_v2",
+    "cnt_avb_lmt_2m_v2",
+    "avg_lmt_use_rat_2m_v2"
+  ],
+  "ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_final_25_cross_inner_behaviour_df_feature": [
+    "d360_max_faqi_prc_amt_divide_rsk_avl_lmt_cash",
+    "d180_ontimrepay_thismon_sum_larger_than_rsk_avl_lmt_cash_count_sum",
+    "d90_due_repay_amt_avg_divide_d90_faqi_trade_amt_avg",
+    "d720_faqi_trade_amt_larger_than_unpaid_principal_tot_amt_t_day_count_sum",
+    "his_due_repay_amt_avg_divide_his_faqi_trade_amt_avg",
+    "d720_faqi_trade_amt_larger_than_due_repay_amt_by_mon_count_sum",
+    "d1080_due_repay_amt_sum_divide_d1080_faqi_trade_amt_sum",
+    "d1080_avg_due_pay_amt_sum_by_mon_divide_rsk_adt_lmt_cash",
+    "d1080_max_faqi_prc_amt_divide_rsk_adt_lmt_cash",
+    "his_max_faqi_prc_amt_divide_max_ontim_amt_sum_mon",
+    "d180_unpaid_principal_tot_amt_t_day_divide_rsk_avl_lmt_cash_his_t_day_max",
+    "his_due_repay_amt_sum_divide_his_faqi_trade_amt_sum",
+    "d180_max_faqi_prc_amt_divide_rsk_adt_lmt_cash",
+    "d720_due_repay_amt_avg_divide_d720_faqi_trade_amt_avg",
+    "d720_max_faqi_prc_amt_divide_rsk_adt_lmt_cash",
+    "his_trade_fail_count_mon_divide_his_trade_success_count_mon",
+    "d90_max_due_prc_amt_divide_rsk_adt_lmt_cash",
+    "d360_faqi_trade_amt_larger_than_unpaid_principal_tot_amt_t_day_count_sum",
+    "his_max_faqi_prc_amt_divide_max_due_pay_amt_sum_mon",
+    "his_trade_fail_amt_sum_mon_divide_his_trade_success_amt_sum_mon",
+    "d1080_unpaid_principal_tot_amt_t_day_divide_rsk_adt_lmt_cash_his_t_day_max",
+    "d1080_due_repay_amt_avg_divide_d1080_faqi_trade_amt_avg",
+    "his_max_faqi_prc_amt_divide_unpaid_principal_tot",
+    "d180_max_due_prc_amt_divide_d180_max_faqi_prc_amt",
+    "d720_max_adv_repay_amt_divide_d720_max_faqi_prc_amt",
+    "d720_trade_fail_count_mon_divide_his_trade_success_count_mon",
+    "d360_ovdrepay_amt_sum_divide_ontimrepay_amt_sum",
+    "d90_advrepay_amt_sum_divide_ontimrepay_amt_sum",
+    "d180_max_ovd_repay_amt_divide_d180_max_fail_prc_amt",
+    "d90_avg_due_pay_amt_sum_by_mon_divide_rsk_adt_lmt_cash",
+    "d720_trade_fail_amt_sum_mon_divide_his_trade_success_amt_sum_mon"
+  ],
+  "ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_final_used_lmt_trend_time_series_df_feature": [
+    "6m_used_lmt_first_der_max",
+    "6m_used_lmt_first_der_min",
+    "18m_used_lmt_second_der_min",
+    "6m_used_lmt_first_der_median",
+    "18m_used_lmt_second_der_sum",
+    "12m_used_lmt_second_der_sum",
+    "12m_used_lmt_first_der_sum",
+    "12m_used_lmt_first_der_mean_diff",
+    "3m_used_lmt_second_der_sum",
+    "3m_used_lmt_first_der_max",
+    "3m_used_lmt_first_der_sum",
+    "12m_used_lmt_first_der_avg",
+    "6m_used_lmt_first_der_sum",
+    "3m_used_lmt_first_der_mean_diff",
+    "18m_used_lmt_first_der_sum",
+    "6m_used_lmt_second_der_sum",
+    "3m_used_lmt_second_der_mean_diff",
+    "6m_used_lmt_second_der_min",
+    "3m_used_lmt_first_der_great_0_count",
+    "12m_used_lmt_second_der_max",
+    "6m_used_lmt_first_der_mean_diff",
+    "3m_used_lmt_first_der_small_0_sum",
+    "18m_used_lmt_first_der_mean_rto",
+    "18m_used_lmt_second_der_small_0_count",
+    "3m_used_lmt_first_der_mean_rto"
+  ],
+  "ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_off_dp_dz_inner_behavior_order_enhanced_aggregation_feature": [
+    "d90_aplord_suc_month_cnt",
+    "d730_aplord_amt_grt_fst_month_rto"
+  ],
+  "ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_final_14ftr_rep_pressure_df_feature": [
+    "stg_pln_sum_prc_amt_6m_12m_rto_ftr",
+    "stg_pln_min_prc_amt_3m_ftr",
+    "stg_pln_sum_prc_amt_1m_2m_rto_ftr",
+    "stg_pln_sum_prc_amt_3m_6m_rto_ftr"
+  ],
+  "ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_final_14ftr_rep_pressure_trend_df_feature": [
+    "stg_pln_cnt_3m_ftr_adv_rto_all",
+    "stg_pln_sum_prc_amt_1m_3m_ftr_rto_all",
+    "stg_pln_sum_prc_amt_1m_ftr_his_rep_rto_all",
+    "stg_pln_sum_prc_amt_12m_ftr_his_rep_rto_cash",
+    "stg_pln_cnt_6m_12m_ftr_rto_all",
+    "stg_pln_cnt_1m_3m_ftr_rto_all",
+    "stg_pln_sum_prc_amt_6m_ftr_his_rto_all",
+    "stg_pln_min_prc_amt_12m_ftr_his_rto_cash",
+    "stg_pln_avg_prc_amt_6m_12m_ftr_rto_all",
+    "stg_pln_max_prc_amt_12m_ftr_his_rep_rto_cash",
+    "stg_pln_min_prc_amt_3m_6m_ftr_cash",
+    "stg_pln_avg_prc_amt_2m_ftr_his_rto_all"
+  ],
+  "ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_final_12his_rep_will_pressure_df_feature": [
+    "stg_pln_pay_off_sum_prc_amt_1m",
+    "stg_pln_pay_off_max_prc_amt_14d",
+    "max_ddf_rep_tim_dte_ovd_pls_rep_12m",
+    "max_ddf_rep_tim_dte_adv",
+    "min_ddf_rep_tim_dte_adv"
+  ],
+  "ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_final_16draw_repay_crossed_new_df_feature": [
+    "ddf_24m_rep_dte_neg_7_crt_dt_ord_cnt",
+    "ddf_24m_rep_dte_neg_7_crt_dt_avg_prc_amt",
+    "ddf_24m_rep_dte_neg_1_crt_dt_rep_prc_amt_rto",
+    "ddf_24m_rep_dte_7_crt_dt_rep_prc_amt_rto",
+    "ddf_36m_rep_dte_5_crt_dt_rep_prc_amt_rto",
+    "ddf_36m_rep_dte_neg_5_crt_dt_rep_prc_amt_rto",
+    "ddf_36m_rep_dte_0_crt_dt_rep_prc_amt_rto"
+  ],
+  "ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_final_16draw_repay_crossed_df_feature": [
+    "ddf_1m_rep_dte_3_crt_dt_rep_prc_amt",
+    "ddf_3m_rep_dte_5_crt_dt_sum_prc_amt",
+    "ddf_3m_rep_dte_neg_3_crt_dt_max_prc_amt",
+    "ddf_12m_rep_dte_7_crt_dt_rep_prc_amt_rto",
+    "ddf_12m_rep_dte_neg_1_crt_dt_rep_prc_amt_rto",
+    "avg_ddf_rep_dte_ord_crt_tim_neg_7"
+  ],
+  "ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_final_31light_credit_trade_cross_df_feature": [
+    "credit_reject_unique_fund_cnt_6m",
+    "credit_unique_scene_cnt_12m",
+    "credit_fund_level2_reject_cnt_36m",
+    "credit_unique_scene_cnt_36m"
+  ],
+  "ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_pdm_risk_dh_model_final_13collection_notes_trend_features_feature": [
+    "percent_true_followup_code_other_call_mode_manual_30d",
+    "percent_true_followup_code_wfjt_is_can_contact_person_yes_30d",
+    "percent_true_followup_code_wfjt_is_can_contact_person_yes_90d"
+  ],
+  "ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_account_lmt_feature_sample_all_final_new_df_feature": [
+    "rsk_lmt_rate_ch_1m_grt_0p2_rate_36m",
+    "avg_avl_lmt_lft_rep_prc_all_cash_36m",
+    "rsk_lmt_rate_ch_1m_grt_0p5_rate_24m",
+    "rsk_lmt_rate_ch_1m_grt_0p9_rate_24m",
+    "rsk_lmt_rate_ch_1m_grt_0p95_rate_36m",
+    "rsk_lmt_rate_ch_1m_grt_0p2_cnt_24m",
+    "max_rsk_avl_lmt_24m_bt_ch",
+    "max_avl_lmt_lft_rep_prc_1m_cash_36m",
+    "avg_avl_lmt_lft_rep_prc_all_cash_24m"
+  ],
+  "ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_final_ftr_rep_trend_time_series_df_feature": [
+    "3m_repay_ftr_amt_first_der_great_0_count",
+    "6m_repay_ftr_amt_first_der_mean_rto",
+    "18m_repay_ftr_amt_first_der_mean_diff",
+    "3m_repay_ftr_amt_first_der_min",
+    "3m_repay_ftr_amt_first_der_mean_diff",
+    "3m_repay_ftr_amt_first_der_mean_rto",
+    "18m_repay_ftr_amt_second_der_mean_diff"
+  ],
+  "ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_final_repayment_deduct_info_df_feature": [
+    "m6_stg_pln_pmt_not_eng_cnt_max",
+    "m6_payment_not_eng_mdl_crt_ddf_max"
+  ],
+  "ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_pdm_risk_dh_model_15ai_call_record_feature": [
+    "ai_call_cnt_21d"
+  ],
+  "ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_final_rep_apply_summary_3_feature": [
+    "m1_stg_pln_d0_manual_rep_apl_suc_cnt_rat",
+    "m6_stg_pln_d0_normal_batch_rep_apl_suc_cnt_rat",
+    "m6_stg_pln_his_ovd_manual_deduct_rep_apl_fal_cnt_rat"
+  ],
+  "ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_final_26_lending_costs_detail_df_feature": [
+    "d1080_sum_repaid_interest_fee_sum_divide_d1080_principal_sum",
+    "d90_repaid_interest_fee_sum",
+    "d180_adv_repay_fee_sum",
+    "d360_schedule_pay_penalty_max",
+    "d1080_repaid_interest_fee_stddev",
+    "d90_repaid_interest_fee_stddev",
+    "d720_repaid_tot_fee_stddev"
+  ],
+  "ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_final_his_apply_trend_time_series_df_feature": [
+    "6thord_con_dsc_apply_amt_max",
+    "6ord_apply_amt_first_der_mean_rto",
+    "3ord_apply_amt_first_der_mean_diff",
+    "3ord_apply_amt_second_der_great_0_sum"
+  ],
+  "ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_final_rep_apply_summary_2_feature": [
+    "m3_rep_apl_stg_pln_cnt_max",
+    "m1_manual_rep_apl_stg_pln_cnt_avg"
+  ],
+  "ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_final_23changzhai_trend_df_feature": [
+    "abf_1y_inter_1m_count_up",
+    "bf_3m_inter_1m_sum_up",
+    "af_1y_inter_3m_sum_up",
+    "rsi_abf_1y_inter_3m"
+  ],
+  "ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_final_rep_apply_summary_1_feature": [
+    "m1_manual_rep_apl_suc_amt_sum",
+    "m1_rep_apl_suc_amt_avg",
+    "m3_manual_rep_apl_suc_amt_avg",
+    "m1_manual_rep_apl_suc_amt_avg",
+    "m6_normal_batch_rep_apl_suc_amt_avg",
+    "m6_manual_rep_apl_suc_amt_avg",
+    "m6_manual_rep_apl_suc_cnt_in_manual_rep_rat",
+    "m3_manual_rep_apl_suc_amt_max",
+    "m6_manual_tim_13_18_rep_apl_suc_cnt_rat",
+    "m6_manual_tim_6_12_rep_apl_cnt_rat"
+  ],
+  "ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_pdm_risk_dh_model_final_13collection_call_info_trend_features_di_feature": [
+    "sum_talk_duration_180d",
+    "sum_talk_duration_30d",
+    "percent_true_call_mode_is_manual_called_phone_social_relations_is_family_30d"
+  ],
+  "ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_final_his_rep_trend_time_series_df_feature": [
+    "6stg_pln_repay_amt_first_der_median",
+    "18m_repay_amt_first_der_mean_diff",
+    "12stg_pln_repay_amt_first_der_mean_rto",
+    "12m_repay_amt_first_der_mean_diff",
+    "6stg_pln_repay_amt_second_der_median",
+    "12m_repay_amt_first_der_sum",
+    "3stg_pln_repay_amt_first_der_stddev",
+    "36stg_pln_repay_amt_second_der_mean_diff",
+    "24stg_pln_repay_amt_second_der_mean_rto",
+    "12m_repay_amt_first_der_mean_rto",
+    "12m_repay_amt_second_der_sum",
+    "3stg_pln_repay_amt_second_der_mean_rto",
+    "12m_repay_amt_first_der_median",
+    "6stg_pln_repay_amt_first_der_min",
+    "3stg_pln_repay_amt_first_der_mean_diff",
+    "6stg_pln_repay_amt_first_der_mean_diff",
+    "30stg_pln_repay_amt_second_der_mean_rto"
+  ],
+  "ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_12his_rep_pressure_trend_df_feature": [
+    "d30_d60_his_rep_amt_sum_rat_btch",
+    "lag_his_rep_amt_sum_per_mth_btch_rat_max"
+  ],
+  "ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_account_lmt_feature_sample_all_final_jqh_df_feature": [
+    "max_rsk_avl_lmt_bjq_12m_all",
+    "rsk_avl_lmt_ch_1m_les_500_cnt_bjq_12m",
+    "rsk_avl_lmt_ch_1m_les_10000_cnt_bjq_12m",
+    "rsk_lmt_rate_ch_1m_grt_0p5_rate_bjq_12m"
+  ],
+  "ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_final_12his_rep_will_pressure_derived_df_feature": [
+    "stg_pln_pay_off_sum_prc_amt_14d_1m_rto",
+    "stg_pln_sum_prc_amt_1m_2m_rto",
+    "stg_pln_pay_off_sum_prc_amt_7d_1m_rto"
+  ],
+  "ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_final_8active_device_extra_2_df_feature": [
+    "dvc_cnt_cjj_7"
+  ],
+  "ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_final_12his_rep_will_pressure_jqh_df_feature": [
+    "min_ddf_mdl_rep_dte_ovd_3d_pls_bjq",
+    "stg_pln_pay_off_cnt_bjq_12m",
+    "min_ddf_mdl_rep_dte_ovd_pls_bjq",
+    "min_ddf_mdl_rep_dte_his_bjq"
+  ],
+  "ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_final_7fst_9all_10cur_11lst_orders_info_jqh_df_feature": [
+    "ord_apl_suc_sum_prc_amt_360_day_13_18_bjq_12m",
+    "ord_apl_cnt_360_day_00_03_bjq_12m"
+  ],
+  "ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_final_12his_rep_will_pressure_derived_new_df_feature": [
+    "stg_pln_pay_off_cnt_d0_rep_24m_rto"
+  ],
+  "ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_final_12his_rep_will_pressure_derived_jqh_df_feature": [
+    "stg_pln_cnt_adv_rep_bjq_12m_rto",
+    "stg_pln_avg_prc_amt_bjq_12m_his"
+  ],
+  "ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_final_12his_rep_ability_derived_v2_df_feature": [
+    "stg_pln_sum_rep_prc_his_d0_mrn_pk_rto_v2"
+  ],
+  "ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_final_rep_apply_summary_4_feature": [
+    "m1_stg_pln_rep_apl_fal_cnt_mor_1_rep_apl_amt_sum",
+    "m6_stg_pln_manual_rep_apl_cnt_avg",
+    "m6_stg_pln_rep_apl_fal_cnt_equal_1_cnt_rat",
+    "m6_stg_pln_normal_batch_rep_apl_cnt_min"
+  ],
+  "ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_final_2tqhk_reptim_360d_con_feature_feature": [
+    "ddf_mdl_max_con_not_ovd_tqhk_rep_tim_12m"
+  ],
+  "ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_final_12his_rep_ability_derived_df_feature": [
+    "stg_pln_sum_rep_prc_12m_his_d0_mrn_pk_rto"
+  ],
+  "ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_dwa_risk_dz_model_final_12his_rep_ability_v2_df_feature": [
+    "stg_pln_sum_rep_prc_his_d0_mrn_zd_v2"
+  ]
+}
