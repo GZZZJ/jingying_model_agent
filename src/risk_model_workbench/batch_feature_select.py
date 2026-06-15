@@ -33,6 +33,7 @@ from risk_model_workbench.dp_feather import (
     write_dataset_metadata,
 )
 from risk_model_workbench.config import load_yaml
+from risk_model_workbench.progress import ProgressReporter
 
 
 TARGET_COL = "ftr_30d_ord_flag"
@@ -144,6 +145,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Confirm that all generated DP SQL has been reviewed and may be executed.",
     )
+    parser.add_argument("--run-dir", default=None, help=argparse.SUPPRESS)
     return parser.parse_args(argv)
 
 
@@ -436,6 +438,7 @@ def process_single_table(
     refresh_dp_cache: bool,
     sql_approved: bool,
     feature_select_code_dir: str,
+    run_dir: str | None,
 ) -> dict | None:
     """Process one feature table end-to-end: fetch -> D01 -> D02 -> checkpoint.
 
@@ -443,13 +446,31 @@ def process_single_table(
     Runs in a worker process and reads DP samples through the local feather cache.
     """
     cache_path = Path(cache_dir) / f"{table_slug(table_name)}.pkl"
+    reporter = ProgressReporter(run_dir, "d01_d02_screening") if run_dir else None
     if cache_path.exists():
         with cache_path.open("rb") as handle:
             checkpoint = pickle.load(handle)
         print(f"[SKIP] ({table_index}/{total_tables}) {table_name}")
+        if reporter:
+            reporter.emit(
+                step="table_skipped",
+                status="skipped",
+                message=f"表 {table_index}/{total_tables}：已有检查点，跳过 {table_name}",
+                current=table_index,
+                total=total_tables,
+                metrics={"table": table_name},
+            )
         return checkpoint["summary"]
 
     print(f"[INFO] ({table_index}/{total_tables}) {table_name}, features={len(feature_list)}", flush=True)
+    if reporter:
+        reporter.emit(
+            step="table_started",
+            message=f"表 {table_index}/{total_tables}：开始筛选 {table_name}，候选变量 {len(feature_list)} 个",
+            current=table_index - 1,
+            total=total_tables,
+            metrics={"table": table_name, "features": len(feature_list)},
+        )
 
     # Each worker sets up its own imports and client
     sys.path.insert(0, feature_select_code_dir)
@@ -480,6 +501,7 @@ def process_single_table(
         metadata_path=Path(dp_metadata_dir) / f"{table_slug(table_name)}.json",
         refresh=refresh_dp_cache,
         sql_approved=sql_approved,
+        progress=reporter,
     )
 
     available_features = coerce_features(sample, feature_list)
@@ -498,6 +520,14 @@ def process_single_table(
         use_native=use_native,
         d01_preselect_by_toad_func=d01_preselect_by_toad,
     )
+    if reporter:
+        reporter.emit(
+            step="d01_done",
+            message=f"表 {table_index}/{total_tables}：D01 完成，保留 {len(d01_remain)}/{len(available_features)} 个变量",
+            current=table_index - 1,
+            total=total_tables,
+            metrics={"table": table_name, "input_features": len(available_features), "d01_remain": len(d01_remain)},
+        )
     psi_result, feature_max_psi, psi_drop_features = run_d02(
         sample,
         d01_remain,
@@ -508,6 +538,14 @@ def process_single_table(
         batch_psi_func=batch_psi,
     )
     final_remain = [feature for feature in d01_remain if feature not in set(psi_drop_features)]
+    if reporter:
+        reporter.emit(
+            step="d02_done",
+            message=f"表 {table_index}/{total_tables}：D02 PSI 完成，最终保留 {len(final_remain)} 个变量",
+            current=table_index - 1,
+            total=total_tables,
+            metrics={"table": table_name, "d02_psi_drop": len(psi_drop_features), "final_remain": len(final_remain)},
+        )
 
     elapsed = round(time.time() - start_time, 3)
     drop_counts = get_d01_drop_counts(d01_result, len(available_features), d01_remain)
@@ -540,6 +578,17 @@ def process_single_table(
         f"d01_remain={len(d01_remain)}, final={len(final_remain)}, elapsed={elapsed}s",
         flush=True,
     )
+    if reporter:
+        reporter.emit(
+            step="table_done",
+            message=(
+                f"表 {table_index}/{total_tables}：筛选完成，输入 {len(available_features)} 个，"
+                f"D01 保留 {len(d01_remain)} 个，最终保留 {len(final_remain)} 个"
+            ),
+            current=table_index,
+            total=total_tables,
+            metrics=summary,
+        )
     return summary
 
 
@@ -550,6 +599,7 @@ def process_single_table(
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     project_dir = Path(args.project_dir).resolve()
+    reporter = ProgressReporter(args.run_dir, "d01_d02_screening") if args.run_dir else None
     settings = load_batch_settings(project_dir, args)
     feature_select_code_dir = find_feature_select_code_dir(project_dir, args.feature_select_code_dir)
 
@@ -568,6 +618,15 @@ def main(argv: list[str] | None = None) -> int:
     if args.max_tables is not None:
         table_features = dict(list(table_features.items())[: args.max_tables])
     table_items = list(table_features.items())
+    if reporter:
+        reporter.emit(
+            step="load_feature_map",
+            message=f"D01/D02 分表筛选准备完成，共 {len(table_items)} 张表",
+            current=0,
+            total=len(table_items),
+            percent=5,
+            metrics={"tables": len(table_items)},
+        )
 
     # Force override old results if not a smoke test
     if args.force:
@@ -641,10 +700,28 @@ def main(argv: list[str] | None = None) -> int:
                     metadata_path=metadata_path,
                     sql=sample_sql,
                 )
+            if reporter:
+                reporter.emit(
+                    step="dry_run_sql",
+                    status="waiting_for_approval",
+                    message=f"表 {idx}/{len(table_items)}：SQL 已生成，等待审批 {table_name}",
+                    current=idx,
+                    total=len(table_items),
+                    metrics={"table": table_name, "metadata_path": str(metadata_path)},
+                )
         print(f"[DRY-RUN] wrote {len(table_items)} SQL files under {sql_dir}")
         print(f"[DRY-RUN] wrote metadata under {dp_metadata_dir}")
         if len(table_items) > 3:
             print("[DRY-RUN] printed first 3 SQLs only; inspect the SQL files for the rest.")
+        if reporter:
+            reporter.emit(
+                step="dry_run_sql_done",
+                status="waiting_for_approval",
+                message=f"D01/D02 SQL 生成完成，共 {len(table_items)} 张表，等待人工审批后执行",
+                current=len(table_items),
+                total=len(table_items),
+                percent=100,
+            )
         return 0
 
     use_native = True if args.use_native else None
@@ -652,6 +729,15 @@ def main(argv: list[str] | None = None) -> int:
 
     print(f"[INFO] Launching {settings.workers} workers for {total_tables} tables, "
           f"train partitions={len(settings.train_partitions)}, valid partitions={len(settings.valid_partitions)}")
+    if reporter:
+        reporter.emit(
+            step="launch_workers",
+            message=f"启动 {settings.workers} 个 worker，开始处理 {total_tables} 张表",
+            current=0,
+            total=total_tables,
+            percent=8,
+            metrics={"workers": settings.workers, "tables": total_tables},
+        )
 
     summary_rows: list[dict] = []
     final_remain_by_table: dict[str, list[str]] = {}
@@ -686,6 +772,7 @@ def main(argv: list[str] | None = None) -> int:
                 refresh_dp_cache=args.refresh_dp_cache,
                 sql_approved=args.sql_approved,
                 feature_select_code_dir=str(feature_select_code_dir),
+                run_dir=args.run_dir,
             )
             futures[future] = table_name
 
@@ -701,8 +788,26 @@ def main(argv: list[str] | None = None) -> int:
                         with cache_path.open("rb") as handle:
                             ck = pickle.load(handle)
                         final_remain_by_table[table_name] = ck["final_remain_features"]
+                    if reporter:
+                        reporter.emit(
+                            step="aggregate_progress",
+                            message=f"整体进度：已完成 {len(summary_rows)}/{total_tables} 张表",
+                            current=len(summary_rows),
+                            total=total_tables,
+                            metrics={"completed_tables": len(summary_rows), "total_tables": total_tables},
+                        )
             except Exception as exc:
                 print(f"[ERROR] {table_name}: {exc}", file=sys.stderr, flush=True)
+                if reporter:
+                    reporter.emit(
+                        step="table_failed",
+                        status="failed",
+                        message=f"表处理失败：{table_name}：{exc}",
+                        current=len(summary_rows),
+                        total=total_tables,
+                        metrics={"table": table_name, "completed_tables": len(summary_rows)},
+                        level="error",
+                    )
 
     table_order = {name: idx for idx, (name, _) in enumerate(table_items)}
     summary_rows.sort(key=lambda r: table_order.get(r["table"], 999))
@@ -720,6 +825,20 @@ def main(argv: list[str] | None = None) -> int:
         },
     )
     print(f"[DONE] output: {output_dir}")
+    if reporter:
+        reporter.emit(
+            step="stage_outputs",
+            status="done",
+            message=f"D01/D02 分表筛选完成：成功 {len(summary_rows)}/{total_tables} 张表，最终保留 {sum(int(row['final_remain']) for row in summary_rows)} 个变量",
+            current=len(summary_rows),
+            total=total_tables,
+            percent=100,
+            metrics={
+                "tables": len(summary_rows),
+                "input_features": sum(int(row["input_features"]) for row in summary_rows),
+                "final_remain": sum(int(row["final_remain"]) for row in summary_rows),
+            },
+        )
     return 0
 
 

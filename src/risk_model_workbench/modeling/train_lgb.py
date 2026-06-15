@@ -67,6 +67,7 @@ def train_lightgbm_from_feather(
     score_output: str | Path,
     input_snapshot_dir: str | Path,
     config: dict[str, Any],
+    progress: Any | None = None,
 ) -> dict[str, Any]:
     """Train a LightGBM model and score all splits.
 
@@ -94,14 +95,27 @@ def train_lightgbm_from_feather(
     preproc_cfg = config.get("preprocessing", {})
 
     candidate_features = [line.strip() for line in feature_list_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    if progress:
+        progress.emit(step="load_feature_list", message=f"训练特征列表读取完成，共 {len(candidate_features)} 个候选变量", percent=8)
     id_cols = input_cfg.get("id_columns", ["uid", "mdl_dte"])
     base_cols = input_cfg.get("base_columns", [])
     configured_historical_scores = input_cfg.get("historical_score_columns", [])
     label_col = input_cfg["label_column"]
     split_col = input_cfg["split_column"]
     read_cols = list(dict.fromkeys(id_cols + base_cols + configured_historical_scores + [label_col, split_col] + candidate_features))
+    if progress:
+        progress.emit(step="read_input_schema", message=f"正在读取训练数据字段：{input_feather}", percent=12)
     all_cols = pd.read_feather(input_feather, columns=None).columns.tolist()
+    if progress:
+        progress.emit(step="read_input_data", message=f"正在读取训练数据：{len(read_cols)} 个目标字段", percent=18)
     raw = pd.read_feather(input_feather, columns=[column for column in read_cols if column in all_cols])
+    if progress:
+        progress.emit(
+            step="read_input_done",
+            message=f"训练数据读取完成：{len(raw)} 行 {len(raw.columns)} 列",
+            percent=25,
+            metrics={"rows": int(len(raw)), "columns": int(len(raw.columns))},
+        )
 
     train_values = train_cfg.get("train_values", ["DEV"])
     valid_values = train_cfg.get("valid_values", ["OOT"])
@@ -113,6 +127,17 @@ def train_lightgbm_from_feather(
     min_non_null_rate = float(preproc_cfg.get("min_non_null_rate", 0.01))
     drop_constant = bool(preproc_cfg.get("drop_constant", True))
     x_all, kept_features, drop_detail = coerce_features(raw, candidate_features, sentinels, min_non_null_rate, drop_constant)
+    if progress:
+        progress.emit(
+            step="preprocess_done",
+            message=f"训练预处理完成：保留 {len(kept_features)}/{len(candidate_features)} 个变量",
+            percent=38,
+            metrics={
+                "candidate_features": len(candidate_features),
+                "kept_features": len(kept_features),
+                "dropped_features": int((drop_detail["drop_reason"] != "").sum()),
+            },
+        )
 
     tr_x = x_all[train_mask].reset_index(drop=True)
     tr_y = raw.loc[train_mask, label_col].astype(int).reset_index(drop=True)
@@ -153,6 +178,13 @@ def train_lightgbm_from_feather(
     }
     train_ds = lgb.Dataset(tr_x, label=tr_y, feature_name=kept_features, free_raw_data=False)
     valid_ds = lgb.Dataset(va_x, label=va_y, feature_name=kept_features, reference=train_ds, free_raw_data=False)
+    if progress:
+        progress.emit(
+            step="train_model",
+            message=f"LightGBM 训练开始：训练样本 {len(tr_y)}，验证样本 {len(va_y)}，变量 {len(kept_features)} 个",
+            percent=50,
+            metrics={"train_samples": int(len(tr_y)), "valid_samples": int(len(va_y)), "features": len(kept_features)},
+        )
     start = time.time()
     model = lgb.train(
         params,
@@ -177,6 +209,16 @@ def train_lightgbm_from_feather(
         "train_time_seconds": round(time.time() - start, 1),
     }
     metrics["auc_gap"] = metrics["train_auc"] - metrics["valid_auc"]
+    if progress:
+        progress.emit(
+            step="train_model_done",
+            message=(
+                f"LightGBM 训练完成：valid_auc={metrics['valid_auc']:.4f}，"
+                f"valid_ks={metrics['valid_ks']:.4f}，best_iter={metrics['best_iteration']}"
+            ),
+            percent=72,
+            metrics=metrics,
+        )
     (output_dir / "metrics_train_valid.json").write_text(json.dumps(metrics, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
     importance = pd.DataFrame(
@@ -225,6 +267,8 @@ def train_lightgbm_from_feather(
     (output_dir / "run_config.json").write_text(json.dumps(run_config, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
     x_all_filled = x_all.fillna(medians).fillna(0)
+    if progress:
+        progress.emit(step="score_all", message="开始对全量样本打分", percent=82)
     all_pred = model.predict(x_all_filled[kept_features].values, num_iteration=best_iter)
     desired_base = [
         "uid",
@@ -244,6 +288,13 @@ def train_lightgbm_from_feather(
         scores[column] = raw[column]
     scores["model_score"] = all_pred
     scores.reset_index(drop=True).to_feather(str(score_output))
+    if progress:
+        progress.emit(
+            step="score_written",
+            message=f"全量打分写入完成：{len(scores)} 行",
+            percent=90,
+            metrics={"rows": int(len(scores)), "score_output": str(score_output)},
+        )
 
     pd.DataFrame(
         [
@@ -273,6 +324,14 @@ def train_lightgbm_from_feather(
         kept_feature_count=len(kept_features),
         historical_scores=historical_scores,
     )
+    if progress:
+        progress.emit(
+            step="write_artifacts",
+            status="done",
+            message=f"训练产物写入完成：模型、指标、重要性和打分文件已生成",
+            percent=100,
+            metrics={"output_dir": str(output_dir), "score_output": str(score_output)},
+        )
     return metrics
 
 

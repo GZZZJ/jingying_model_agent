@@ -6,6 +6,7 @@ import argparse
 import importlib.util
 import json
 import shutil
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -17,6 +18,12 @@ from risk_model_workbench.feature_screening import write_feature_screening_summa
 from risk_model_workbench.manifest import make_run_id
 from risk_model_workbench.paths import REPO_ROOT, project_config_path, resolve_project_path, workflow_path
 from risk_model_workbench.planning import create_execution_plan, save_execution_plan
+from risk_model_workbench.progress import (
+    ProgressReporter,
+    format_progress_report,
+    load_progress_events,
+    load_progress_summary,
+)
 from risk_model_workbench.project import create_project
 from risk_model_workbench.project_state import (
     append_lesson,
@@ -34,6 +41,7 @@ from risk_model_workbench.state import (
     append_decision,
     create_run_state,
     load_run_state,
+    mark_stage_failed,
     mark_stage_done,
     mark_stage_started,
     register_artifact,
@@ -360,8 +368,37 @@ def cmd_plan_create(args: argparse.Namespace) -> int:
 def cmd_status(args: argparse.Namespace) -> int:
     path = _run_path(args)
     state = load_run_state(path)
+    if getattr(args, "progress", False):
+        tail = int(getattr(args, "tail", 5) or 5)
+        print(
+            format_progress_report(
+                run_state=state,
+                summary=load_progress_summary(path),
+                events=load_progress_events(path, tail=tail),
+            ),
+            end="",
+        )
+        return 0
     print(yaml.safe_dump(state, allow_unicode=True, sort_keys=False))
     return 0
+
+
+def cmd_run_watch(args: argparse.Namespace) -> int:
+    path = _run_path(args)
+    while True:
+        state = load_run_state(path)
+        print(
+            format_progress_report(
+                run_state=state,
+                summary=load_progress_summary(path),
+                events=load_progress_events(path, tail=args.tail),
+            ),
+            end="",
+            flush=True,
+        )
+        if args.once:
+            return 0
+        time.sleep(args.interval)
 
 
 def cmd_sample_check(args: argparse.Namespace) -> int:
@@ -407,12 +444,14 @@ def cmd_feature_metadata(args: argparse.Namespace) -> int:
     mark_stage_started(path, "feature_metadata")
     from risk_model_workbench.feature_metadata import main as metadata_main
 
-    argv = ["--project-dir", str(resolve_project_path(args.project))]
+    argv = ["--project-dir", str(resolve_project_path(args.project)), "--run-dir", str(path)]
     if args.tables_file:
         argv.extend(["--tables-file", args.tables_file])
     code = metadata_main(argv)
     if code == 0:
         mark_stage_done(path, "feature_metadata")
+    else:
+        mark_stage_failed(path, "feature_metadata", f"metadata command exited with code {code}")
     return code
 
 
@@ -421,7 +460,7 @@ def cmd_feature_d01_d02(args: argparse.Namespace) -> int:
     mark_stage_started(path, "d01_d02_screening")
     from risk_model_workbench.batch_feature_select import main as batch_select_main
 
-    argv = ["--project-dir", str(resolve_project_path(args.project))]
+    argv = ["--project-dir", str(resolve_project_path(args.project)), "--run-dir", str(path)]
     if args.config:
         argv.extend(["--config", args.config])
     if args.max_tables is not None:
@@ -440,22 +479,49 @@ def cmd_feature_d01_d02(args: argparse.Namespace) -> int:
     code = batch_select_main(argv)
     if code == 0:
         mark_stage_done(path, "d01_d02_screening", scaffold=args.dry_run_sql)
+    else:
+        mark_stage_failed(path, "d01_d02_screening", f"d01-d02 command exited with code {code}")
     return code
 
 
 def cmd_build_wide_sql(args: argparse.Namespace) -> int:
     project_dir = resolve_project_path(args.project)
-    sql_path, feature_map_path, summary_path = generate_wide_sql(
-        project_dir=project_dir,
-        remain_features_path=resolve_project_path(project_dir / args.remain_features) if not Path(args.remain_features).is_absolute() else Path(args.remain_features),
-        sql_output_path=project_dir / args.sql_output if not Path(args.sql_output).is_absolute() else Path(args.sql_output),
-        feature_map_path=project_dir / args.feature_map_output if not Path(args.feature_map_output).is_absolute() else Path(args.feature_map_output),
-        summary_path=project_dir / args.summary_output if not Path(args.summary_output).is_absolute() else Path(args.summary_output),
-        base_table=args.base_table,
-        output_table=args.output_table,
-        base_where=args.base_where,
-        feature_where=args.feature_where,
-    )
+    reporter = None
+    run_path = None
+    if getattr(args, "run_id", None):
+        run_path = _run_path(args)
+        mark_stage_started(run_path, "build_wide_sql")
+        reporter = ProgressReporter(run_path, "build_wide_sql")
+        reporter.emit(step="build_sql", message="开始生成宽表 SQL", percent=10)
+    try:
+        sql_path, feature_map_path, summary_path = generate_wide_sql(
+            project_dir=project_dir,
+            remain_features_path=resolve_project_path(project_dir / args.remain_features) if not Path(args.remain_features).is_absolute() else Path(args.remain_features),
+            sql_output_path=project_dir / args.sql_output if not Path(args.sql_output).is_absolute() else Path(args.sql_output),
+            feature_map_path=project_dir / args.feature_map_output if not Path(args.feature_map_output).is_absolute() else Path(args.feature_map_output),
+            summary_path=project_dir / args.summary_output if not Path(args.summary_output).is_absolute() else Path(args.summary_output),
+            base_table=args.base_table,
+            output_table=args.output_table,
+            base_where=args.base_where,
+            feature_where=args.feature_where,
+        )
+    except Exception as exc:
+        if run_path:
+            mark_stage_failed(run_path, "build_wide_sql", str(exc))
+        raise
+    if reporter:
+        reporter.emit(
+            step="write_outputs",
+            message="宽表 SQL、特征映射和摘要已生成",
+            percent=90,
+            metrics={
+                "sql_path": str(sql_path),
+                "feature_map_path": str(feature_map_path),
+                "summary_path": str(summary_path),
+            },
+        )
+    if run_path:
+        mark_stage_done(run_path, "build_wide_sql")
     print(f"sql: {sql_path}")
     print(f"feature_map: {feature_map_path}")
     print(f"summary: {summary_path}")
@@ -467,7 +533,7 @@ def cmd_feature_refine(args: argparse.Namespace) -> int:
     mark_stage_started(path, "feature_refine")
     from risk_model_workbench.feature_refine import main as refine_main
 
-    argv = ["--project-dir", str(resolve_project_path(args.project))]
+    argv = ["--project-dir", str(resolve_project_path(args.project)), "--run-dir", str(path)]
     if args.config:
         argv.extend(["--config", args.config])
     if args.dry_run_sql:
@@ -479,6 +545,8 @@ def cmd_feature_refine(args: argparse.Namespace) -> int:
     code = refine_main(argv)
     if code == 0:
         mark_stage_done(path, "feature_refine", scaffold=args.dry_run_sql)
+    else:
+        mark_stage_failed(path, "feature_refine", f"feature refine command exited with code {code}")
     return code
 
 
@@ -486,6 +554,7 @@ def cmd_train(args: argparse.Namespace) -> int:
     project_dir = resolve_project_path(args.project)
     path = _run_path(args)
     mark_stage_started(path, "train_baseline")
+    reporter = ProgressReporter(path, "train_baseline")
     config_path = Path(args.config) if getattr(args, "config", None) else project_dir / "configs" / "train.yaml"
     config_path = config_path if config_path.is_absolute() else project_dir / config_path
     train_config = load_yaml(config_path) if config_path.exists() else {}
@@ -515,6 +584,7 @@ def cmd_train(args: argparse.Namespace) -> int:
                 score_output=score_output,
                 input_snapshot_dir=input_snapshot_dir,
                 config=train_config,
+                progress=reporter,
             )
             _write_json(output_dir / "train_metrics.json", {"status": "done", "metrics": metrics, "experiment": args.experiment})
             for artifact in [
@@ -546,6 +616,7 @@ def cmd_train(args: argparse.Namespace) -> int:
             "feature_list_exists": feature_list.exists(),
             "train_config_keys": sorted(train_config.keys()),
         }
+    reporter.emit(step="train_scaffold", status="scaffold", message=f"模型训练未执行真实训练：{payload['reason']}", percent=100)
     _write_json(output_dir / "train_metrics.json", payload)
     if feature_list.exists():
         _copy_if_exists(feature_list, output_dir / "feature_list.txt")
@@ -560,6 +631,7 @@ def cmd_evaluate(args: argparse.Namespace) -> int:
     project_dir = resolve_project_path(args.project)
     path = _run_path(args)
     mark_stage_started(path, "evaluate")
+    reporter = ProgressReporter(path, "evaluate")
     evaluate_config = load_yaml(project_dir / "configs" / "evaluate.yaml") if (project_dir / "configs" / "evaluate.yaml").exists() else {}
     metrics = evaluate_config.get("metrics") or evaluate_config.get("evaluation", {}).get("metrics") or []
     scores_feather = Path(args.scores_feather or path / "modeling" / "scores_all_splits.feather")
@@ -572,7 +644,7 @@ def cmd_evaluate(args: argparse.Namespace) -> int:
         try:
             from risk_model_workbench.evaluation.run import evaluate_scores_from_feather
 
-            summary = evaluate_scores_from_feather(scores_feather=scores_feather, output_dir=output_dir, config=evaluate_config)
+            summary = evaluate_scores_from_feather(scores_feather=scores_feather, output_dir=output_dir, config=evaluate_config, progress=reporter)
             for artifact in [
                 "evaluation_summary.json",
                 "overall_metrics.csv",
@@ -597,6 +669,7 @@ def cmd_evaluate(args: argparse.Namespace) -> int:
             "scores_feather": str(scores_feather),
             "scores_feather_exists": scores_feather.exists(),
         }
+    reporter.emit(step="evaluate_scaffold", status="scaffold", message=f"模型评估未执行真实评估：{payload['reason']}", percent=100)
     _write_json(path / "evaluation" / "evaluation_summary.json", payload)
     register_artifact(path, "evaluate", "evaluation/evaluation_summary.json")
     append_decision(path, stage="evaluate", decision="scaffold", reason=payload["reason"])
@@ -879,7 +952,16 @@ def _add_run_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentPars
     status = run_sub.add_parser("status", help="show run state")
     status.add_argument("--project", required=True)
     status.add_argument("--run-id", required=True)
+    status.add_argument("--progress", action="store_true", help="show Chinese progress summary and recent events")
+    status.add_argument("--tail", type=int, default=5, help="number of recent progress events to show")
     status.set_defaults(func=cmd_status)
+    watch = run_sub.add_parser("watch", help="watch Chinese run progress")
+    watch.add_argument("--project", required=True)
+    watch.add_argument("--run-id", required=True)
+    watch.add_argument("--interval", type=float, default=10.0, help="poll interval in seconds")
+    watch.add_argument("--tail", type=int, default=8, help="number of recent progress events to show")
+    watch.add_argument("--once", action="store_true", help="render once and exit")
+    watch.set_defaults(func=cmd_run_watch)
     audit = run_sub.add_parser("audit", help="audit run or stage closure readiness")
     audit.add_argument("--project", required=True)
     audit.add_argument("--run-id", required=True)
@@ -955,6 +1037,8 @@ def build_parser() -> argparse.ArgumentParser:
     status = subparsers.add_parser("status", help="show run state")
     status.add_argument("--project", required=True)
     status.add_argument("--run-id", required=True)
+    status.add_argument("--progress", action="store_true", help="show Chinese progress summary and recent events")
+    status.add_argument("--tail", type=int, default=5, help="number of recent progress events to show")
     status.set_defaults(func=cmd_status)
 
     sample = subparsers.add_parser("sample", help="sample commands")
@@ -1014,6 +1098,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     build_wide_sql = subparsers.add_parser("build-wide-sql")
     build_wide_sql.add_argument("--project", required=True)
+    build_wide_sql.add_argument("--run-id", default=None, help="optional run id for progress tracking")
     build_wide_sql.add_argument("--remain-features", default="runs/d01_d02_batch_select/results/d01_d02_final_remain_features.json")
     build_wide_sql.add_argument("--sql-output", default="queries/06_build_d01_d02_wide_table.sql")
     build_wide_sql.add_argument("--feature-map-output", default="runs/d01_d02_batch_select/results/d01_d02_wide_feature_map.csv")

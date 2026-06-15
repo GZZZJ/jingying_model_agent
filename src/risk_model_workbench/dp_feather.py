@@ -135,8 +135,16 @@ def fetch_dp_query_to_feather(
     feather_path: Path,
     metadata_path: Path,
     sql_approved: bool = False,
+    progress: Any | None = None,
 ) -> Path:
     """Run a reviewed DP query, write feather locally, and record metadata."""
+    if progress and not sql_approved:
+        progress.emit(
+            step="sql_review",
+            status="waiting_for_approval",
+            message=f"DP SQL 需要审批：{dataset_id}",
+            metrics={"dataset_id": dataset_id, "metadata_path": relative_display(metadata_path, project_dir)},
+        )
     require_sql_approval(
         dataset_id=dataset_id,
         description=description,
@@ -148,6 +156,8 @@ def fetch_dp_query_to_feather(
 
     from tmlpatch.database import TMLSQLClient
 
+    if progress:
+        progress.emit(step="dp_query", message=f"开始执行 DP 查询：{dataset_id}", metrics={"dataset_id": dataset_id})
     client = TMLSQLClient()
     try:
         df = client.sql(sql).to_pandas()
@@ -156,6 +166,17 @@ def fetch_dp_query_to_feather(
 
     feather_path.parent.mkdir(parents=True, exist_ok=True)
     df.reset_index(drop=True).to_feather(feather_path)
+    if progress:
+        progress.emit(
+            step="dp_query_done",
+            message=f"DP 查询完成并写入 feather：{dataset_id}，{len(df)} 行 {len(df.columns)} 列",
+            metrics={
+                "dataset_id": dataset_id,
+                "rows": int(len(df)),
+                "columns": int(len(df.columns)),
+                "feather_path": relative_display(feather_path, project_dir),
+            },
+        )
     write_dataset_metadata(
         project_dir=project_dir,
         metadata_path=metadata_path,
@@ -181,6 +202,7 @@ def load_or_fetch_dp_feather(
     metadata_path: Path,
     refresh: bool = False,
     sql_approved: bool = False,
+    progress: Any | None = None,
 ) -> pd.DataFrame:
     """Return a local feather-backed DP dataset, fetching only after SQL approval."""
     if refresh or not feather_path.exists() or not metadata_path.exists():
@@ -203,8 +225,21 @@ def load_or_fetch_dp_feather(
             feather_path=feather_path,
             metadata_path=metadata_path,
             sql_approved=sql_approved,
+            progress=progress,
+        )
+    if progress:
+        progress.emit(
+            step="read_feather",
+            message=f"正在读取本地 feather：{dataset_id}",
+            metrics={"dataset_id": dataset_id, "feather_path": relative_display(feather_path, project_dir)},
         )
     df = pd.read_feather(feather_path)
+    if progress:
+        progress.emit(
+            step="read_feather_done",
+            message=f"本地 feather 读取完成：{dataset_id}，{len(df)} 行 {len(df.columns)} 列",
+            metrics={"dataset_id": dataset_id, "rows": int(len(df)), "columns": int(len(df.columns))},
+        )
     write_dataset_metadata(
         project_dir=project_dir,
         metadata_path=metadata_path,

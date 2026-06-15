@@ -69,6 +69,20 @@ def save_run_state(run_path: str | Path, state: dict[str, Any]) -> Path:
     return path
 
 
+def _emit_progress_safely(run_path: str | Path, stage: str, event: str, *, reason: str = "", scaffold: bool = False) -> None:
+    try:
+        from risk_model_workbench.progress import emit_stage_done, emit_stage_failed, emit_stage_started
+
+        if event == "started":
+            emit_stage_started(run_path, stage)
+        elif event == "done":
+            emit_stage_done(run_path, stage, scaffold=scaffold)
+        elif event == "failed":
+            emit_stage_failed(run_path, stage, reason)
+    except Exception:
+        return
+
+
 def _ensure_stage(state: dict[str, Any], stage: str) -> dict[str, Any]:
     stages = state.setdefault("stages", {})
     return stages.setdefault(stage, {"status": "pending", "artifacts": []})
@@ -82,6 +96,7 @@ def mark_stage_started(run_path: str | Path, stage: str) -> dict[str, Any]:
     state["status"] = "running"
     state["current_stage"] = stage
     save_run_state(run_path, state)
+    _emit_progress_safely(run_path, stage, "started")
     return state
 
 
@@ -99,6 +114,7 @@ def mark_stage_done(run_path: str | Path, stage: str, *, scaffold: bool = False)
         state["status"] = "running"
     state["current_stage"] = stage
     save_run_state(run_path, state)
+    _emit_progress_safely(run_path, stage, "done", scaffold=scaffold)
     return state
 
 
@@ -111,6 +127,7 @@ def mark_stage_failed(run_path: str | Path, stage: str, reason: str) -> dict[str
     state["status"] = "failed"
     state["current_stage"] = stage
     save_run_state(run_path, state)
+    _emit_progress_safely(run_path, stage, "failed", reason=reason)
     return state
 
 

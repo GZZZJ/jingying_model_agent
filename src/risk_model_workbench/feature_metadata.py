@@ -8,6 +8,7 @@ from datetime import datetime
 from pathlib import Path
 
 from risk_model_workbench.config import load_yaml
+from risk_model_workbench.progress import ProgressReporter
 
 DEFAULT_BASE_SAMPLE_COLUMNS = {
     "sample_row_num",
@@ -31,6 +32,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default="configs/feature_tables.txt",
         help="Feature table list, relative to project-dir unless absolute.",
     )
+    parser.add_argument("--run-dir", default=None, help=argparse.SUPPRESS)
     return parser.parse_args(argv)
 
 
@@ -189,6 +191,7 @@ def write_markdown(
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     project_dir = Path(args.project_dir).resolve()
+    reporter = ProgressReporter(args.run_dir, "feature_metadata") if args.run_dir else None
     options = load_metadata_options(project_dir, args.tables_file)
     tables_file = Path(options["tables_file"])
     if not tables_file.is_absolute():
@@ -202,6 +205,14 @@ def main(argv: list[str] | None = None) -> int:
         docs_path = project_dir / docs_path
 
     sample_table, feature_tables = read_tables(tables_file)
+    if reporter:
+        reporter.emit(
+            step="load_tables",
+            message=f"读取特征表清单完成，共 {len(feature_tables)} 张特征表",
+            current=0,
+            total=len(feature_tables),
+            percent=5,
+        )
     dp = load_dp_client()
 
     generated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -215,14 +226,25 @@ def main(argv: list[str] | None = None) -> int:
     feature_rows: list[dict] = []
 
     print(f"[INFO] sample table: {sample_table}")
+    if reporter:
+        reporter.emit(step="sample_table", message=f"正在读取样本表元数据：{sample_table}", percent=8)
     sample_raw = dp.get_table_meta(sample_table)
     sample_meta = meta_data(sample_raw)
     sample_columns = normalize_columns(sample_meta.get("columns", sample_meta.get("fields", [])))
     all_meta["sample_meta"] = sample_meta
     sample_column_names = {col["name"] for col in sample_columns} | set(options["sample_columns"])
 
+    success_count = 0
     for idx, full_table_name in enumerate(feature_tables, start=1):
         print(f"[INFO] ({idx}/{len(feature_tables)}) {full_table_name}", flush=True)
+        if reporter:
+            reporter.emit(
+                step="table_metadata",
+                message=f"表 {idx}/{len(feature_tables)}：正在读取元数据 {full_table_name}",
+                current=idx - 1,
+                total=len(feature_tables),
+                metrics={"table": full_table_name, "success": success_count, "failed": len(all_meta["failed_tables"])},
+            )
         try:
             raw = dp.get_table_meta(full_table_name)
             data = meta_data(raw)
@@ -253,9 +275,36 @@ def main(argv: list[str] | None = None) -> int:
                         "ordinal": col["ordinal"],
                     }
                 )
+            success_count += 1
+            if reporter:
+                reporter.emit(
+                    step="table_metadata_done",
+                    message=(
+                        f"表 {idx}/{len(feature_tables)}：元数据完成，候选字段 {len(feature_columns)} 个，"
+                        f"成功 {success_count} 张，失败 {len(all_meta['failed_tables'])} 张"
+                    ),
+                    current=idx,
+                    total=len(feature_tables),
+                    metrics={
+                        "table": full_table_name,
+                        "feature_columns": len(feature_columns),
+                        "success": success_count,
+                        "failed": len(all_meta["failed_tables"]),
+                    },
+                )
         except Exception as exc:  # noqa: BLE001 - keep export progressing across bad tables.
             all_meta["failed_tables"].append({"table": full_table_name, "error": str(exc)})
             print(f"[WARN] failed: {full_table_name}: {exc}", file=sys.stderr, flush=True)
+            if reporter:
+                reporter.emit(
+                    step="table_metadata_failed",
+                    status="failed",
+                    message=f"表 {idx}/{len(feature_tables)}：元数据读取失败 {full_table_name}：{exc}",
+                    current=idx,
+                    total=len(feature_tables),
+                    metrics={"table": full_table_name, "success": success_count, "failed": len(all_meta["failed_tables"])},
+                    level="warning",
+                )
 
     all_meta["feature_table_count"] = len(feature_tables)
     all_meta["feature_column_count"] = len(feature_rows)
@@ -296,6 +345,19 @@ def main(argv: list[str] | None = None) -> int:
     print(f"[OK] feature columns: {len(feature_rows)}")
     print(f"[OK] output: {output_dir}")
     print(f"[OK] docs: {docs_path}")
+    if reporter:
+        reporter.emit(
+            step="write_outputs",
+            status="done" if not all_meta["failed_tables"] else "failed",
+            message=(
+                f"特征元数据导出完成：成功 {len(summary_rows)}/{len(feature_tables)} 张表，"
+                f"候选字段 {len(feature_rows)} 个"
+            ),
+            current=len(feature_tables),
+            total=len(feature_tables),
+            percent=100,
+            metrics={"success": len(summary_rows), "failed": len(all_meta["failed_tables"]), "feature_columns": len(feature_rows)},
+        )
     if all_meta["failed_tables"]:
         return 2
     return 0

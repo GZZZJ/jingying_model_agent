@@ -14,13 +14,28 @@ from risk_model_workbench.evaluation.metrics import auc_score, ks_score
 from risk_model_workbench.evaluation.stability import compute_score_psi
 
 
-def evaluate_scores_from_feather(*, scores_feather: str | Path, output_dir: str | Path, config: dict[str, Any]) -> dict[str, Any]:
+def evaluate_scores_from_feather(
+    *,
+    scores_feather: str | Path,
+    output_dir: str | Path,
+    config: dict[str, Any],
+    progress: Any | None = None,
+) -> dict[str, Any]:
     """Evaluate model and champion scores from a feather score table."""
     scores_path = Path(scores_feather)
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
     eval_cfg = config["evaluation"]
+    if progress:
+        progress.emit(step="read_scores", message=f"正在读取评分数据：{scores_path}", percent=8)
     df = pd.read_feather(scores_path)
+    if progress:
+        progress.emit(
+            step="read_scores_done",
+            message=f"评分数据读取完成：{len(df)} 行 {len(df.columns)} 列",
+            percent=18,
+            metrics={"rows": int(len(df)), "columns": int(len(df.columns))},
+        )
 
     label_col = eval_cfg["label_column"]
     split_col = eval_cfg["split_column"]
@@ -40,14 +55,20 @@ def evaluate_scores_from_feather(*, scores_feather: str | Path, output_dir: str 
 
     splits = sorted(df[split_col].dropna().unique().tolist())
     overall_rows: list[dict[str, Any]] = []
+    if progress:
+        progress.emit(step="overall_metrics", message=f"开始计算整体指标：{len(splits)} 个样本分组，{len(score_cols)} 个分数字段", percent=25)
     for split_val in splits:
         mask = df[split_col] == split_val
         row = _base_slice_row(df, mask, label_col, split_col, split_val)
         _add_score_metrics(row, df, mask, label_col, score_cols)
         overall_rows.append(row)
     pd.DataFrame(overall_rows).to_csv(output_path / "overall_metrics.csv", index=False, encoding="utf-8-sig")
+    if progress:
+        progress.emit(step="overall_metrics_done", message=f"整体指标完成：{len(overall_rows)} 行", percent=38, metrics={"rows": len(overall_rows)})
 
     monthly_rows: list[dict[str, Any]] = []
+    if progress:
+        progress.emit(step="monthly_metrics", message="开始计算月度指标", percent=42)
     if "mdl_month" in df.columns:
         for split_val in splits:
             split_mask = df[split_col] == split_val
@@ -60,15 +81,29 @@ def evaluate_scores_from_feather(*, scores_feather: str | Path, output_dir: str 
                 _add_score_metrics(row, df, mask, label_col, score_cols)
                 monthly_rows.append(row)
     pd.DataFrame(monthly_rows).to_csv(output_path / "monthly_metrics.csv", index=False, encoding="utf-8-sig")
+    if progress:
+        progress.emit(step="monthly_metrics_done", message=f"月度指标完成：{len(monthly_rows)} 行", percent=52, metrics={"rows": len(monthly_rows)})
 
+    if progress:
+        progress.emit(step="segment_metrics", message="开始计算分群指标", percent=56)
     segment_rows = _segment_metrics(df, label_col, split_col, score_cols, splits)
     pd.DataFrame(segment_rows).to_csv(output_path / "segment_metrics.csv", index=False, encoding="utf-8-sig")
+    if progress:
+        progress.emit(step="segment_metrics_done", message=f"分群指标完成：{len(segment_rows)} 行", percent=64, metrics={"rows": len(segment_rows)})
 
+    if progress:
+        progress.emit(step="decile_outputs", message="开始生成 decile lift 结果", percent=68)
     _write_decile_outputs(df, output_path, score_cols, label_col)
+    if progress:
+        progress.emit(step="intent_risk_outputs", message="开始生成意愿资产交叉观察结果", percent=76)
     _write_intent_risk_outputs(df, output_path, label_col)
+    if progress:
+        progress.emit(step="psi_outputs", message="开始生成 PSI 稳定性结果", percent=82)
     _write_psi_outputs(df, output_path, score_cols, time_col)
     benchmark_rows = _benchmark_uplift(df, label_col, split_col, score_cols, splits)
     pd.DataFrame(benchmark_rows).to_csv(output_path / "benchmark_uplift.csv", index=False, encoding="utf-8-sig")
+    if progress:
+        progress.emit(step="benchmark_done", message=f"冠军挑战者对比指标完成：{len(benchmark_rows)} 行", percent=90, metrics={"rows": len(benchmark_rows)})
 
     summary = {
         "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
@@ -92,6 +127,14 @@ def evaluate_scores_from_feather(*, scores_feather: str | Path, output_dir: str 
         "output_dir": str(output_path),
     }
     (output_path / "evaluation_summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    if progress:
+        progress.emit(
+            step="write_summary",
+            status="done",
+            message=f"模型评估完成：评估 {len(score_cols)} 个分数字段，总样本 {len(df)} 行",
+            percent=100,
+            metrics={"score_columns": score_cols, "rows": int(len(df)), "output_dir": str(output_path)},
+        )
     return summary
 
 
