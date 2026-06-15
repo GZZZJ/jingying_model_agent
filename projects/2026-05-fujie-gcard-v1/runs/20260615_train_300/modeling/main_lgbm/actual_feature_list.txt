@@ -1,4 +1,3 @@
-# LEAKAGE-WARN: unpaid_principal_future_light_add_heavy - contains indicators that may depend on future information; review before production use
 ord_apl_sum_prc_amt_90_day
 ord_apl_max_prc_amt_180_day
 his_90_day_csh_apl_ord_cnt_his_rto

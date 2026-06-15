@@ -1,0 +1,103 @@
+{
+  "version": 1,
+  "artifacts": [
+    {
+      "path": "configs_snapshot",
+      "exists": true,
+      "stage": "validate_config",
+      "kind": "directory",
+      "source": "generated",
+      "description": "Project config snapshot",
+      "registered_at": "2026-06-15T18:37:34"
+    },
+    {
+      "path": "modeling/main_lgbm/train_metrics.json",
+      "size_bytes": 160,
+      "mtime": "2026-06-15T18:51:57",
+      "sha256": "ea25d71c5962fd6eefa9ab54ade174e9c83e0db5f770d06b1b7dde204c3479c0",
+      "stage": "train_baseline",
+      "kind": "file",
+      "source": "generated",
+      "description": "",
+      "registered_at": "2026-06-15T18:51:57"
+    },
+    {
+      "path": "evaluation/evaluation_summary.json",
+      "size_bytes": 2669,
+      "mtime": "2026-06-15T18:56:54",
+      "sha256": "cd49ff64f2c54ff20a7ac089347b12d4404859f59faca99c0ba33cf0c4042232",
+      "stage": "evaluate",
+      "kind": "file",
+      "source": "generated",
+      "description": "",
+      "registered_at": "2026-06-15T18:56:54"
+    },
+    {
+      "path": "evaluation/overall_metrics.csv",
+      "size_bytes": 1051,
+      "mtime": "2026-06-15T18:53:32",
+      "sha256": "3699f60cee08bcfc1581d8d9deca8c26fa5fa93c64c51a7167af2b43cd82aeca",
+      "stage": "evaluate",
+      "kind": "file",
+      "source": "generated",
+      "description": "",
+      "registered_at": "2026-06-15T18:56:54"
+    },
+    {
+      "path": "evaluation/monthly_metrics.csv",
+      "size_bytes": 3780,
+      "mtime": "2026-06-15T18:54:03",
+      "sha256": "786da176da2b9326ffbcfc521bf4a7f819c3012ab7ea980508d78da57f491211",
+      "stage": "evaluate",
+      "kind": "file",
+      "source": "generated",
+      "description": "",
+      "registered_at": "2026-06-15T18:56:55"
+    },
+    {
+      "path": "evaluation/segment_metrics.csv",
+      "size_bytes": 5563,
+      "mtime": "2026-06-15T18:55:11",
+      "sha256": "da417b1d5e370189ff20c9eb3d5d72f68b678428e6fe3fe745ae93d2b76c36de",
+      "stage": "evaluate",
+      "kind": "file",
+      "source": "generated",
+      "description": "",
+      "registered_at": "2026-06-15T18:56:55"
+    },
+    {
+      "path": "evaluation/benchmark_uplift.csv",
+      "size_bytes": 1436,
+      "mtime": "2026-06-15T18:56:53",
+      "sha256": "6613cfd820dc015bb2ef9f376e6c7df5459b2b60804b71b4c6ffd9b0c2ab5e6d",
+      "stage": "evaluate",
+      "kind": "file",
+      "source": "generated",
+      "description": "",
+      "registered_at": "2026-06-15T18:56:55"
+    },
+    {
+      "path": "evaluation/score_psi_by_month.csv",
+      "size_bytes": 1804,
+      "mtime": "2026-06-15T18:56:25",
+      "sha256": "537533ad6ed5f452a274b5e89fd53592e518db5cf5fcdf3413b9c1fecf978934",
+      "stage": "evaluate",
+      "kind": "file",
+      "source": "generated",
+      "description": "",
+      "registered_at": "2026-06-15T18:56:55"
+    },
+    {
+      "path": "evaluation/champion_challenger.json",
+      "size_bytes": 117,
+      "mtime": "2026-06-15T18:57:02",
+      "sha256": "4f1eb8fc20ddfcf60a32d8e08467bf611288fd281b76c84118d67a7abc51ace7",
+      "stage": "compare",
+      "kind": "file",
+      "source": "generated",
+      "description": "",
+      "registered_at": "2026-06-15T18:57:02"
+    }
+  ],
+  "updated_at": "2026-06-15T18:57:02"
+}
