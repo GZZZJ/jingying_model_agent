@@ -8,9 +8,18 @@ from typing import Any
 
 import yaml
 
+from risk_model_workbench.harness.errors import (
+    ARTIFACT_CONTRACT_FAILED,
+    DATA_MISSING,
+    SCAFFOLD_ONLY,
+    SQL_APPROVAL_REQUIRED,
+    UNKNOWN,
+)
 from risk_model_workbench.paths import REPO_ROOT, project_config_path
-from risk_model_workbench.registry import load_artifact_manifest
+from risk_model_workbench.rules import summarize_rules
+from risk_model_workbench.run_evidence import load_run_evidence
 from risk_model_workbench.state import load_run_state, run_dir
+from risk_model_workbench.workflow_contracts import artifact_exists, audit_contract_artifacts
 
 
 PROJECT_STATE_VERSION = 1
@@ -89,6 +98,7 @@ def summarize_project(project_dir: str | Path, run_id: str | None = None) -> dic
         "next_actions": list(persisted.get("next_actions", [])),
         "blockers": list(persisted.get("blockers", [])),
         "risks": list(persisted.get("risks", [])),
+        "rules": summarize_rules(),
         "run": None,
     }
 
@@ -105,6 +115,11 @@ def summarize_project(project_dir: str | Path, run_id: str | None = None) -> dic
         return summary
 
     stage_rows = _stage_rows(run_state)
+    try:
+        audit = audit_run(project_path, selected_run_id)
+    except Exception:
+        audit = {"verdict": "unknown", "stages": []}
+    audit_issues = _append_unique([], [issue for item in audit.get("stages", []) for issue in item.get("issues", [])])
     inferred_next, inferred_blockers, inferred_risks = _infer_run_followups(run_state)
     summary["status"] = persisted.get("status") or run_state.get("status", "unknown")
     summary["next_actions"] = summary["next_actions"] or inferred_next
@@ -119,6 +134,8 @@ def summarize_project(project_dir: str | Path, run_id: str | None = None) -> dic
         "stage_counts": _stage_counts(stage_rows),
         "stages": stage_rows,
         "recent_decisions": list(run_state.get("decisions", []))[-5:],
+        "audit_verdict": audit.get("verdict", ""),
+        "audit_top_issues": audit_issues[:5],
     }
     return summary
 
@@ -162,8 +179,22 @@ def format_project_summary(summary: dict[str, Any]) -> str:
                 f"  status: {run.get('status')}",
                 f"  current_stage: {run.get('current_stage')}",
                 f"  stage_counts: {counts}",
+                f"  audit_verdict: {run.get('audit_verdict') or ''}",
             ]
         )
+        _extend_list(lines, "audit_top_issues", run.get("audit_top_issues", []))
+
+    rules = summary.get("rules") or {}
+    if rules:
+        lines.extend(
+            [
+                "",
+                "rules:",
+                f"  proposed: {rules.get('proposed_count', 0)}",
+                f"  unenforced_guardrails: {rules.get('unenforced_guardrail_count', 0)}",
+            ]
+        )
+        _extend_list(lines, "proposed_rules", [f"{item.get('id')}: {item.get('title')}" for item in rules.get("proposed_rules", [])[:5]])
 
     _extend_list(lines, "next_actions", summary.get("next_actions", []))
     _extend_list(lines, "blockers", summary.get("blockers", []))
@@ -177,6 +208,7 @@ def write_handoff(
     run_id: str | None = None,
     note: str = "",
     output: str | Path | None = None,
+    context_snapshot: str | Path | None = None,
 ) -> Path:
     project_path = Path(project_dir)
     summary = summarize_project(project_path, run_id=run_id)
@@ -188,7 +220,10 @@ def write_handoff(
         if not output_path.is_absolute():
             output_path = project_path / output_path
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(format_handoff(summary, note=note), encoding="utf-8")
+    output_path.write_text(
+        format_handoff(summary, note=note, context_snapshot=_resolve_context_snapshot_ref(project_path, summary, context_snapshot)),
+        encoding="utf-8",
+    )
 
     state = update_project_state(
         project_path,
@@ -203,7 +238,7 @@ def write_handoff(
     return output_path
 
 
-def format_handoff(summary: dict[str, Any], *, note: str = "") -> str:
+def format_handoff(summary: dict[str, Any], *, note: str = "", context_snapshot: str | None = None) -> str:
     run = summary.get("run") or {}
     lines = [
         f"# Handoff - {summary.get('display_name') or summary.get('project_name')}",
@@ -223,6 +258,8 @@ def format_handoff(summary: dict[str, Any], *, note: str = "") -> str:
     if summary.get("active_run_id"):
         lines.append(f"- runs/{summary['active_run_id']}/run_state.yml")
         lines.append(f"- runs/{summary['active_run_id']}/audit/artifact_manifest.json")
+    if context_snapshot:
+        lines.append(f"- {context_snapshot}")
 
     _extend_markdown_list(lines, "Next Actions", summary.get("next_actions", []))
     _extend_markdown_list(lines, "Blockers", summary.get("blockers", []))
@@ -281,14 +318,10 @@ def append_lesson(
 
 
 def audit_run(project_dir: str | Path, run_id: str, *, stage: str | None = None) -> dict[str, Any]:
-    project_path = Path(project_dir)
-    selected_run_dir = run_dir(project_path, run_id)
-    run_state = load_run_state(selected_run_dir)
-    manifest = load_artifact_manifest(selected_run_dir)
-    manifest_artifacts = manifest.get("artifacts", [])
-    manifest_by_stage: dict[str, list[dict[str, Any]]] = {}
-    for artifact in manifest_artifacts:
-        manifest_by_stage.setdefault(str(artifact.get("stage", "")), []).append(artifact)
+    evidence = load_run_evidence(project_dir, run_id)
+    project_path = evidence.project_path
+    run_state = evidence.run_state
+    contract_source = evidence.contract_source
 
     stage_states = run_state.get("stages") or {}
     selected_names = [stage] if stage else list(stage_states.keys())
@@ -304,12 +337,29 @@ def audit_run(project_dir: str | Path, run_id: str, *, stage: str | None = None)
                     "artifact_count": 0,
                     "registered_count": 0,
                     "issues": [f"stage is not present in run_state.yml: {name}"],
+                    "contract_source": contract_source,
                 }
             )
             continue
-        stage_results.append(_audit_stage(name, state, manifest_by_stage.get(name, []), run_state))
+        stage_results.append(
+            _audit_stage(
+                name,
+                state,
+                evidence.manifest_by_stage.get(name, []),
+                run_state,
+                evidence.run_path,
+                evidence.stage_contracts.get(name, {}),
+                contract_source,
+            )
+        )
 
     verdict = _rollup_audit_verdict(stage_results)
+    source_of_truth = [
+        f"runs/{run_id}/run_state.yml",
+        f"runs/{run_id}/audit/artifact_manifest.json",
+    ]
+    if contract_source:
+        source_of_truth.append(contract_source)
     return {
         "project": str(project_path.resolve()),
         "run_id": run_id,
@@ -317,10 +367,8 @@ def audit_run(project_dir: str | Path, run_id: str, *, stage: str | None = None)
         "run_status": run_state.get("status", ""),
         "stage": stage or "",
         "verdict": verdict,
-        "source_of_truth": [
-            f"runs/{run_id}/run_state.yml",
-            f"runs/{run_id}/audit/artifact_manifest.json",
-        ],
+        "source_of_truth": source_of_truth,
+        "contract_source": contract_source,
         "stages": stage_results,
     }
 
@@ -331,13 +379,15 @@ def format_run_audit(audit: dict[str, Any]) -> str:
         f"workflow: {audit.get('workflow')}",
         f"run_status: {audit.get('run_status')}",
         f"verdict: {audit.get('verdict')}",
+        f"contract_source: {audit.get('contract_source') or ''}",
         "",
         "stages:",
     ]
     for stage in audit.get("stages", []):
+        code = f", failure_code={stage.get('failure_code')}" if stage.get("failure_code") else ""
         lines.append(
             f"  - {stage['stage']}: {stage['verdict']} "
-            f"(status={stage['status']}, artifacts={stage['artifact_count']}, registered={stage['registered_count']})"
+            f"(status={stage['status']}, artifacts={stage['artifact_count']}, registered={stage['registered_count']}{code})"
         )
         for issue in stage.get("issues", []):
             lines.append(f"    issue: {issue}")
@@ -445,7 +495,38 @@ def _lesson_path(project_dir: str | Path, scope: str) -> Path:
     raise ValueError(f"unknown lesson scope: {scope}")
 
 
-def _audit_stage(name: str, state: dict[str, Any], manifest_items: list[dict[str, Any]], run_state: dict[str, Any]) -> dict[str, Any]:
+def _resolve_context_snapshot_ref(
+    project_dir: Path,
+    summary: dict[str, Any],
+    context_snapshot: str | Path | None,
+) -> str | None:
+    if not context_snapshot:
+        return None
+    selected_run_id = summary.get("active_run_id")
+    raw = str(context_snapshot)
+    if raw == "auto":
+        if not selected_run_id:
+            return None
+        path = project_dir / "runs" / str(selected_run_id) / "audit" / "context_snapshot.json"
+    else:
+        path = Path(context_snapshot)
+        if not path.is_absolute():
+            path = project_dir / path
+    try:
+        return str(path.resolve().relative_to(project_dir.resolve()))
+    except ValueError:
+        return str(path.resolve())
+
+
+def _audit_stage(
+    name: str,
+    state: dict[str, Any],
+    manifest_items: list[dict[str, Any]],
+    run_state: dict[str, Any],
+    run_path: str | Path,
+    contract: dict[str, Any],
+    contract_source: str,
+) -> dict[str, Any]:
     status = state.get("status", "unknown")
     artifacts = state.get("artifacts") or []
     registered_paths = {str(item.get("path")) for item in manifest_items}
@@ -453,40 +534,83 @@ def _audit_stage(name: str, state: dict[str, Any], manifest_items: list[dict[str
     missing_files = [
         str(item.get("path"))
         for item in manifest_items
-        if item.get("kind") != "directory" and item.get("exists") is False
+        if not artifact_exists(run_path, item)
     ]
     scaffold_sources = [item for item in manifest_items if item.get("source") == "scaffold"]
     imported_sources = [item for item in manifest_items if item.get("source") == "imported"]
+    allow_scaffold = bool(contract.get("allow_scaffold", False))
+    allow_imported = bool(contract.get("allow_imported", False))
+    closure_required = bool(contract.get("closure_required", True))
     issues: list[str] = []
     issues.extend(f"artifact listed in run_state.yml but not registered: {item}" for item in missing_registrations)
     issues.extend(f"registered artifact does not exist: {item}" for item in missing_files)
+    if status in {"done", "scaffold"}:
+        issues.extend(audit_contract_artifacts(contract, manifest_items, run_path))
 
     if status in {"pending", "running", "failed", "missing"}:
         verdict = "open"
-    elif status == "scaffold" or scaffold_sources:
+    elif (status == "scaffold" or scaffold_sources) and not allow_scaffold:
         verdict = "scaffold"
         issues.append("scaffold evidence is not real modeling evidence")
-    elif status == "done" and not artifacts and not manifest_items:
+    elif status == "done" and closure_required and not artifacts and not manifest_items:
         verdict = "incomplete"
         issues.append("done stage has no registered artifacts")
     elif issues:
         verdict = "incomplete"
-    elif status == "done" and (imported_sources or str(run_state.get("workflow", "")).startswith("imported")):
+    elif (
+        status == "done"
+        and (imported_sources or str(run_state.get("workflow", "")).startswith("imported"))
+        and not allow_imported
+    ):
         verdict = "imported"
         issues.append("imported evidence should be reviewed before treating the stage as locally reproduced")
-    elif status == "done":
+    elif status in {"done", "scaffold"}:
         verdict = "complete"
     else:
         verdict = "unknown"
 
+    failure_codes = _classify_stage_failure(status=status, verdict=verdict, issues=issues)
     return {
         "stage": name,
         "status": status,
         "verdict": verdict,
         "artifact_count": len(artifacts),
         "registered_count": len(manifest_items),
+        "contract_source": contract_source,
+        "failure_code": failure_codes[0] if failure_codes else "",
+        "failure_codes": failure_codes,
         "issues": issues,
     }
+
+
+def _classify_stage_failure(*, status: str, verdict: str, issues: list[str]) -> list[str]:
+    codes: list[str] = []
+    issue_text = "\n".join(issues).lower()
+    if "sql approval" in issue_text or "waiting for approval" in issue_text:
+        codes.append(SQL_APPROVAL_REQUIRED)
+    if (
+        "contract required artifact" in issue_text
+        or "no accepted artifact set" in issue_text
+        or "stage_contract" in issue_text
+    ):
+        codes.append(ARTIFACT_CONTRACT_FAILED)
+    if status == "scaffold" or verdict == "scaffold" or "scaffold" in issue_text:
+        codes.append(SCAFFOLD_ONLY)
+    if (
+        status in {"pending", "running", "missing"}
+        or "not registered" in issue_text
+        or "does not exist" in issue_text
+        or "no registered artifacts" in issue_text
+        or "not present in run_state" in issue_text
+    ):
+        codes.append(DATA_MISSING)
+    if status == "failed" and not codes:
+        codes.append(UNKNOWN)
+    if verdict == "imported" and not codes:
+        codes.append(UNKNOWN)
+    if verdict == "unknown" and not codes:
+        codes.append(UNKNOWN)
+    return _append_unique([], codes)
 
 
 def _rollup_audit_verdict(stage_results: list[dict[str, Any]]) -> str:

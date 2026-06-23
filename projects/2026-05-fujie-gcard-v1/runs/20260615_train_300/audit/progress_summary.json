@@ -1,16 +1,16 @@
 {
   "version": 1,
   "run_id": "20260615_train_300",
-  "updated_at": "2026-06-15T18:57:02",
-  "stage": "compare",
-  "stage_label": "冠军挑战者对比",
+  "updated_at": "2026-06-16T17:48:28",
+  "stage": "report",
+  "stage_label": "报告生成",
   "latest_event": {
-    "timestamp": "2026-06-15T18:57:02",
+    "timestamp": "2026-06-16T17:48:28",
     "run_id": "20260615_train_300",
-    "stage": "compare",
+    "stage": "report",
     "step": "stage_done",
-    "status": "scaffold",
-    "message": "冠军挑战者对比完成，产物为脚手架或占位结果",
+    "status": "done",
+    "message": "报告生成完成",
     "current": null,
     "total": null,
     "percent": 100.0,
@@ -18,7 +18,7 @@
     "eta_seconds": null,
     "metrics": {},
     "level": "info",
-    "pid": 5315
+    "pid": 14111
   },
   "stages": {
     "train_baseline": {
@@ -83,6 +83,27 @@
         "pid": 5315
       },
       "updated_at": "2026-06-15T18:57:02"
+    },
+    "report": {
+      "stage": "report",
+      "stage_label": "报告生成",
+      "latest_event": {
+        "timestamp": "2026-06-16T17:48:28",
+        "run_id": "20260615_train_300",
+        "stage": "report",
+        "step": "stage_done",
+        "status": "done",
+        "message": "报告生成完成",
+        "current": null,
+        "total": null,
+        "percent": 100.0,
+        "elapsed_seconds": 0.0,
+        "eta_seconds": null,
+        "metrics": {},
+        "level": "info",
+        "pid": 14111
+      },
+      "updated_at": "2026-06-16T17:48:28"
     }
   }
 }

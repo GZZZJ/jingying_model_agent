@@ -99,8 +99,11 @@ def test_run_audit_classifies_completed_stage(tmp_path):
     assert main(["run", "init", "--project", str(project), "--workflow", "full_modeling", "--run-id", "run1"]) == 0
     run_path = project / "runs" / "run1"
     artifact = run_path / "sample_check" / "sample_summary.json"
+    report = run_path / "sample_check" / "sample_check_report.md"
     artifact.write_text('{"status": "done"}\n', encoding="utf-8")
+    report.write_text("# Sample Check\n\nstatus: done\n", encoding="utf-8")
     register_artifact(run_path, "sample_check", "sample_check/sample_summary.json")
+    register_artifact(run_path, "sample_check", "sample_check/sample_check_report.md")
     mark_stage_done(run_path, "sample_check")
 
     audit = audit_run(project, "run1", stage="sample_check")

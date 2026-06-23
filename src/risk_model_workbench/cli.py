@@ -13,8 +13,18 @@ from typing import Any
 
 import yaml
 
+from risk_model_workbench.cli_meta import add_metadata_parsers
 from risk_model_workbench.config import load_yaml
 from risk_model_workbench.feature_screening import write_feature_screening_summary
+from risk_model_workbench.harness.errors import SQL_APPROVAL_REQUIRED
+from risk_model_workbench.harness.runtime import (
+    classify_exception,
+    register_action_artifact as register_artifact,
+    run_with_retry,
+    stage_action_done,
+    stage_action_failed,
+    stage_action_started,
+)
 from risk_model_workbench.manifest import make_run_id
 from risk_model_workbench.paths import REPO_ROOT, project_config_path, resolve_project_path, workflow_path
 from risk_model_workbench.planning import create_execution_plan, save_execution_plan
@@ -37,17 +47,16 @@ from risk_model_workbench.project_state import (
     write_retrospective,
 )
 from risk_model_workbench.request import parse_model_request, validate_model_request
+from risk_model_workbench.rules import format_rules, load_workbench_rules, promote_lesson_to_rule
 from risk_model_workbench.state import (
     append_decision,
     create_run_state,
     load_run_state,
-    mark_stage_failed,
     mark_stage_done,
-    mark_stage_started,
-    register_artifact,
     run_dir,
     save_run_state,
 )
+from risk_model_workbench.workflow_contracts import validate_workflow_definition
 from risk_model_workbench.wide_sql import generate_wide_sql
 
 
@@ -96,6 +105,11 @@ def _copy_woe_artifacts(source_dir: Path, target_dir: Path) -> None:
 
 def _load_project_config(project_dir: Path) -> dict[str, Any]:
     return load_yaml(project_config_path(project_dir))
+
+
+def _read_only_action(action_id: str, operation):
+    result, _retry_count = run_with_retry(action_id, operation)
+    return result
 
 
 def cmd_doctor(_: argparse.Namespace) -> int:
@@ -169,7 +183,10 @@ def cmd_project_validate(args: argparse.Namespace) -> int:
 
 def cmd_project_status(args: argparse.Namespace) -> int:
     project_dir = resolve_project_path(args.project)
-    summary = summarize_project(project_dir, run_id=args.run_id)
+    if args.write_state:
+        summary = summarize_project(project_dir, run_id=args.run_id)
+    else:
+        summary = _read_only_action("project_status", lambda: summarize_project(project_dir, run_id=args.run_id))
     print(format_project_summary(summary), end="")
     if args.write_state:
         command = f"rmw project status --project {args.project}"
@@ -199,7 +216,13 @@ def cmd_project_update_state(args: argparse.Namespace) -> int:
 
 def cmd_handoff_write(args: argparse.Namespace) -> int:
     project_dir = resolve_project_path(args.project)
-    path = write_handoff(project_dir, run_id=args.run_id, note=args.note or "", output=args.output)
+    path = write_handoff(
+        project_dir,
+        run_id=args.run_id,
+        note=args.note or "",
+        output=args.output,
+        context_snapshot=args.context_snapshot,
+    )
     print(f"handoff: {path}")
     return 0
 
@@ -228,10 +251,43 @@ def cmd_lesson_add(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_lesson_promote(args: argparse.Namespace) -> int:
+    project_dir = resolve_project_path(args.project)
+    try:
+        path, entry = promote_lesson_to_rule(
+            project_dir,
+            title=args.title,
+            target=args.target,
+            rule_id=args.rule_id,
+            note=args.note or "",
+        )
+    except ValueError as exc:
+        print(f"lesson promote failed: {exc}")
+        return 1
+    print(f"rules: {path}")
+    print(f"rule_id: {entry.get('id')}")
+    print(f"status: {entry.get('status')}")
+    return 0
+
+
+def cmd_rules_list(args: argparse.Namespace) -> int:
+    payload = _read_only_action("rules_list", load_workbench_rules)
+    if args.json:
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+    else:
+        print(format_rules(payload), end="")
+    return 0
+
+
 def cmd_run_audit(args: argparse.Namespace) -> int:
     project_dir = resolve_project_path(args.project)
-    audit = audit_run(project_dir, args.run_id, stage=args.stage)
-    print(format_run_audit(audit), end="")
+    audit = _read_only_action("run_audit", lambda: audit_run(project_dir, args.run_id, stage=args.stage))
+    if args.json:
+        print(json.dumps(audit, ensure_ascii=False, indent=2))
+    else:
+        print(format_run_audit(audit), end="")
+    if args.strict and audit.get("verdict") != "complete":
+        return 1
     return 0
 
 
@@ -266,10 +322,11 @@ def cmd_workflow_validate(args: argparse.Namespace) -> int:
     if not path.exists():
         print(f"missing workflow: {path}")
         return 1
-    workflow = load_yaml(path)
-    stages = workflow.get("stages")
-    if not workflow.get("name") or not isinstance(stages, list) or not stages:
+    errors = _read_only_action("workflow_validate", lambda: validate_workflow_definition(load_yaml(path)))
+    if errors:
         print(f"workflow validation failed: {path}")
+        for error in errors:
+            print(f"- {error}")
         return 1
     print(f"workflow validation ok: {path}")
     return 0
@@ -302,6 +359,7 @@ def cmd_run_init(args: argparse.Namespace) -> int:
     _write_json(path / "audit" / "artifact_manifest.json", {"version": 1, "artifacts": []})
     _write_text(path / "audit" / "command_log.jsonl", "")
     _write_text(path / "audit" / "decision_log.md", f"# Decision Log\n\n- imported: false\n")
+    stage_action_started(path, "validate_config")
     register_artifact(path, "validate_config", "configs_snapshot", kind="directory", description="Project config snapshot")
     if getattr(args, "request", None):
         request_path = Path(args.request)
@@ -315,6 +373,7 @@ def cmd_run_init(args: argparse.Namespace) -> int:
         if plan_path.exists():
             shutil.copy2(plan_path, path / "execution_plan.yml")
             register_artifact(path, "validate_config", "execution_plan.yml", description="Execution plan copied into run workspace")
+    stage_action_done(path, "validate_config")
     print(f"run_id: {run_id}")
     print(f"run_dir: {path}")
     return 0
@@ -367,18 +426,26 @@ def cmd_plan_create(args: argparse.Namespace) -> int:
 
 def cmd_status(args: argparse.Namespace) -> int:
     path = _run_path(args)
-    state = load_run_state(path)
     if getattr(args, "progress", False):
         tail = int(getattr(args, "tail", 5) or 5)
+        state, summary, events = _read_only_action(
+            "run_status",
+            lambda: (
+                load_run_state(path),
+                load_progress_summary(path),
+                load_progress_events(path, tail=tail),
+            ),
+        )
         print(
             format_progress_report(
                 run_state=state,
-                summary=load_progress_summary(path),
-                events=load_progress_events(path, tail=tail),
+                summary=summary,
+                events=events,
             ),
             end="",
         )
         return 0
+    state = _read_only_action("run_status", lambda: load_run_state(path))
     print(yaml.safe_dump(state, allow_unicode=True, sort_keys=False))
     return 0
 
@@ -404,7 +471,7 @@ def cmd_run_watch(args: argparse.Namespace) -> int:
 def cmd_sample_check(args: argparse.Namespace) -> int:
     project_dir = resolve_project_path(args.project)
     path = _run_path(args)
-    mark_stage_started(path, "sample_check")
+    stage_action_started(path, "sample_check")
     config = _load_project_config(project_dir)
     data_cfg = config.get("data", {})
     raw_path = project_dir / data_cfg.get("raw_path", "data/raw/sample.feather")
@@ -434,14 +501,14 @@ def cmd_sample_check(args: argparse.Namespace) -> int:
     register_artifact(path, "sample_check", "sample_check/sample_summary.json")
     register_artifact(path, "sample_check", "sample_check/sample_check_report.md")
     append_decision(path, stage="sample_check", decision="scaffold", reason=reason)
-    mark_stage_done(path, "sample_check", scaffold=True)
+    stage_action_done(path, "sample_check", scaffold=True, message=reason)
     print(f"sample_check: {path / 'sample_check' / 'sample_summary.json'}")
     return 0
 
 
 def cmd_feature_metadata(args: argparse.Namespace) -> int:
     path = _run_path(args)
-    mark_stage_started(path, "feature_metadata")
+    stage_action_started(path, "feature_metadata")
     from risk_model_workbench.feature_metadata import main as metadata_main
 
     argv = ["--project-dir", str(resolve_project_path(args.project)), "--run-dir", str(path)]
@@ -449,15 +516,15 @@ def cmd_feature_metadata(args: argparse.Namespace) -> int:
         argv.extend(["--tables-file", args.tables_file])
     code = metadata_main(argv)
     if code == 0:
-        mark_stage_done(path, "feature_metadata")
+        stage_action_done(path, "feature_metadata")
     else:
-        mark_stage_failed(path, "feature_metadata", f"metadata command exited with code {code}")
+        stage_action_failed(path, "feature_metadata", f"metadata command exited with code {code}")
     return code
 
 
 def cmd_feature_d01_d02(args: argparse.Namespace) -> int:
     path = _run_path(args)
-    mark_stage_started(path, "d01_d02_screening")
+    stage_action_started(path, "d01_d02_screening")
     from risk_model_workbench.batch_feature_select import main as batch_select_main
 
     argv = ["--project-dir", str(resolve_project_path(args.project)), "--run-dir", str(path)]
@@ -478,9 +545,15 @@ def cmd_feature_d01_d02(args: argparse.Namespace) -> int:
         argv.append("--force")
     code = batch_select_main(argv)
     if code == 0:
-        mark_stage_done(path, "d01_d02_screening", scaffold=args.dry_run_sql)
+        stage_action_done(
+            path,
+            "d01_d02_screening",
+            scaffold=args.dry_run_sql,
+            message="SQL dry run waiting for approval" if args.dry_run_sql else "",
+            failure_code=SQL_APPROVAL_REQUIRED if args.dry_run_sql else "",
+        )
     else:
-        mark_stage_failed(path, "d01_d02_screening", f"d01-d02 command exited with code {code}")
+        stage_action_failed(path, "d01_d02_screening", f"d01-d02 command exited with code {code}")
     return code
 
 
@@ -490,7 +563,7 @@ def cmd_build_wide_sql(args: argparse.Namespace) -> int:
     run_path = None
     if getattr(args, "run_id", None):
         run_path = _run_path(args)
-        mark_stage_started(run_path, "build_wide_sql")
+        stage_action_started(run_path, "build_wide_sql")
         reporter = ProgressReporter(run_path, "build_wide_sql")
         reporter.emit(step="build_sql", message="开始生成宽表 SQL", percent=10)
     try:
@@ -507,7 +580,7 @@ def cmd_build_wide_sql(args: argparse.Namespace) -> int:
         )
     except Exception as exc:
         if run_path:
-            mark_stage_failed(run_path, "build_wide_sql", str(exc))
+            stage_action_failed(run_path, "build_wide_sql", str(exc), failure_code=classify_exception(exc))
         raise
     if reporter:
         reporter.emit(
@@ -521,7 +594,7 @@ def cmd_build_wide_sql(args: argparse.Namespace) -> int:
             },
         )
     if run_path:
-        mark_stage_done(run_path, "build_wide_sql")
+        stage_action_done(run_path, "build_wide_sql")
     print(f"sql: {sql_path}")
     print(f"feature_map: {feature_map_path}")
     print(f"summary: {summary_path}")
@@ -530,7 +603,7 @@ def cmd_build_wide_sql(args: argparse.Namespace) -> int:
 
 def cmd_feature_refine(args: argparse.Namespace) -> int:
     path = _run_path(args)
-    mark_stage_started(path, "feature_refine")
+    stage_action_started(path, "feature_refine")
     from risk_model_workbench.feature_refine import main as refine_main
 
     argv = ["--project-dir", str(resolve_project_path(args.project)), "--run-dir", str(path)]
@@ -544,16 +617,22 @@ def cmd_feature_refine(args: argparse.Namespace) -> int:
         argv.append("--sql-approved")
     code = refine_main(argv)
     if code == 0:
-        mark_stage_done(path, "feature_refine", scaffold=args.dry_run_sql)
+        stage_action_done(
+            path,
+            "feature_refine",
+            scaffold=args.dry_run_sql,
+            message="SQL dry run waiting for approval" if args.dry_run_sql else "",
+            failure_code=SQL_APPROVAL_REQUIRED if args.dry_run_sql else "",
+        )
     else:
-        mark_stage_failed(path, "feature_refine", f"feature refine command exited with code {code}")
+        stage_action_failed(path, "feature_refine", f"feature refine command exited with code {code}")
     return code
 
 
 def cmd_train(args: argparse.Namespace) -> int:
     project_dir = resolve_project_path(args.project)
     path = _run_path(args)
-    mark_stage_started(path, "train_baseline")
+    stage_action_started(path, "train_baseline")
     reporter = ProgressReporter(path, "train_baseline")
     config_path = Path(args.config) if getattr(args, "config", None) else project_dir / "configs" / "train.yaml"
     config_path = config_path if config_path.is_absolute() else project_dir / config_path
@@ -600,7 +679,7 @@ def cmd_train(args: argparse.Namespace) -> int:
                 register_artifact(path, "train_baseline", f"modeling/{args.experiment}/{artifact}")
             _register_woe_artifacts(path, "train_baseline", output_dir / "woe_top_features")
             append_decision(path, stage="train_baseline", decision="done", reason="LightGBM training completed from local feather data")
-            mark_stage_done(path, "train_baseline")
+            stage_action_done(path, "train_baseline")
             print(f"train complete: {output_dir}")
             return 0
         except Exception as exc:
@@ -622,7 +701,7 @@ def cmd_train(args: argparse.Namespace) -> int:
         _copy_if_exists(feature_list, output_dir / "feature_list.txt")
     register_artifact(path, "train_baseline", f"modeling/{args.experiment}/train_metrics.json")
     append_decision(path, stage="train_baseline", decision="scaffold", reason=payload["reason"])
-    mark_stage_done(path, "train_baseline", scaffold=True)
+    stage_action_done(path, "train_baseline", scaffold=True, message=payload["reason"])
     print(f"train scaffold: {output_dir / 'train_metrics.json'}")
     return 0
 
@@ -630,7 +709,7 @@ def cmd_train(args: argparse.Namespace) -> int:
 def cmd_evaluate(args: argparse.Namespace) -> int:
     project_dir = resolve_project_path(args.project)
     path = _run_path(args)
-    mark_stage_started(path, "evaluate")
+    stage_action_started(path, "evaluate")
     reporter = ProgressReporter(path, "evaluate")
     evaluate_config = load_yaml(project_dir / "configs" / "evaluate.yaml") if (project_dir / "configs" / "evaluate.yaml").exists() else {}
     metrics = evaluate_config.get("metrics") or evaluate_config.get("evaluation", {}).get("metrics") or []
@@ -656,7 +735,7 @@ def cmd_evaluate(args: argparse.Namespace) -> int:
                 if (output_dir / artifact).exists():
                     register_artifact(path, "evaluate", output_dir / artifact)
             append_decision(path, stage="evaluate", decision="done", reason="Evaluation completed from local score feather")
-            mark_stage_done(path, "evaluate")
+            stage_action_done(path, "evaluate")
             print(f"evaluation complete: {output_dir / 'evaluation_summary.json'}")
             return 0
         except Exception as exc:
@@ -673,27 +752,27 @@ def cmd_evaluate(args: argparse.Namespace) -> int:
     _write_json(path / "evaluation" / "evaluation_summary.json", payload)
     register_artifact(path, "evaluate", "evaluation/evaluation_summary.json")
     append_decision(path, stage="evaluate", decision="scaffold", reason=payload["reason"])
-    mark_stage_done(path, "evaluate", scaffold=True)
+    stage_action_done(path, "evaluate", scaffold=True, message=payload["reason"])
     print(f"evaluation scaffold: {path / 'evaluation' / 'evaluation_summary.json'}")
     return 0
 
 
 def cmd_compare(args: argparse.Namespace) -> int:
     path = _run_path(args)
-    mark_stage_started(path, "compare")
+    stage_action_started(path, "compare")
     if not args.champion:
         payload = {"status": "skipped", "reason": "no champion configured", "champion": ""}
         _write_json(path / "evaluation" / "champion_challenger.json", payload)
         register_artifact(path, "compare", "evaluation/champion_challenger.json")
         append_decision(path, stage="compare", decision="skipped", reason=payload["reason"])
-        mark_stage_done(path, "compare")
+        stage_action_done(path, "compare", message=payload["reason"])
         print(f"compare skipped: {path / 'evaluation' / 'champion_challenger.json'}")
         return 0
     payload = {"status": "scaffold", "reason": "candidate and champion predictions not available", "champion": args.champion}
     _write_json(path / "evaluation" / "champion_challenger.json", payload)
     register_artifact(path, "compare", "evaluation/champion_challenger.json")
     append_decision(path, stage="compare", decision="scaffold", reason=payload["reason"])
-    mark_stage_done(path, "compare", scaffold=True)
+    stage_action_done(path, "compare", scaffold=True, message=payload["reason"])
     print(f"compare scaffold: {path / 'evaluation' / 'champion_challenger.json'}")
     return 0
 
@@ -701,7 +780,7 @@ def cmd_compare(args: argparse.Namespace) -> int:
 def cmd_report(args: argparse.Namespace) -> int:
     project_dir = resolve_project_path(args.project)
     path = _run_path(args)
-    mark_stage_started(path, "report")
+    stage_action_started(path, "report")
     report_config = load_yaml(project_dir / "configs" / "report.yaml") if (project_dir / "configs" / "report.yaml").exists() else {}
     sections = report_config.get("sections") or report_config.get("report", {}).get("sections") or []
     state = load_run_state(path)
@@ -748,11 +827,11 @@ def cmd_report(args: argparse.Namespace) -> int:
             append_decision(path, stage="report", decision="excel_scaffold", reason=f"Excel report not generated: {exc}")
     if excel_path:
         append_decision(path, stage="report", decision="done", reason="Excel report generated from standard train and evaluation artifacts")
-        mark_stage_done(path, "report")
+        stage_action_done(path, "report")
         print(f"report complete: {excel_path}")
     else:
         append_decision(path, stage="report", decision="scaffold", reason="report generated with missing real evaluation artifacts")
-        mark_stage_done(path, "report", scaffold=True)
+        stage_action_done(path, "report", scaffold=True, message="report generated with missing real evaluation artifacts")
         print(f"report scaffold: {path / 'reports' / 'model_report.md'}")
     return 0
 
@@ -882,6 +961,13 @@ def _add_handoff_parser(subparsers: argparse._SubParsersAction[argparse.Argument
     write.add_argument("--run-id", default=None)
     write.add_argument("--note", default="")
     write.add_argument("--output", default=None)
+    write.add_argument(
+        "--context-snapshot",
+        nargs="?",
+        const="auto",
+        default=None,
+        help="include a context snapshot reference; without a value uses the run default path",
+    )
     write.set_defaults(func=cmd_handoff_write)
 
 
@@ -898,6 +984,21 @@ def _add_lesson_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentP
     add.add_argument("--source", default="")
     add.add_argument("--tag", action="append")
     add.set_defaults(func=cmd_lesson_add)
+    promote = lesson_sub.add_parser("promote", help="promote a project lesson into the workbench rule registry")
+    promote.add_argument("--project", required=True)
+    promote.add_argument("--title", required=True)
+    promote.add_argument("--target", choices=["guardrail", "test", "skill", "adr", "glossary"], required=True)
+    promote.add_argument("--rule-id", required=True)
+    promote.add_argument("--note", default="")
+    promote.set_defaults(func=cmd_lesson_promote)
+
+
+def _add_rules_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    rules = subparsers.add_parser("rules", help="workbench rule registry commands")
+    rules_sub = rules.add_subparsers(dest="rules_command", required=True)
+    list_cmd = rules_sub.add_parser("list", help="list workbench rules")
+    list_cmd.add_argument("--json", action="store_true")
+    list_cmd.set_defaults(func=cmd_rules_list)
 
 
 def _add_retrospective_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -966,6 +1067,8 @@ def _add_run_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentPars
     audit.add_argument("--project", required=True)
     audit.add_argument("--run-id", required=True)
     audit.add_argument("--stage", default=None)
+    audit.add_argument("--strict", action="store_true", help="return non-zero unless the audit verdict is complete")
+    audit.add_argument("--json", action="store_true", help="emit machine-readable audit JSON")
     audit.set_defaults(func=cmd_run_audit)
 
 
@@ -1027,6 +1130,8 @@ def build_parser() -> argparse.ArgumentParser:
     _add_project_parser(subparsers)
     _add_handoff_parser(subparsers)
     _add_lesson_parser(subparsers)
+    _add_rules_parser(subparsers)
+    add_metadata_parsers(subparsers)
     _add_retrospective_parser(subparsers)
     _add_workflow_parser(subparsers)
     _add_run_parser(subparsers)

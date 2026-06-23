@@ -29,6 +29,10 @@ files in the workspace.
 - `rmw run init --project <project> --workflow full_modeling`
 - `rmw run status --project <project> --run-id <run_id>`
 - `rmw run audit --project <project> --run-id <run_id>`
+- `rmw run audit --project <project> --run-id <run_id> --strict`
+- `rmw run audit --project <project> --run-id <run_id> --json`
+- `rmw rules list`
+- `rmw lesson promote --project <project> --title <title> --target guardrail --rule-id <id>`
 - `rmw sample check --project <project> --run-id <run_id>`
 - `rmw feature d01-d02 --project <project> --run-id <run_id> --dry-run-sql`
 - `rmw feature refine --project <project> --run-id <run_id> --dry-run-sql`

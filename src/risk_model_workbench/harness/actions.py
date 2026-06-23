@@ -1,0 +1,304 @@
+"""Declarative action specs for rmw workflow and utility commands."""
+
+from __future__ import annotations
+
+from dataclasses import asdict, dataclass
+
+from risk_model_workbench.harness.errors import (
+    ARTIFACT_CONTRACT_FAILED,
+    DATA_MISSING,
+    DEPENDENCY_MISSING,
+    SCAFFOLD_ONLY,
+    SQL_APPROVAL_REQUIRED,
+    TRANSIENT_IO,
+    UNKNOWN,
+)
+
+
+@dataclass(frozen=True)
+class ActionSpec:
+    id: str
+    command: str
+    description: str
+    kind: str
+    stage: str | None = None
+    inputs: tuple[str, ...] = ()
+    outputs: tuple[str, ...] = ()
+    approval_required: bool = False
+    approval_type: str = "none"
+    retry_policy: str = "never"
+    failure_codes: tuple[str, ...] = ()
+    artifact_rules: tuple[str, ...] = ()
+    mutates_run_state: bool = False
+    mutates_manifest: bool = False
+
+    def to_dict(self) -> dict[str, object]:
+        return asdict(self)
+
+
+COMMON_STAGE_FAILURES = (
+    DATA_MISSING,
+    ARTIFACT_CONTRACT_FAILED,
+    SCAFFOLD_ONLY,
+    DEPENDENCY_MISSING,
+    TRANSIENT_IO,
+    UNKNOWN,
+)
+
+
+ACTION_SPECS: tuple[ActionSpec, ...] = (
+    ActionSpec(
+        id="validate_config",
+        command="rmw run init --project <project> --workflow <workflow>",
+        description="Initialize a run and snapshot project configuration.",
+        kind="stage",
+        stage="validate_config",
+        inputs=("project.yml", "configs/*.yml", "optional model_request.md", "optional execution_plan.yml"),
+        outputs=("run_state.yml", "configs_snapshot/", "audit/artifact_manifest.json"),
+        failure_codes=(DATA_MISSING, ARTIFACT_CONTRACT_FAILED, UNKNOWN),
+        artifact_rules=("configs_snapshot", "configs_snapshot/*"),
+        mutates_run_state=True,
+        mutates_manifest=True,
+    ),
+    ActionSpec(
+        id="sample_check",
+        command="rmw sample check --project <project> --run-id <run_id>",
+        description="Profile sample fields, label distribution, splits, and configured segments.",
+        kind="stage",
+        stage="sample_check",
+        inputs=("project.yml", "configs_snapshot/*"),
+        outputs=("sample_check/sample_summary.json", "sample_check/sample_check_report.md"),
+        failure_codes=COMMON_STAGE_FAILURES,
+        artifact_rules=(
+            "sample_check/sample_summary.json",
+            "sample_check/sample_check_report.md",
+            "sample_check/sample_split_summary.csv",
+            "sample_check/label_distribution.csv",
+            "sample_check/segment_distribution.csv",
+        ),
+        mutates_run_state=True,
+        mutates_manifest=True,
+    ),
+    ActionSpec(
+        id="feature_metadata",
+        command="rmw feature metadata --project <project> --run-id <run_id>",
+        description="Export feature table and column metadata for downstream screening.",
+        kind="stage",
+        stage="feature_metadata",
+        inputs=("project.yml", "optional tables file"),
+        outputs=("feature_metadata/*",),
+        failure_codes=COMMON_STAGE_FAILURES,
+        artifact_rules=("feature_metadata/*",),
+        mutates_run_state=True,
+        mutates_manifest=True,
+    ),
+    ActionSpec(
+        id="d01_d02_screening",
+        command="rmw feature d01-d02 --project <project> --run-id <run_id>",
+        description="Run or dry-run D01/D02 batch feature screening.",
+        kind="stage",
+        stage="d01_d02_screening",
+        inputs=("project.yml", "feature metadata", "SQL review approval for DP pull"),
+        outputs=("feature_selection/d01_d02_*",),
+        approval_required=True,
+        approval_type="sql_review",
+        retry_policy="never",
+        failure_codes=(SQL_APPROVAL_REQUIRED, *COMMON_STAGE_FAILURES),
+        artifact_rules=("feature_selection/d01_d02_*",),
+        mutates_run_state=True,
+        mutates_manifest=True,
+    ),
+    ActionSpec(
+        id="build_wide_sql",
+        command="rmw build-wide-sql --project <project> --run-id <run_id>",
+        description="Generate wide-table SQL and feature mapping from remaining features.",
+        kind="stage",
+        stage="build_wide_sql",
+        inputs=("feature_selection/d01_d02_final_remain_features.json", "project.yml"),
+        outputs=("queries/*.sql", "feature_selection/wide_sql_summary.json"),
+        failure_codes=COMMON_STAGE_FAILURES,
+        artifact_rules=("queries/*.sql", "feature_selection/wide_sql_summary.json"),
+        mutates_run_state=True,
+        mutates_manifest=True,
+    ),
+    ActionSpec(
+        id="feature_refine",
+        command="rmw feature refine --project <project> --run-id <run_id>",
+        description="Filter executable model features and produce final feature lists.",
+        kind="stage",
+        stage="feature_refine",
+        inputs=("training data feather", "wide SQL output", "SQL review approval for DP pull"),
+        outputs=("feature_selection/final_features.txt", "feature_selection/final_500_features.txt"),
+        approval_required=True,
+        approval_type="sql_review",
+        retry_policy="never",
+        failure_codes=(SQL_APPROVAL_REQUIRED, *COMMON_STAGE_FAILURES),
+        artifact_rules=("feature_selection/final_features.txt", "feature_selection/final_500_features.txt"),
+        mutates_run_state=True,
+        mutates_manifest=True,
+    ),
+    ActionSpec(
+        id="train_baseline",
+        command="rmw train --project <project> --run-id <run_id> --experiment <name>",
+        description="Train the baseline model or create an explicit scaffold when real training inputs are absent.",
+        kind="stage",
+        stage="train_baseline",
+        inputs=("training data feather", "feature_selection/final_features.txt", "project.yml"),
+        outputs=("modeling/*/metrics_train_valid.json", "modeling/*/actual_feature_list.txt", "modeling/*/feature_importance.csv"),
+        failure_codes=COMMON_STAGE_FAILURES,
+        artifact_rules=(
+            "modeling/*/metrics_train_valid.json",
+            "modeling/*/actual_feature_list.txt",
+            "modeling/*/feature_importance.csv",
+            "modeling/*/train_metrics.json",
+        ),
+        mutates_run_state=True,
+        mutates_manifest=True,
+    ),
+    ActionSpec(
+        id="evaluate",
+        command="rmw evaluate --project <project> --run-id <run_id>",
+        description="Evaluate model scores and generate evaluation summaries.",
+        kind="stage",
+        stage="evaluate",
+        inputs=("model scores feather", "project.yml"),
+        outputs=("evaluation/evaluation_summary.json",),
+        failure_codes=COMMON_STAGE_FAILURES,
+        artifact_rules=("evaluation/evaluation_summary.json",),
+        mutates_run_state=True,
+        mutates_manifest=True,
+    ),
+    ActionSpec(
+        id="compare",
+        command="rmw compare --project <project> --run-id <run_id>",
+        description="Compare current model evidence with configured champion or benchmark scores.",
+        kind="stage",
+        stage="compare",
+        inputs=("evaluation/evaluation_summary.json", "optional champion score"),
+        outputs=("evaluation/champion_challenger.json", "evaluation/benchmark_uplift.csv"),
+        failure_codes=COMMON_STAGE_FAILURES,
+        artifact_rules=("evaluation/champion_challenger.json", "evaluation/benchmark_uplift.csv"),
+        mutates_run_state=True,
+        mutates_manifest=True,
+    ),
+    ActionSpec(
+        id="report",
+        command="rmw report --project <project> --run-id <run_id>",
+        description="Generate Markdown, model card, executive summary, and optional Excel report.",
+        kind="stage",
+        stage="report",
+        inputs=("run_state.yml", "audit/artifact_manifest.json", "modeling artifacts", "evaluation artifacts"),
+        outputs=("reports/model_report.xlsx", "reports/model_report.md", "reports/model_card.md", "reports/executive_summary.md"),
+        failure_codes=COMMON_STAGE_FAILURES,
+        artifact_rules=("reports/model_report.xlsx", "reports/model_report.md", "reports/model_card.md", "reports/executive_summary.md"),
+        mutates_run_state=True,
+        mutates_manifest=True,
+    ),
+    ActionSpec(
+        id="project_status",
+        command="rmw project status --project <project>",
+        description="Summarize project continuity state and active run status.",
+        kind="utility",
+        inputs=("project_state.yml", "optional run_state.yml", "optional artifact_manifest.json"),
+        outputs=("stdout",),
+        retry_policy="transient_io",
+        failure_codes=(DATA_MISSING, UNKNOWN),
+    ),
+    ActionSpec(
+        id="run_status",
+        command="rmw run status --project <project> --run-id <run_id>",
+        description="Show the run state source of truth.",
+        kind="utility",
+        inputs=("run_state.yml",),
+        outputs=("stdout",),
+        retry_policy="transient_io",
+        failure_codes=(DATA_MISSING, UNKNOWN),
+    ),
+    ActionSpec(
+        id="run_audit",
+        command="rmw run audit --project <project> --run-id <run_id>",
+        description="Audit run or stage closure readiness against run state, manifest, and workflow contracts.",
+        kind="audit",
+        inputs=("run_state.yml", "audit/artifact_manifest.json", "workflow contract"),
+        outputs=("stdout", "optional JSON"),
+        retry_policy="transient_io",
+        failure_codes=(DATA_MISSING, ARTIFACT_CONTRACT_FAILED, SCAFFOLD_ONLY, UNKNOWN),
+    ),
+    ActionSpec(
+        id="workflow_validate",
+        command="rmw workflow validate --workflow <workflow>",
+        description="Validate workflow shape and stage contract syntax.",
+        kind="audit",
+        inputs=("workflow YAML",),
+        outputs=("stdout",),
+        retry_policy="transient_io",
+        failure_codes=(ARTIFACT_CONTRACT_FAILED, DATA_MISSING, UNKNOWN),
+    ),
+    ActionSpec(
+        id="rules_list",
+        command="rmw rules list",
+        description="List promoted workbench rules and guardrails.",
+        kind="utility",
+        inputs=("docs/workbench_rules.yml",),
+        outputs=("stdout", "optional JSON"),
+        retry_policy="transient_io",
+        failure_codes=(DATA_MISSING, UNKNOWN),
+    ),
+)
+
+ACTION_REGISTRY: dict[str, ActionSpec] = {spec.id: spec for spec in ACTION_SPECS}
+
+
+def list_action_specs(*, kind: str | None = None) -> tuple[ActionSpec, ...]:
+    specs = ACTION_SPECS
+    if kind:
+        specs = tuple(spec for spec in specs if spec.kind == kind)
+    return tuple(sorted(specs, key=lambda spec: spec.id))
+
+
+def get_action_spec(action_id: str) -> ActionSpec:
+    try:
+        return ACTION_REGISTRY[action_id]
+    except KeyError as exc:
+        raise KeyError(f"unknown action: {action_id}") from exc
+
+
+def action_to_dict(spec: ActionSpec) -> dict[str, object]:
+    return spec.to_dict()
+
+
+def format_action_list(specs: tuple[ActionSpec, ...]) -> str:
+    lines = ["Action ID              Stage             Kind     Approval     Retry       Command"]
+    lines.append("-" * 96)
+    for spec in specs:
+        stage = spec.stage or "-"
+        approval = spec.approval_type if spec.approval_required else "none"
+        lines.append(
+            f"{spec.id:<22} {stage:<17} {spec.kind:<8} {approval:<12} {spec.retry_policy:<11} {spec.command}"
+        )
+    return "\n".join(lines) + "\n"
+
+
+def format_action_detail(spec: ActionSpec) -> str:
+    payload = spec.to_dict()
+    lines = [
+        f"action: {payload['id']}",
+        f"kind: {payload['kind']}",
+        f"stage: {payload['stage'] or '-'}",
+        f"command: {payload['command']}",
+        f"description: {payload['description']}",
+        f"approval: {payload['approval_type'] if payload['approval_required'] else 'none'}",
+        f"retry_policy: {payload['retry_policy']}",
+        f"mutates_run_state: {payload['mutates_run_state']}",
+        f"mutates_manifest: {payload['mutates_manifest']}",
+        "inputs:",
+    ]
+    lines.extend(f"- {item}" for item in spec.inputs)
+    lines.append("outputs:")
+    lines.extend(f"- {item}" for item in spec.outputs)
+    lines.append("failure_codes:")
+    lines.extend(f"- {item}" for item in spec.failure_codes)
+    if spec.artifact_rules:
+        lines.append("artifact_rules:")
+        lines.extend(f"- {item}" for item in spec.artifact_rules)
+    return "\n".join(lines) + "\n"

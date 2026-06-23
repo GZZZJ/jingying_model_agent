@@ -94,7 +94,7 @@ def generate_excel_report(
             _finalize_sheet(worksheet)
 
         wb.save(str(output_path))
-        _write_missing_results_doc(output_path, train_dir=train_dir)
+        _write_missing_results_doc(output_path, train_dir=train_dir, eval_dir=eval_dir)
         _write_model_reports(
             output_path=output_path,
             train_dir=train_dir,
@@ -352,6 +352,8 @@ def _build_screening_params_sheet(ws, *, train_dir: Path, feature_dir: Path) -> 
                 ("潜在泄露提示", stage_summary.get("potential_leakage_flags", "无")),
             ],
         )
+    else:
+        row = _write_table(ws, row, "训练特征准备", _training_feature_preparation_frame(train_dir, run_config))
 
     if params:
         row = _write_table(ws, row, "LightGBM 参数", pd.DataFrame({"parameter": list(params.keys()), "value": list(params.values())}))
@@ -1092,7 +1094,7 @@ def _find_woe_image(image_dir: Path, rank: int) -> Path | None:
 
 
 def _screening_steps_frame(stage_summary: dict[str, Any], feature_dir: Path) -> pd.DataFrame:
-    process = _read_feature_screening_process(feature_dir)
+    process = _read_feature_screening_process(feature_dir, allow_legacy_fallback=_legacy_screening_process_allowed(feature_dir))
     if process:
         rows = process.get("screening_rows", [])
         if rows:
@@ -1315,38 +1317,68 @@ def _ordered_values(values: list[Any]) -> list[Any]:
     return ordered
 
 
-def _read_feature_screening_process(feature_dir: Path) -> dict[str, Any]:
-    repo_root = Path(__file__).resolve().parents[3]
-    project_dir = _infer_project_dir(feature_dir)
-    candidate_paths = [
-        feature_dir / "feature_screening_process.json",
-    ]
-    if project_dir:
-        candidate_paths.extend(
-            [
-                project_dir / "reports" / "feature_screening_process.json",
-                project_dir / "runs" / "2026-05-imported-feature-screening" / "feature_selection" / "feature_screening_process.json",
-            ]
-        )
-    if project_dir and project_dir.name == "2026-05-fujie-gcard-v1":
-        candidate_paths.extend(
-            [
-                repo_root / "projects" / "2026-05-fujie-gcard-v1" / "reports" / "feature_screening_process.json",
-                repo_root
-                / "projects"
-                / "2026-05-fujie-gcard-v1"
-                / "runs"
-                / "2026-05-imported-feature-screening"
-                / "feature_selection"
-                / "feature_screening_process.json",
-            ]
-        )
-    for path in [
-        *candidate_paths,
-    ]:
-        if path.exists():
-            return _read_json(path)
+def _read_feature_screening_process(feature_dir: Path, *, allow_legacy_fallback: bool = False) -> dict[str, Any]:
+    path = feature_dir / "feature_screening_process.json"
+    if path.exists():
+        return _read_json(path)
+    if allow_legacy_fallback:
+        legacy_path = feature_dir.parent.parent.parent / "reports" / "feature_screening_process.json"
+        if legacy_path.exists():
+            return _read_json(legacy_path)
     return {}
+
+
+def _legacy_screening_process_allowed(feature_dir: Path) -> bool:
+    try:
+        run_state = load_yaml(feature_dir.parent / "run_state.yml")
+    except (OSError, ValueError):
+        return False
+    workflow = str(run_state.get("workflow", ""))
+    status = str(run_state.get("status", ""))
+    return workflow.startswith("imported") or status == "imported"
+
+
+def _training_feature_preparation_frame(train_dir: Path, run_config: dict[str, Any] | None = None) -> pd.DataFrame:
+    run_config = run_config or _read_json(train_dir / "run_config.json")
+    preprocessing = _read_json(train_dir / "preprocessing.json")
+    candidate_count = _count_lines(train_dir / "candidate_feature_list.txt") or run_config.get("candidate_feature_count")
+    actual_count = _count_lines(train_dir / "actual_feature_list.txt") or run_config.get("actual_feature_count")
+    dropped_count = preprocessing.get("dropped_feature_count")
+    if dropped_count is None and candidate_count is not None and actual_count is not None:
+        try:
+            dropped_count = int(candidate_count) - int(actual_count)
+        except (TypeError, ValueError):
+            dropped_count = "N/A"
+    rows = [
+        {
+            "步骤": "训练输入",
+            "处理说明": "读取本轮训练候选特征列表；当前 run 未登记独立 D01/D02 或 feature_refine 筛选过程产物",
+            "变量个数": candidate_count if candidate_count is not None else "N/A",
+            "来源": "modeling/main_lgbm/candidate_feature_list.txt",
+        },
+        {
+            "步骤": "训练预处理",
+            "处理说明": (
+                "按训练数据字段可用性、缺失哨兵、缺失率与常量字段规则保留变量；"
+                f"填充策略：{preprocessing.get('fill_strategy', 'N/A')}"
+            ),
+            "变量个数": actual_count if actual_count is not None else "N/A",
+            "来源": "modeling/main_lgbm/preprocessing.json",
+        },
+        {
+            "步骤": "训练剔除",
+            "处理说明": "训练预处理阶段剔除变量数",
+            "变量个数": dropped_count if dropped_count is not None else "N/A",
+            "来源": "modeling/main_lgbm/feature_drop_detail.csv",
+        },
+        {
+            "步骤": "最终入模",
+            "处理说明": "LightGBM 实际入模变量数",
+            "变量个数": actual_count if actual_count is not None else "N/A",
+            "来源": "modeling/main_lgbm/actual_feature_list.txt",
+        },
+    ]
+    return pd.DataFrame(rows)
 
 
 def _clean_frame(frame: pd.DataFrame) -> pd.DataFrame:
@@ -1590,7 +1622,7 @@ def _write_model_reports(
     run_config = _read_json(train_dir / "run_config.json")
     metrics = _read_json(train_dir / "metrics_train_valid.json")
     stage_summary = _read_json(feature_dir / "feature_stage_summary.json")
-    screening_process = _read_feature_screening_process(feature_dir)
+    screening_process = _read_feature_screening_process(feature_dir, allow_legacy_fallback=_legacy_screening_process_allowed(feature_dir))
     overall = _read_csv(eval_dir / "overall_metrics.csv")
     benchmark = _read_csv(eval_dir / "benchmark_uplift.csv")
     segment = _read_csv(eval_dir / "segment_metrics.csv")
@@ -1628,14 +1660,30 @@ def _write_model_reports(
     if screening_process.get("feature_select_v2_alignment", {}).get("summary"):
         lines.append(f"- {screening_process['feature_select_v2_alignment']['summary']}")
         lines.append("")
-    screening_rows = screening_process.get("screening_rows") or _screening_steps_frame(stage_summary, feature_dir).to_dict("records")
-    lines.extend(
-        _markdown_table(
-            pd.DataFrame(screening_rows).rename(
-                columns={"step": "步骤", "method": "筛选方法", "remaining_features": "剩余变量个数", "source": "来源"}
-            )
+    if screening_process.get("screening_rows"):
+        screening_frame = pd.DataFrame(screening_process["screening_rows"]).rename(
+            columns={"step": "步骤", "method": "筛选方法", "remaining_features": "剩余变量个数", "source": "来源"}
         )
-    )
+    elif stage_summary:
+        screening_frame = _screening_steps_frame(stage_summary, feature_dir)
+    else:
+        lines.append("- 当前 run 未登记独立 D01/D02 或 feature_refine 筛选过程产物；以下只展示训练阶段实际候选和入模特征准备结果。")
+        lines.append("")
+        screening_frame = _training_feature_preparation_frame(train_dir, run_config)
+    lines.extend(_markdown_table(screening_frame))
+    lines.append("")
+
+    preprocessing = _read_json(train_dir / "preprocessing.json")
+    leakage_warnings = _feature_list_warnings(train_dir)
+    if preprocessing:
+        lines.append(
+            f"- 训练预处理保留 {preprocessing.get('kept_feature_count', run_config.get('actual_feature_count', 'N/A'))}/"
+            f"{preprocessing.get('candidate_feature_count', run_config.get('candidate_feature_count', 'N/A'))} 个变量；"
+            f"剔除 {preprocessing.get('dropped_feature_count', 'N/A')} 个变量。"
+        )
+    if leakage_warnings:
+        lines.append("- 特征列表包含需复核提示：" + "；".join(leakage_warnings[:3]))
+    lines.append("")
     lines.extend(
         [
             "",
@@ -1731,29 +1779,112 @@ def _append_module_conclusions_markdown(lines: list[str], eval_dir: Path, module
 
 def _append_monthly_effect_markdown(lines: list[str], eval_dir: Path) -> None:
     monthly_segment_oos = _read_csv(eval_dir / "monthly_segment_metrics_oos_by_version.csv")
-    if monthly_segment_oos is None or monthly_segment_oos.empty:
+    monthly = _read_csv(eval_dir / "monthly_metrics.csv")
+    segment = _read_csv(eval_dir / "segment_metrics.csv")
+    feb_apr = _read_csv(eval_dir / "feb_apr_2026_monthly_metrics.csv")
+    feb_apr_segment = _read_csv(eval_dir / "feb_apr_2026_segment_monthly.csv")
+    if (
+        (monthly_segment_oos is None or monthly_segment_oos.empty)
+        and (monthly is None or monthly.empty)
+        and (segment is None or segment.empty)
+        and (feb_apr is None or feb_apr.empty)
+        and (feb_apr_segment is None or feb_apr_segment.empty)
+    ):
         return
     lines.extend(["1、每月效果（OOS）", ""])
     _append_module_conclusions_markdown(lines, eval_dir, "1、每月效果（OOS）")
-    for segment_name in ["全客群", "老户次新", "老户", "次新", "流失户"]:
-        subset = monthly_segment_oos[
-            (monthly_segment_oos["segment"] == segment_name)
-            & (monthly_segment_oos["final_flag"].isin(["DEV-OOS", "OOT-OOS"]))
-        ].copy()
-        if subset.empty:
-            continue
-        lines.append(f"在{segment_name} OOS by月效果（KS）")
-        lines.extend(_markdown_table(_metric_comparison_frame_oos_by_month(subset, metric="ks", row_label="样本月份"), limit=50))
+
+    if monthly_segment_oos is not None and not monthly_segment_oos.empty:
+        for segment_name in ["全客群", "老户次新", "老户", "次新", "流失户"]:
+            subset = monthly_segment_oos[
+                (monthly_segment_oos["segment"] == segment_name)
+                & (monthly_segment_oos["final_flag"].isin(["DEV-OOS", "OOT-OOS"]))
+            ].copy()
+            if subset.empty:
+                continue
+            lines.append(f"在{segment_name} OOS by月效果（KS）")
+            lines.extend(_markdown_table(_metric_comparison_frame_oos_by_month(subset, metric="ks", row_label="样本月份"), limit=50))
+            lines.append("")
+            lines.append(f"在{segment_name} OOS by月效果（AUC）")
+            lines.extend(_markdown_table(_metric_comparison_frame_oos_by_month(subset, metric="auc", row_label="样本月份"), limit=50))
+            lines.append("")
+    elif monthly is not None and not monthly.empty:
+        working = monthly.copy()
+        working["_period_label"] = working["final_flag"].astype(str) + " " + working["mdl_month"].astype(str)
+        lines.append("全客群 by月效果（KS）")
+        lines.extend(_markdown_table(_metric_comparison_frame(working, row_col="_period_label", metric="ks", row_label="样本月份"), limit=80))
         lines.append("")
-        lines.append(f"在{segment_name} OOS by月效果（AUC）")
-        lines.extend(_markdown_table(_metric_comparison_frame_oos_by_month(subset, metric="auc", row_label="样本月份"), limit=50))
+        lines.append("全客群 by月效果（AUC）")
+        lines.extend(_markdown_table(_metric_comparison_frame(working, row_col="_period_label", metric="auc", row_label="样本月份"), limit=80))
+        lines.append("")
+
+    if segment is not None and not segment.empty:
+        lines.append("分客群整体效果（KS）")
+        segment_ks_rows = []
+        for segment_name in ["全客群", "老户次新", "老户", "次新", "流失户"]:
+            subset = segment[segment["segment"] == segment_name].copy()
+            if subset.empty:
+                continue
+            table = _metric_comparison_frame(subset, row_col="final_flag", metric="ks", row_label="样本")
+            if table.empty:
+                continue
+            table.insert(0, "客群", segment_name)
+            segment_ks_rows.extend(table.to_dict("records"))
+        if segment_ks_rows:
+            lines.extend(_markdown_table(pd.DataFrame(segment_ks_rows), limit=80))
+            lines.append("")
+        lines.append("分客群整体效果（AUC）")
+        segment_auc_rows = []
+        for segment_name in ["全客群", "老户次新", "老户", "次新", "流失户"]:
+            subset = segment[segment["segment"] == segment_name].copy()
+            if subset.empty:
+                continue
+            table = _metric_comparison_frame(subset, row_col="final_flag", metric="auc", row_label="样本")
+            if table.empty:
+                continue
+            table.insert(0, "客群", segment_name)
+            segment_auc_rows.extend(table.to_dict("records"))
+        if segment_auc_rows:
+            lines.extend(_markdown_table(pd.DataFrame(segment_auc_rows), limit=80))
+            lines.append("")
+
+    if feb_apr is not None and not feb_apr.empty:
+        lines.append("2026年2-4月外推验证（全客群）")
+        display_cols = ["month", "split", "n_samples", "bad_rate", "model_auc", "model_ks", "v6_auc", "v6_ks"]
+        lines.extend(_markdown_table(feb_apr[[col for col in display_cols if col in feb_apr.columns]], limit=80))
+        lines.append("")
+    if feb_apr_segment is not None and not feb_apr_segment.empty:
+        lines.append("2026年2-4月外推验证（分客群）")
+        display_cols = ["month", "split", "segment", "n_samples", "bad_rate", "model_auc", "model_ks", "v6_auc", "v6_ks", "ks_uplift"]
+        lines.extend(_markdown_table(feb_apr_segment[[col for col in display_cols if col in feb_apr_segment.columns]], limit=80))
         lines.append("")
 
 
 def _append_sloping_markdown(lines: list[str], eval_dir: Path) -> None:
     versioned = _read_csv(eval_dir / "decile_lift_bins_by_version.csv")
     if versioned is None or versioned.empty:
+        available = [
+            (segment_name, segment_key, score_column)
+            for segment_name, segment_key in SEGMENT_FILES.items()
+            for score_column in SCORE_COLUMNS
+            if (eval_dir / f"decile_lift_{segment_key}_{score_column}.csv").exists()
+            or (score_column == "model_score" and (eval_dir / f"decile_lift_{segment_key}.csv").exists())
+        ]
+        if not available:
+            return
+        lines.extend(["2、模型sloping", ""])
+        _append_module_conclusions_markdown(lines, eval_dir, "2、模型sloping")
+        for segment_name, segment_key, score_column in available:
+            frame = _read_csv(eval_dir / f"decile_lift_{segment_key}_{score_column}.csv")
+            if frame is None and score_column == "model_score":
+                frame = _read_csv(eval_dir / f"decile_lift_{segment_key}.csv")
+            if frame is None or frame.empty:
+                continue
+            lines.append(f"全样本 30天发起：在{segment_name}效果 - {VERSION_LABELS.get(score_column, score_column)}")
+            lines.extend(_markdown_table(_sloping_display_frame(frame), limit=20))
+            lines.append("")
         return
+
     lines.extend(["2、模型sloping", ""])
     _append_module_conclusions_markdown(lines, eval_dir, "2、模型sloping")
     for segment_name in ["全客群", "老户次新", "流失户"]:
@@ -1783,6 +1914,33 @@ def _append_intent_risk_markdown(lines: list[str], eval_dir: Path) -> None:
         or amount_risk is None
         or amount_risk.empty
     ):
+        basic_distribution = _read_csv(eval_dir / "intent_zc_distribution.csv")
+        basic_amount_risk = _read_csv(eval_dir / "intent_zc_amount_risk.csv")
+        basic_head_risk = _read_csv(eval_dir / "intent_zc_headcount_risk.csv")
+        if (
+            (basic_distribution is None or basic_distribution.empty)
+            and (basic_amount_risk is None or basic_amount_risk.empty)
+            and (basic_head_risk is None or basic_head_risk.empty)
+        ):
+            return
+        lines.extend(["3、意愿交叉风险（DEV-OOS）", ""])
+        lines.append("- 当前 run 仅有全量观察口径的意愿 x 资产评级结果，缺少老户/流失户和历史版本分层矩阵；完整缺失项见 `model_report_missing_results.md`。")
+        lines.append("")
+        if basic_distribution is not None and not basic_distribution.empty:
+            lines.append("当前可用全量观察：占比（意愿评级 x 资产评级）")
+            lines.extend(_markdown_table(_intent_sum_matrix(basic_distribution, "pct"), limit=20))
+            lines.append("")
+            lines.append("当前可用全量观察：30天发起率（意愿评级 x 资产评级）")
+            lines.extend(_markdown_table(_intent_rate_matrix(basic_distribution, "bad", "n_samples"), limit=20))
+            lines.append("")
+        if basic_head_risk is not None and not basic_head_risk.empty:
+            lines.append("当前可用全量观察：人头风险率（意愿评级 x 资产评级）")
+            lines.extend(_markdown_table(_intent_rate_matrix(basic_head_risk, "head_risk_count", "n_samples"), limit=20))
+            lines.append("")
+        if basic_amount_risk is not None and not basic_amount_risk.empty:
+            lines.append("当前可用全量观察：金额风险（仅意愿维度）")
+            lines.extend(_markdown_table(basic_amount_risk, limit=20))
+            lines.append("")
         return
     lines.extend(["3、意愿交叉风险（DEV-OOS）", ""])
     _append_module_conclusions_markdown(lines, eval_dir, "3、意愿交叉风险（DEV-OOS）")
@@ -1956,12 +2114,27 @@ def _markdown_to_simple_html(markdown: str) -> str:
     return "\n".join(html_lines)
 
 
-def _write_missing_results_doc(output_path: Path, *, train_dir: Path | None = None) -> Path:
+def _write_missing_results_doc(output_path: Path, *, train_dir: Path | None = None, eval_dir: Path | None = None) -> Path:
     missing_path = output_path.with_name("model_report_missing_results.md")
+    eval_dir = eval_dir or output_path.parent.parent / "evaluation"
     comparison_scores = _comparison_score_columns()
     historical_section = ""
-    if comparison_scores:
-        covered_versions = "、".join(f"`{score}`" for score in ["model_score", *comparison_scores])
+    historical_rows = [
+        ("intent_zc_segment_distribution_by_version.csv", "各版本老户/流失户 DEV-OOS 意愿资产占比矩阵"),
+        ("intent_zc_segment_ftr_rate_by_version.csv", "各版本老户/流失户 DEV-OOS 30天发起率矩阵"),
+        ("intent_zc_segment_amount_risk_by_version.csv", "各版本老户/流失户 DEV-OOS 新增订单3期金额逾期率矩阵"),
+        ("decile_lift_bins_by_version.csv", "各版本 sloping 分箱上下界"),
+        ("monthly_segment_metrics_oos_by_version.csv", "全客群/老户次新/老户/次新/流失户 DEV-OOS + OOT-OOS 按月版本横向效果"),
+        ("monthly_segment_metrics_oot_oos_by_version.csv", "老户次新/流失户 OOT-OOS 按月版本横向效果"),
+        ("score_bin_distribution_by_month_by_version.csv", "各版本按月稳定性分箱"),
+    ]
+    existing_historical_rows = [(name, desc) for name, desc in historical_rows if (eval_dir / name).exists()]
+    if existing_historical_rows:
+        score_versions = _score_versions_in_files(eval_dir, [name for name, _ in existing_historical_rows])
+        if not score_versions:
+            score_versions = ["model_score", *comparison_scores]
+        covered_versions = "、".join(f"`{score}`" for score in score_versions)
+        historical_table = "\n".join(f"| `evaluation/{name}` | {desc} |" for name, desc in existing_historical_rows)
         historical_section = f"""
 ## 已补齐 — 历史版本横向对比
 
@@ -1969,13 +2142,32 @@ def _write_missing_results_doc(output_path: Path, *, train_dir: Path | None = No
 
 | 产出文件 | 内容 |
 |---|---|
-| `evaluation/intent_zc_segment_distribution_by_version.csv` | 各版本老户/流失户 DEV-OOS 意愿资产占比矩阵 |
-| `evaluation/intent_zc_segment_ftr_rate_by_version.csv` | 各版本老户/流失户 DEV-OOS 30天发起率矩阵 |
-| `evaluation/intent_zc_segment_amount_risk_by_version.csv` | 各版本老户/流失户 DEV-OOS 新增订单3期金额逾期率矩阵 |
-| `evaluation/decile_lift_bins_by_version.csv` | 各版本 sloping 分箱上下界 |
-| `evaluation/monthly_segment_metrics_oos_by_version.csv` | 全客群/老户次新/老户/次新/流失户 DEV-OOS + OOT-OOS 按月版本横向效果 |
-| `evaluation/monthly_segment_metrics_oot_oos_by_version.csv` | 老户次新/流失户 OOT-OOS 按月版本横向效果 |
-| `evaluation/score_bin_distribution_by_month_by_version.csv` | 各版本按月稳定性分箱 |
+{historical_table}
+"""
+    model_score_rows = [
+        ("monthly_metrics.csv", "全客群按月 AUC/KS"),
+        ("segment_metrics.csv", "全客群/老户次新/老户/次新/流失户切片 AUC/KS"),
+        ("benchmark_uplift.csv", "本轮模型 vs 历史版本整体提升量"),
+        ("score_psi_by_month.csv", "分数 PSI 稳定性"),
+        ("decile_lift_all_model_score.csv", "全客群本轮模型十分位 lift"),
+        ("decile_lift_e2e3_model_score.csv", "老户次新本轮模型十分位 lift"),
+        ("decile_lift_b2_model_score.csv", "流失户本轮模型十分位 lift"),
+        ("intent_zc_distribution.csv", "全量观察口径意愿资产占比和发起率矩阵"),
+        ("intent_zc_amount_risk.csv", "全量观察口径意愿维度金额风险"),
+        ("intent_zc_headcount_risk.csv", "全量观察口径意愿资产人头风险矩阵"),
+        ("feb_apr_2026_monthly_metrics.csv", "2026年2-4月外推全客群指标"),
+        ("feb_apr_2026_segment_monthly.csv", "2026年2-4月外推分客群指标"),
+    ]
+    existing_model_rows = [(name, desc) for name, desc in model_score_rows if (eval_dir / name).exists()]
+    model_score_section = ""
+    if existing_model_rows:
+        model_score_table = "\n".join(f"| `evaluation/{name}` | {desc} |" for name, desc in existing_model_rows)
+        model_score_section = f"""
+## 已补齐 — 本轮 model_score
+
+| 产出文件 | 内容 |
+|---|---|
+{model_score_table}
 """
     text = f"""# {REPORT_TITLE}缺失结果清单
 
@@ -1988,18 +2180,7 @@ def _write_missing_results_doc(output_path: Path, *, train_dir: Path | None = No
 | 1 | 变量分布/分箱图 | 当前评分 feather 仅含模型分数和标签，不含原始特征值 |
 | 2 | 变量中文描述、业务标签 | 需要业务知识和 D01/D02 特征字典 |
 | 3 | MOB1/MOB3 历史风险 | 需要未来期还款表现数据，当前数据仅含 30 天发起标签和观察风险字段 |
-
-## 已补齐 — 本轮 model_score
-
-| 产出文件 | 内容 |
-|---|---|
-| `evaluation/decile_lift_bins.csv` | 分客群 x final_flag 十分位 lift，含 score 边界 |
-| `evaluation/intent_zc_segment_distribution.csv` | 老户/流失户 DEV-OOS 意愿资产占比矩阵 |
-| `evaluation/intent_zc_segment_ftr_rate.csv` | 老户/流失户 DEV-OOS 30天发起率矩阵 |
-| `evaluation/intent_zc_segment_amount_risk.csv` | 老户/流失户 DEV-OOS 新增订单3期金额逾期率矩阵 |
-| `evaluation/monthly_segment_metrics_oot_oos.csv` | 老户次新/流失户 OOT-OOS 按月 AUC/KS |
-| `evaluation/segment_model_comparison.csv` | 分客群 vs 全客群同口径对比 |
-| `evaluation/model_score_bin_distribution_by_month.csv` | 本轮模型按月分箱占比、发起率和 PSI 组件 |
+{model_score_section}
 {historical_section}
 {_woe_missing_results_section(train_dir=train_dir, report_dir=output_path.parent)}
 
@@ -2007,6 +2188,20 @@ def _write_missing_results_doc(output_path: Path, *, train_dir: Path | None = No
 """
     missing_path.write_text(text, encoding="utf-8")
     return missing_path
+
+
+def _score_versions_in_files(eval_dir: Path, file_names: list[str]) -> list[str]:
+    versions: list[str] = []
+    for file_name in file_names:
+        frame = _read_csv(eval_dir / file_name)
+        if frame is None or "score_version" not in frame.columns:
+            continue
+        for value in frame["score_version"].dropna().astype(str).unique().tolist():
+            if value not in versions:
+                versions.append(value)
+    ordered = [score for score in SCORE_COLUMNS if score in versions]
+    ordered.extend([score for score in versions if score not in ordered])
+    return ordered
 
 
 def _woe_missing_results_section(*, train_dir: Path | None, report_dir: Path) -> str:
@@ -2069,3 +2264,23 @@ def _read_feature_list(train_dir: Path, feature_dir: Path) -> list[str]:
         if path.exists():
             return [line.strip() for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
     return []
+
+
+def _count_lines(path: Path) -> int | None:
+    if not path.exists():
+        return None
+    return len([line for line in path.read_text(encoding="utf-8").splitlines() if line.strip()])
+
+
+def _feature_list_warnings(train_dir: Path) -> list[str]:
+    warnings: list[str] = []
+    for path in [train_dir / "feature_list.txt", train_dir / "candidate_feature_list.txt"]:
+        if not path.exists():
+            continue
+        for line in path.read_text(encoding="utf-8").splitlines():
+            stripped = line.strip()
+            if stripped.startswith("#") and ("WARN" in stripped.upper() or "LEAKAGE" in stripped.upper()):
+                warnings.append(stripped.lstrip("#").strip())
+        if warnings:
+            break
+    return warnings

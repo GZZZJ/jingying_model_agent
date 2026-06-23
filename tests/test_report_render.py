@@ -110,6 +110,43 @@ def test_imported_excel_report_layout(tmp_path):
     assert len(workbook["模型稳定性"].conditional_formatting) > 0
 
 
+def test_train_300_report_uses_current_run_training_features(tmp_path):
+    run_dir = Path("projects/2026-05-fujie-gcard-v1/runs/20260615_train_300")
+    output_path = tmp_path / "model_report.xlsx"
+
+    generate_excel_report(
+        eval_dir=run_dir / "evaluation",
+        train_dir=run_dir / "modeling" / "main_lgbm",
+        input_dir=run_dir / "modeling_input",
+        feature_dir=run_dir / "feature_selection",
+        output_path=output_path,
+    )
+
+    report_text = output_path.with_name("model_report.md").read_text(encoding="utf-8")
+    report_html = output_path.with_name("model_report.html").read_text(encoding="utf-8")
+
+    assert "最终入模变量 300 个" in report_text
+    assert "当前 run 未登记独立 D01/D02 或 feature_refine 筛选过程产物" in report_text
+    assert "| 训练输入 |" in report_text
+    assert "| 训练预处理 |" in report_text
+    assert "| 最终入模 | LightGBM 实际入模变量数 | 300 |" in report_text
+    assert "随机噪声重要性筛选：3轮" not in report_text
+    assert "runs/feature_refine_feather/stage_summary.json" not in report_text
+
+    assert "全客群 by月效果（KS）" in report_text
+    assert "分客群整体效果（AUC）" in report_text
+    assert "2、模型sloping" in report_text
+    assert "3、意愿交叉风险（DEV-OOS）" in report_text
+    assert "最终入模" in report_html
+    assert "全客群 by月效果" in report_html
+
+    workbook = load_workbook(output_path)
+    screening = workbook["变量筛选过程和模型参数"]
+    assert _find_cell(screening, "训练特征准备") is not None
+    assert _find_cell(screening, "最终入模") is not None
+    assert _cell_below_header(screening, "变量个数").value == 301
+
+
 def test_report_embeds_top_feature_woe_sheet(tmp_path):
     eval_dir = tmp_path / "evaluation"
     train_dir = tmp_path / "modeling" / "main_lgbm"

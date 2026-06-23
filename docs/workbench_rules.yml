@@ -1,0 +1,42 @@
+version: 1
+rules:
+  - id: sql-dry-run-approval
+    title: SQL must be generated and approved before DP pulls
+    target: guardrail
+    status: enforced
+    enforcement: rmw DP-backed feature commands require dry-run review before --sql-approved execution.
+    source:
+      type: policy
+      path: docs/data_and_sql_policy.md
+  - id: imported-scaffold-not-local-evidence
+    title: Imported or scaffold artifacts are not local reproduction evidence
+    target: guardrail
+    status: enforced
+    enforcement: rmw run audit classifies imported and scaffold evidence separately from complete.
+    source:
+      type: policy
+      path: AGENTS.md
+  - id: run-no-overwrite-without-force
+    title: Runs must not be overwritten without explicit force
+    target: guardrail
+    status: enforced
+    enforcement: rmw run init refuses an existing run_id unless --force is provided.
+    source:
+      type: policy
+      path: AGENTS.md
+  - id: stage-closure-source-of-truth
+    title: Stage closure uses run_state and artifact_manifest as source of truth
+    target: guardrail
+    status: enforced
+    enforcement: rmw run audit validates stage status against registered artifacts and workflow contracts.
+    source:
+      type: adr
+      path: docs/adr/0001-harness-hardening.md
+  - id: gcard-example-boundary
+    title: Fujie GCard remains a case project, not reusable workbench logic
+    target: guardrail
+    status: enforced
+    enforcement: tests cover GCard decoupling and reusable code remains under src/risk_model_workbench.
+    source:
+      type: policy
+      path: AGENTS.md

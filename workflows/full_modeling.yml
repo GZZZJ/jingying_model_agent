@@ -11,6 +11,44 @@ stages:
   - evaluate
   - compare
   - report
+stage_contracts:
+  validate_config:
+    accepted_artifact_sets:
+      - [configs_snapshot]
+      - [configs_snapshot/*]
+  sample_check:
+    accepted_artifact_sets:
+      - [sample_check/sample_summary.json, sample_check/sample_check_report.md]
+      - [sample_check/sample_split_summary.csv, sample_check/label_distribution.csv, sample_check/segment_distribution.csv]
+  feature_metadata:
+    required_artifacts:
+      - feature_metadata/*
+  d01_d02_screening:
+    required_artifacts:
+      - feature_selection/d01_d02_*
+  build_wide_sql:
+    accepted_artifact_sets:
+      - [queries/*.sql]
+      - [feature_selection/wide_sql_summary.json]
+  feature_refine:
+    accepted_artifact_sets:
+      - [feature_selection/final_features.txt]
+      - [feature_selection/final_500_features.txt]
+  train_baseline:
+    accepted_artifact_sets:
+      - [modeling/*/metrics_train_valid.json, modeling/*/actual_feature_list.txt, modeling/*/feature_importance.csv]
+      - [modeling/*/train_metrics.json]
+  evaluate:
+    required_artifacts:
+      - evaluation/evaluation_summary.json
+  compare:
+    accepted_artifact_sets:
+      - [evaluation/champion_challenger.json]
+      - [evaluation/benchmark_uplift.csv]
+  report:
+    accepted_artifact_sets:
+      - [reports/model_report.xlsx, reports/model_report.md, reports/model_card.md, reports/executive_summary.md]
+      - [reports/model_report.md, reports/model_card.md, reports/executive_summary.md]
 gates:
   before_train:
     require:

@@ -60,9 +60,12 @@ not local end-to-end rerun evidence.
 - Show project status: `rmw project status --project projects/2026-05-fujie-gcard-v1`
 - Show run state: `rmw run status --project projects/2026-05-fujie-gcard-v1 --run-id <run_id>`
 - Audit run closure: `rmw run audit --project projects/2026-05-fujie-gcard-v1 --run-id <run_id>`
+- Strict audit gate: `rmw run audit --project projects/2026-05-fujie-gcard-v1 --run-id <run_id> --strict`
 - Write handoff: `rmw handoff write --project projects/2026-05-fujie-gcard-v1 --run-id <run_id>`
 - Write retrospective: `rmw retrospective write --project projects/2026-05-fujie-gcard-v1 --run-id <run_id>`
 - Add lesson: `rmw lesson add --project projects/2026-05-fujie-gcard-v1 --title <title> --body <body>`
+- Promote lesson: `rmw lesson promote --project projects/2026-05-fujie-gcard-v1 --title <title> --target guardrail --rule-id <id>`
+- List workbench rules: `rmw rules list`
 - Run tests: `pytest tests -q`
 
 `jm` remains compatible with these commands, and `jm status` still exists as a
@@ -78,6 +81,9 @@ handoffs.
 - Treat `runs/<run_id>/run_state.yml` and registered artifacts as source of
   truth for stage status.
 - Use `rmw run audit` before declaring a stage or run closed.
+- Use `rmw workflow validate` after changing workflow stage contracts.
+- Reusable guardrails live in `docs/workbench_rules.yml`; ADR and glossary
+  entries live under `docs/adr/` and `docs/glossary.md`.
 - `handoff write` and `retrospective write` are explicit checkpoint actions; do
   not infer session completion from conversation state.
 - When a modeling request Markdown file is provided, validate it with
