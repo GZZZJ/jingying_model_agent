@@ -394,7 +394,95 @@
       "source": "generated",
       "description": "HTML report split V6 AUC and KS comparisons into responsive side-by-side small tables",
       "registered_at": "2026-06-24T15:54:40"
+    },
+    {
+      "path": "feature_selection/feature_screening_process_v2.json",
+      "size_bytes": 5404,
+      "mtime": "2026-06-15T14:44:16",
+      "sha256": "bf2cd456c8d0c697dd6d2f80c7d12b41174eebc678087f65ff8c3ef3ebf7fe87",
+      "stage": "feature_refine",
+      "kind": "file",
+      "source": "copied_from_historical_run",
+      "description": "特征筛选链路数据 — 从历史 run 复制",
+      "registered_at": "2026-06-24T17:23:14"
+    },
+    {
+      "path": "feature_selection/stage_summary.json",
+      "size_bytes": 723,
+      "mtime": "2026-06-15T14:16:53",
+      "sha256": "04aa25b20a4baa60e970d63207128bcfe893f45e1a92c0b0d33b8c2d696b64ad",
+      "stage": "feature_refine",
+      "kind": "file",
+      "source": "copied_from_historical_run",
+      "description": "特征筛选链路数据 — 从历史 run 复制",
+      "registered_at": "2026-06-24T17:23:14"
+    },
+    {
+      "path": "feature_selection/final_features.txt",
+      "size_bytes": 10758,
+      "mtime": "2026-06-15T14:16:53",
+      "sha256": "9083ed7e6633d30fb53cc77021dbd9b41ed26e4818e2e59357f0b9ec141e4ccd",
+      "stage": "feature_refine",
+      "kind": "file",
+      "source": "copied_from_historical_run",
+      "description": "特征筛选链路数据 — 从历史 run 复制",
+      "registered_at": "2026-06-24T17:23:14"
+    },
+    {
+      "path": "feature_selection/d01_d02_run_summary.json",
+      "size_bytes": 115,
+      "mtime": "2026-06-15T09:58:46",
+      "sha256": "309ceea3ef2f14c71cfd6c47b49e99f64eecef4731c018c134fff225783da301",
+      "stage": "feature_refine",
+      "kind": "file",
+      "source": "copied_from_historical_run",
+      "description": "特征筛选链路数据 — 从历史 run 复制",
+      "registered_at": "2026-06-24T17:23:14"
+    },
+    {
+      "path": "evaluation/score_bin_distribution_by_month_by_version.csv",
+      "size_bytes": 47242,
+      "mtime": "2026-06-24T17:24:52",
+      "sha256": "a28aff2b5b05126858dcd3189e5a9db1f57f8d1e800c0633c33fac8694c3f802",
+      "stage": "evaluate",
+      "kind": "file",
+      "source": "generated",
+      "description": "按月/版本/decile 分箱明细 — 基于 DEV 2025-06 baseline",
+      "registered_at": "2026-06-24T17:23:14"
+    },
+    {
+      "path": "evaluation/intent_zc_segment_distribution_by_version.csv",
+      "size_bytes": 73694,
+      "mtime": "2026-06-24T17:25:13",
+      "sha256": "76006579163fffb8aa0c5fbb00d027c3bf7893623004e2c4fdbb0548ece9e8b1",
+      "stage": "evaluate",
+      "kind": "file",
+      "source": "generated",
+      "description": "意愿x资产评级x分群x版本分布矩阵（含合计维度）",
+      "registered_at": "2026-06-24T17:23:14"
+    },
+    {
+      "path": "evaluation/intent_zc_segment_ftr_rate_by_version.csv",
+      "size_bytes": 56260,
+      "mtime": "2026-06-24T17:25:13",
+      "sha256": "d7609732439d504cc1654f3a1af0cbcd3d57024527ea3229c9c3b887bf1afdab",
+      "stage": "evaluate",
+      "kind": "file",
+      "source": "generated",
+      "description": "意愿x资产评级x分群x版本 FTR 30d 率矩阵（含合计维度）",
+      "registered_at": "2026-06-24T17:23:14"
+    },
+    {
+      "path": "evaluation/intent_zc_segment_amount_risk_by_version.csv",
+      "size_bytes": 90712,
+      "mtime": "2026-06-24T17:25:13",
+      "sha256": "e236c68c6c8e441d50231f78a14a34e9426611461d03da6506d356ef258ff3c4",
+      "stage": "evaluate",
+      "kind": "file",
+      "source": "generated",
+      "description": "意愿x资产评级x分群x版本金额风险矩阵（含 head_risk）",
+      "registered_at": "2026-06-24T17:23:14"
     }
   ],
-  "updated_at": "2026-06-24T16:59:59"
+  "updated_at": "2026-06-24T17:23:14"
 }
