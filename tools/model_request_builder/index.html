@@ -162,7 +162,7 @@
                       type="button"
                       class="info-tip"
                       aria-label="缺失率过滤说明"
-                      data-tooltip="剔除缺失率高于阈值的特征。GCard D01/D02 曾使用 empty < 0.95，三域默认口径通常为缺失率不超过 0.90。"
+                      data-tooltip="剔除缺失率高于阈值的特征。GCard 历史初筛曾使用 empty < 0.95，三域默认口径通常为缺失率不超过 0.90。"
                     >?</button>
                   </div>
                   <label class="method-param">
@@ -198,7 +198,7 @@
                       type="button"
                       class="info-tip"
                       aria-label="IV 过滤说明"
-                      data-tooltip="剔除单变量区分度不足的特征。AIAgent 三域默认 IV 下限为 0.005，GCard D01/D02 也使用 IV >= 0.005。"
+                      data-tooltip="剔除单变量区分度不足的特征。AIAgent 三域默认 IV 下限为 0.005，GCard 历史初筛也使用 IV >= 0.005。"
                     >?</button>
                   </div>
                   <label class="method-param">
@@ -404,15 +404,15 @@
                   <ul class="summary-list" data-stage-summary="feature_metadata"></ul>
                 </div>
                 <div class="summary-panel">
-                  <h3>D01/D02 筛选</h3>
-                  <ul class="summary-list" data-stage-summary="d01_d02_screening"></ul>
+                  <h3>特征初筛</h3>
+                  <ul class="summary-list" data-stage-summary="feature_prescreen"></ul>
                 </div>
                 <div class="summary-panel">
                   <h3>宽表 SQL</h3>
                   <ul class="summary-list" data-stage-summary="build_wide_sql"></ul>
                 </div>
                 <div class="summary-panel">
-                  <h3>特征筛选</h3>
+                  <h3>特征精筛</h3>
                   <ul class="summary-list" data-stage-summary="feature_refine"></ul>
                 </div>
                 <div class="summary-panel">

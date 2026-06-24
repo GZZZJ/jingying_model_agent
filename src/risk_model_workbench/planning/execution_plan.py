@@ -122,7 +122,7 @@ def create_execution_plan(request_doc: dict[str, Any], project_path: str | Path)
         )
 
     feature_cfg = metadata.get("feature_selection") or {}
-    feature_rounds = _as_list(feature_cfg.get("rounds"), default=["metadata", "d01_d02", "refine"])
+    feature_rounds = _as_list(feature_cfg.get("rounds"), default=["metadata", "prescreen", "refine"])
     feature_task_ids: list[str] = []
     feature_dependency = sample_task_ids[-1:] if sample_task_ids else []
     for item in feature_rounds:
@@ -133,11 +133,11 @@ def create_execution_plan(request_doc: dict[str, Any], project_path: str | Path)
             args = ["feature", "metadata", "--project", project, "--run-id", run_arg]
             outputs = ["feature_selection/feature_table_summary.csv", "feature_selection/feature_columns.csv"]
             stage = "feature_metadata"
-        elif normalized in {"d01_d02", "d01d02"}:
-            task_id = "feature_d01_d02"
-            args = ["feature", "d01-d02", "--project", project, "--run-id", run_arg, "--dry-run-sql"]
-            outputs = ["feature_selection/d01_d02_run_summary.json", "feature_selection/d01_d02_final_remain_features.json"]
-            stage = "d01_d02_screening"
+        elif normalized in {"prescreen", "feature_prescreen", "coarse_screening", "coarse", "d01_d02", "d01d02"}:
+            task_id = "feature_prescreen"
+            args = ["feature", "prescreen", "--project", project, "--run-id", run_arg, "--dry-run-sql"]
+            outputs = ["feature_selection/prescreen_run_summary.json", "feature_selection/prescreen_final_remain_features.json"]
+            stage = "feature_prescreen"
         elif normalized == "refine":
             task_id = "feature_refine"
             args = ["feature", "refine", "--project", project, "--run-id", run_arg, "--dry-run-sql"]

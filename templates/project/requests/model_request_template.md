@@ -20,7 +20,7 @@ sample_checks:
 feature_selection:
   rounds:
     - metadata
-    - d01_d02
+    - prescreen
     - refine
   require_sql_approval: true
 

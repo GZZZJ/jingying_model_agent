@@ -4,7 +4,7 @@ feature_select:
   skill_path: ../../vendor/feature-select-v2
   output_dir: runs/{run_id}/feature_select
   scale_note: 候选特征预计15000+，样本量几百万级；必须随机抽样并分批处理特征。
-  current_screening_note: 当前D01/D02脚本按特征表单独筛选，取数条件固定为 rand_flag0 < 0.1 and final_flag in ('DEV','OOT')。
+  current_screening_note: 当前特征初筛按特征表单独筛选，取数条件固定为 rand_flag0 < 0.1 and final_flag in ('DEV','OOT')。
 
   metadata:
     tables_file: configs/feature_tables.txt
@@ -39,9 +39,9 @@ feature_select:
       - ds
     exclude_columns: []
 
-  d01_d02:
+  prescreen:
     feature_columns: data/profile/feature_metadata/feature_columns.csv
-    output_dir: runs/d01_d02_batch_select
+    output_dir: runs/feature_prescreen
     target_col: ftr_30d_ord_flag
     split_col: final_flag
     train_value: DEV
@@ -63,8 +63,8 @@ feature_select:
         - "20260131"
       where: "rand_flag0 < 0.1 and final_flag in ('DEV','OOT')"
     dp_feather:
-      data_dir: data/local/dp_feather/d01_d02_batch_select
-      metadata_dir: data/profile/dp_feather_datasets/d01_d02_batch_select
+      data_dir: data/local/dp_feather/feature_prescreen
+      metadata_dir: data/profile/dp_feather_datasets/feature_prescreen
 
   steps:
     - d01
@@ -97,7 +97,7 @@ feature_select:
 
   wide_table:
     base_table: pdm_risk.pdm_risk_gcard_base_sample_uid_ds_eva_ben_v6_1
-    output_table: pdm_risk.pdm_risk_fujie_gcard_d01_d02_wide_feature_v6_1
+    output_table: pdm_risk.pdm_risk_fujie_gcard_feature_prescreen_wide_feature_v6_1
     join_keys:
       - uid
       - mdl_dte
@@ -124,9 +124,9 @@ feature_select:
       - rand_flag5
     base_where: ds is not null
     feature_where: ds is not null
-    remain_features_path: runs/d01_d02_batch_select/results/d01_d02_final_remain_features.json
-    sql_output: queries/06_build_d01_d02_wide_table.sql
-    feature_map_output: runs/d01_d02_batch_select/results/d01_d02_wide_feature_map.csv
+    remain_features_path: runs/feature_prescreen/results/prescreen_final_remain_features.json
+    sql_output: queries/06_build_prescreen_wide_table.sql
+    feature_map_output: runs/feature_prescreen/results/prescreen_wide_feature_map.csv
 
   params:
     D01_PARAMS:

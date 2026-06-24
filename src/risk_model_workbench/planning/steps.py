@@ -13,13 +13,23 @@ KNOWN_STAGES = {
     "validate_config",
     "sample_check",
     "feature_metadata",
-    "d01_d02_screening",
+    "feature_prescreen",
     "build_wide_sql",
     "feature_refine",
     "train_baseline",
     "evaluate",
     "compare",
     "report",
+}
+
+
+STAGE_ALIASES = {
+    "d01_d02_screening": "feature_prescreen",
+}
+
+
+STEP_ALIASES = {
+    "d01_d02_batch_screening": "feature_quality_prescreen",
 }
 
 
@@ -96,12 +106,12 @@ STEP_REGISTRY: dict[str, dict[str, Any]] = {
         "source_reference": "RMW feature metadata flow",
         "implementation_status": "implemented",
     },
-    "d01_d02_batch_screening": {
-        "id": "d01_d02_batch_screening",
-        "stage": "d01_d02_screening",
-        "description": "Run D01/D02 batch feature screening or SQL dry run.",
+    "feature_quality_prescreen": {
+        "id": "feature_quality_prescreen",
+        "stage": "feature_prescreen",
+        "description": "Run coarse feature quality and stability prescreening or SQL dry run.",
         "default_params": {"require_sql_approval": True},
-        "source_reference": "RMW D01/D02 screening flow",
+        "source_reference": "RMW feature prescreening flow",
         "implementation_status": "implemented",
     },
     "wide_sql_generation": {
@@ -559,7 +569,7 @@ PROFILE_STAGE_STEPS: dict[str, dict[str, list[str]]] = {
     "fujie_gcard_main_lgbm": {
         "sample_check": ["field_contract", "key_uniqueness", "monthly_label_distribution", "segment_distribution"],
         "feature_metadata": ["feature_metadata_export"],
-        "d01_d02_screening": ["d01_d02_batch_screening"],
+        "feature_prescreen": ["feature_quality_prescreen"],
         "build_wide_sql": ["wide_sql_generation", "sql_review_gate"],
         "feature_refine": [
             "feature_availability_filter",
@@ -600,7 +610,7 @@ PROFILE_STEP_PARAMS: dict[str, dict[str, dict[str, Any]]] = {
         "monthly_stability": {"max_ks_std": 0.03},
     },
     "fujie_gcard_main_lgbm": {
-        "d01_d02_batch_screening": {"require_sql_approval": True},
+        "feature_quality_prescreen": {"require_sql_approval": True},
         "sql_review_gate": {"block_on_high_risk": True},
     },
 }
@@ -618,6 +628,14 @@ def _as_list(value: Any) -> list[str]:
     if isinstance(value, list):
         return [str(item.get("name") if isinstance(item, dict) else item) for item in value]
     return [str(value)]
+
+
+def _normalize_stage(stage: str) -> str:
+    return STAGE_ALIASES.get(stage, stage)
+
+
+def _normalize_step_ids(steps: list[str]) -> list[str]:
+    return [STEP_ALIASES.get(step, step) for step in steps]
 
 
 def _load_project_yaml(project_path: str | Path | None) -> dict[str, Any]:
@@ -664,10 +682,10 @@ def resolve_step_configuration(
     if not isinstance(overrides, dict):
         raise ValueError("stage_steps must be a mapping")
     for stage, raw_steps in overrides.items():
-        stage_name = str(stage)
+        stage_name = _normalize_stage(str(stage))
         if stage_name not in KNOWN_STAGES:
             raise ValueError(f"unknown stage in stage_steps: {stage_name}")
-        stage_steps[stage_name] = _as_list(raw_steps)
+        stage_steps[stage_name] = _normalize_step_ids(_as_list(raw_steps))
 
     unknown_steps = sorted({step for steps in stage_steps.values() for step in steps if step not in STEP_REGISTRY})
     if unknown_steps:
@@ -676,6 +694,7 @@ def resolve_step_configuration(
     request_params = metadata.get("step_params") or {}
     if not isinstance(request_params, dict):
         raise ValueError("step_params must be a mapping")
+    request_params = {STEP_ALIASES.get(str(step), str(step)): params for step, params in request_params.items()}
     unknown_param_steps = sorted(set(request_params) - set(STEP_REGISTRY))
     if unknown_param_steps:
         raise ValueError(f"unknown step id in step_params: {', '.join(unknown_param_steps)}")

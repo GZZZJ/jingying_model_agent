@@ -18,9 +18,9 @@ def test_action_registry_covers_full_modeling_stages():
     stage_actions = {spec.stage for spec in list_action_specs(kind="stage")}
 
     assert set(workflow["stages"]).issubset(stage_actions)
-    assert get_action_spec("d01_d02_screening").approval_required is True
-    assert get_action_spec("d01_d02_screening").approval_type == "sql_review"
-    assert SQL_APPROVAL_REQUIRED in get_action_spec("d01_d02_screening").failure_codes
+    assert get_action_spec("feature_prescreen").approval_required is True
+    assert get_action_spec("feature_prescreen").approval_type == "sql_review"
+    assert SQL_APPROVAL_REQUIRED in get_action_spec("feature_prescreen").failure_codes
     assert get_action_spec("feature_refine").approval_required is True
     assert get_action_spec("train_baseline").mutates_manifest is True
 
@@ -28,7 +28,7 @@ def test_action_registry_covers_full_modeling_stages():
 def test_tool_registry_declares_permissions_and_auditor_boundary():
     assert validate_tool_registry() == []
 
-    dp_tool = get_tool_spec("feature_d01_d02_pull")
+    dp_tool = get_tool_spec("feature_prescreen_pull")
     assert dp_tool.permission == "dp_sql_pull"
     assert dp_tool.requires_approval is True
     assert dp_tool.allowed_for_auditor is False
@@ -52,7 +52,7 @@ def test_action_and_tool_cli_json(capsys):
     assert main(["action", "list", "--json"]) == 0
     actions = json.loads(capsys.readouterr().out)
     assert any(item["id"] == "sample_check" for item in actions)
-    assert any(item["id"] == "d01_d02_screening" and item["approval_type"] == "sql_review" for item in actions)
+    assert any(item["id"] == "feature_prescreen" and item["approval_type"] == "sql_review" for item in actions)
 
     assert main(["action", "show", "feature_refine", "--json"]) == 0
     action = json.loads(capsys.readouterr().out)
@@ -64,7 +64,7 @@ def test_action_and_tool_cli_json(capsys):
     assert all(item["permission"] == "read_only" for item in tools)
     assert any(item["name"] == "run_audit" and item["allowed_for_auditor"] is True for item in tools)
 
-    assert main(["tool", "show", "feature_d01_d02_pull", "--json"]) == 0
+    assert main(["tool", "show", "feature_prescreen_pull", "--json"]) == 0
     tool = json.loads(capsys.readouterr().out)
     assert tool["permission"] == "dp_sql_pull"
     assert tool["requires_approval"] is True

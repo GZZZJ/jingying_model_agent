@@ -4,7 +4,7 @@ stages:
   - validate_config
   - sample_check
   - feature_metadata
-  - d01_d02_screening
+  - feature_prescreen
   - build_wide_sql
   - feature_refine
   - train_baseline
@@ -23,9 +23,10 @@ stage_contracts:
   feature_metadata:
     required_artifacts:
       - feature_metadata/*
-  d01_d02_screening:
-    required_artifacts:
-      - feature_selection/d01_d02_*
+  feature_prescreen:
+    accepted_artifact_sets:
+      - [feature_selection/prescreen_run_summary.json, feature_selection/prescreen_final_remain_features.json]
+      - [feature_selection/*_run_summary.json, feature_selection/*_final_remain_features.json]
   build_wide_sql:
     accepted_artifact_sets:
       - [queries/*.sql]

@@ -15,9 +15,9 @@ workbench's reusable capability.
 - Active run: `2026-06-imported-gcard-main-lgbm`
 - Active objective: `复借G卡主模型产物标准化与连续性交接机制建设`
 - Active run workflow: `imported_gcard_main_lgbm`
-- Active run status: `imported`; current stage: `report`
+- Active run status: `imported`; current stage: `feature_refine`
 - Current audit verdict: `open`
-- Open stages in the imported run: `feature_metadata`, `d01_d02_screening`,
+- Open stages in the imported run: `feature_metadata`, `feature_prescreen`,
   `build_wide_sql`
 
 The imported run contains real historical Fujie GCard training, evaluation, and

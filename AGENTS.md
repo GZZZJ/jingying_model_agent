@@ -19,11 +19,11 @@ As of 2026-06-09:
 - Project checkpoint: `projects/2026-05-fujie-gcard-v1/project_state.yml`
 - Current objective: `复借G卡主模型产物标准化与连续性交接机制建设`
 - Run workflow/status: `imported_gcard_main_lgbm` / `imported`
-- Run current stage: `report`
-- `rmw project status` reports stage counts `done=7, pending=3`.
+- Run current stage: `feature_refine`
+- `rmw project status` reports stage counts `done=6, pending=3, scaffold=1`.
 - `rmw run audit` currently reports verdict `open` because
-  `feature_metadata`, `d01_d02_screening`, and `build_wide_sql` are pending,
-  and completed stages are imported evidence.
+  `feature_metadata`, `feature_prescreen`, and `build_wide_sql` are pending,
+  completed stages are imported evidence, and `feature_refine` is scaffold evidence.
 
 The imported run contains real historical Fujie GCard model artifacts, but it is
 not local end-to-end rerun evidence.

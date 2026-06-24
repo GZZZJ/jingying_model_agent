@@ -23,12 +23,12 @@
    `python3 scripts/00_export_feature_metadata.py`
 3. 生成 feature-select-v2 适配配置：
    `python3 scripts/02_feature_select.py`
-4. 先只生成分表 D01/D02 取数 SQL，给使用者确认：
-   `python3 scripts/06_run_d01_d02_batch_select.py --dry-run-sql --max-tables 1`
-5. SQL 确认后执行分表 D01/D02：
-   `python3 scripts/06_run_d01_d02_batch_select.py --refresh-dp-cache --sql-approved`
-6. 生成 D01/D02 后宽表 SQL：
-   `python3 scripts/07_build_wide_feature_sql.py`
+4. 先只生成特征初筛取数 SQL，给使用者确认：
+   `rmw feature prescreen --project <project> --run-id <run_id> --dry-run-sql --max-tables 1`
+5. SQL 确认后执行特征初筛：
+   `rmw feature prescreen --project <project> --run-id <run_id> --refresh-dp-cache --sql-approved`
+6. 生成特征初筛后的宽表 SQL：
+   `rmw build-wide-sql --project <project> --run-id <run_id>`
 7. 先只生成宽表后收敛取数 SQL，给使用者确认：
    `python3 scripts/08_refine_wide_features.py --dry-run-sql`
 8. SQL 确认后刷新本地 feather 并执行全局相关性、随机噪声、空标签重要性和基线重要性筛选：

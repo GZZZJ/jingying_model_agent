@@ -34,7 +34,7 @@ files in the workspace.
 - `rmw rules list`
 - `rmw lesson promote --project <project> --title <title> --target guardrail --rule-id <id>`
 - `rmw sample check --project <project> --run-id <run_id>`
-- `rmw feature d01-d02 --project <project> --run-id <run_id> --dry-run-sql`
+- `rmw feature prescreen --project <project> --run-id <run_id> --dry-run-sql`
 - `rmw feature refine --project <project> --run-id <run_id> --dry-run-sql`
 - `rmw train --project <project> --run-id <run_id> --experiment main_lgbm`
 - `rmw evaluate --project <project> --run-id <run_id>`

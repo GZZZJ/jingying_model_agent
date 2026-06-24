@@ -1,5 +1,5 @@
 feature_select:
   require_sql_approval: true
-  d01_d02:
+  prescreen:
     sampling:
       where: ""

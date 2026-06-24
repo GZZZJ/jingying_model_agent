@@ -15,7 +15,7 @@ DEFAULT_STAGES = [
     "validate_config",
     "sample_check",
     "feature_metadata",
-    "d01_d02_screening",
+    "feature_prescreen",
     "build_wide_sql",
     "feature_refine",
     "train_baseline",

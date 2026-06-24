@@ -11,9 +11,9 @@ feature_select:
     sample_columns: []
     exclude_columns: []
 
-  d01_d02:
+  prescreen:
     feature_columns: data/profile/feature_metadata/feature_columns.csv
-    output_dir: runs/d01_d02_batch_select
+    output_dir: runs/feature_prescreen
     target_col: {{target_column}}
     split_col: final_flag
     train_value: DEV
@@ -27,8 +27,8 @@ feature_select:
       valid_partitions: []
       where: "{{period_column}} is not null and final_flag in ('DEV','OOT') and {{target_column}} in (0,1)"
     dp_feather:
-      data_dir: data/local/dp_feather/d01_d02_batch_select
-      metadata_dir: data/profile/dp_feather_datasets/d01_d02_batch_select
+      data_dir: data/local/dp_feather/feature_prescreen
+      metadata_dir: data/profile/dp_feather_datasets/feature_prescreen
 
   wide_table:
     base_table: {{sample_table}}

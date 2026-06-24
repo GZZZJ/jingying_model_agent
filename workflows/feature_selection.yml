@@ -1,8 +1,8 @@
 name: feature_selection
-description: Feature metadata, D01/D02 screening, and refinement workflow.
+description: Feature metadata, coarse prescreening, wide SQL generation, and refinement workflow.
 stages:
   - validate_config
   - feature_metadata
-  - d01_d02_screening
+  - feature_prescreen
   - build_wide_sql
   - feature_refine

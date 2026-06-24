@@ -61,7 +61,7 @@ const FORM_STEPS = [
 const STAGE_GROUPS = [
   { stage: "sample_check", key: "sample_check_steps" },
   { stage: "feature_metadata", key: "feature_metadata_steps" },
-  { stage: "d01_d02_screening", key: "d01_d02_screening_steps" },
+  { stage: "feature_prescreen", key: "feature_prescreen_steps" },
   { stage: "build_wide_sql", key: "build_wide_sql_steps" },
   { stage: "feature_refine", key: "feature_refine_steps" },
   { stage: "train_baseline", key: "train_baseline_steps" },
@@ -69,6 +69,14 @@ const STAGE_GROUPS = [
   { stage: "compare", key: "compare_steps" },
   { stage: "report", key: "report_steps" },
 ];
+
+const STAGE_ALIASES = {
+  d01_d02_screening: "feature_prescreen",
+};
+
+const STEP_ALIASES = {
+  d01_d02_batch_screening: "feature_quality_prescreen",
+};
 
 const CHECKBOX_GROUPS = [
   "feature_steps",
@@ -116,9 +124,9 @@ const PROFILE_LABELS = {
 const STAGE_LABELS = {
   sample_check: "样本检查",
   feature_metadata: "特征元数据",
-  d01_d02_screening: "D01/D02 筛选",
+  feature_prescreen: "特征初筛",
   build_wide_sql: "宽表 SQL",
-  feature_refine: "特征筛选",
+  feature_refine: "特征精筛",
   train_baseline: "训练",
   evaluate: "评估",
   compare: "对比",
@@ -135,7 +143,7 @@ const STEP_LABELS = {
   dual_target_split: "双 Y 标拆分",
   credit_product_coverage: "资信覆盖",
   feature_metadata_export: "元数据导出",
-  d01_d02_batch_screening: "D01/D02 批量筛选",
+  feature_quality_prescreen: "特征质量初筛",
   wide_sql_generation: "宽表 SQL 生成",
   sql_review_gate: "SQL Review Gate",
   feature_availability_filter: "可用性过滤",
@@ -230,7 +238,7 @@ const PROFILE_FEATURE_ROUNDS = {
   acquisition_conversion: ["refine"],
   feature_gain_eval: ["refine"],
   credit_product_eval: [],
-  fujie_gcard_main_lgbm: ["metadata", "d01_d02", "refine"],
+  fujie_gcard_main_lgbm: ["metadata", "prescreen", "refine"],
 };
 
 const PROFILE_PRESETS = {
@@ -243,7 +251,7 @@ const PROFILE_PRESETS = {
       "dual_target_split",
     ],
     feature_metadata_steps: [],
-    d01_d02_screening_steps: [],
+    feature_prescreen_steps: [],
     build_wide_sql_steps: [],
     feature_refine_steps: [
       "missing_rate_filter",
@@ -267,7 +275,7 @@ const PROFILE_PRESETS = {
   preloan_credit_card: {
     sample_check_steps: ["field_contract", "key_uniqueness", "monthly_label_distribution"],
     feature_metadata_steps: [],
-    d01_d02_screening_steps: [],
+    feature_prescreen_steps: [],
     build_wide_sql_steps: [],
     feature_refine_steps: [
       "missing_rate_filter",
@@ -288,7 +296,7 @@ const PROFILE_PRESETS = {
       "account_status_distribution",
     ],
     feature_metadata_steps: [],
-    d01_d02_screening_steps: [],
+    feature_prescreen_steps: [],
     build_wide_sql_steps: [],
     feature_refine_steps: [
       "missing_rate_filter",
@@ -313,7 +321,7 @@ const PROFILE_PRESETS = {
   inloan_operation: {
     sample_check_steps: ["field_contract", "key_uniqueness", "monthly_label_distribution", "segment_distribution"],
     feature_metadata_steps: [],
-    d01_d02_screening_steps: [],
+    feature_prescreen_steps: [],
     build_wide_sql_steps: [],
     feature_refine_steps: [
       "missing_rate_filter",
@@ -346,7 +354,7 @@ const PROFILE_PRESETS = {
       "dual_target_split",
     ],
     feature_metadata_steps: [],
-    d01_d02_screening_steps: [],
+    feature_prescreen_steps: [],
     build_wide_sql_steps: [],
     feature_refine_steps: [
       "missing_rate_filter",
@@ -368,7 +376,7 @@ const PROFILE_PRESETS = {
       "dual_target_split",
     ],
     feature_metadata_steps: [],
-    d01_d02_screening_steps: [],
+    feature_prescreen_steps: [],
     build_wide_sql_steps: [],
     feature_refine_steps: [
       "missing_rate_filter",
@@ -392,7 +400,7 @@ const PROFILE_PRESETS = {
   feature_gain_eval: {
     sample_check_steps: ["field_contract", "key_uniqueness", "monthly_label_distribution"],
     feature_metadata_steps: [],
-    d01_d02_screening_steps: [],
+    feature_prescreen_steps: [],
     build_wide_sql_steps: [],
     feature_refine_steps: [
       "missing_rate_filter",
@@ -408,7 +416,7 @@ const PROFILE_PRESETS = {
   credit_product_eval: {
     sample_check_steps: ["field_contract", "key_uniqueness", "monthly_label_distribution", "credit_product_coverage"],
     feature_metadata_steps: [],
-    d01_d02_screening_steps: [],
+    feature_prescreen_steps: [],
     build_wide_sql_steps: [],
     feature_refine_steps: [],
     train_baseline_steps: ["lightgbm_binary_training"],
@@ -426,7 +434,7 @@ const PROFILE_PRESETS = {
   fujie_gcard_main_lgbm: {
     sample_check_steps: ["field_contract", "key_uniqueness", "monthly_label_distribution", "segment_distribution"],
     feature_metadata_steps: ["feature_metadata_export"],
-    d01_d02_screening_steps: ["d01_d02_batch_screening"],
+    feature_prescreen_steps: ["feature_quality_prescreen"],
     build_wide_sql_steps: ["wide_sql_generation", "sql_review_gate"],
     feature_refine_steps: [
       "missing_rate_filter",
@@ -483,7 +491,7 @@ const defaults = {
   risk_profile_dimensions: "blue_customer_flag, zc_level",
   report_outputs: "model_report.md, model_card.md, executive_summary.md",
   extra_notes: "缺失真实训练或评估结果时必须标记 scaffold，不得编造指标。",
-  feature_steps: ["metadata", "d01_d02", "refine"],
+  feature_steps: ["metadata", "prescreen", "refine"],
   metrics: ["auc", "ks", "decile_lift", "ranking_inversion"],
   report_sections: [
     "sample_overview",
@@ -704,7 +712,12 @@ function normalizeState(state = {}) {
   STAGE_GROUPS.forEach(({ stage, key }) => {
     if (Object.prototype.hasOwnProperty.call(source, key)) return;
     if (source.stage_steps && Array.isArray(source.stage_steps[stage])) {
-      merged[key] = source.stage_steps[stage];
+      merged[key] = source.stage_steps[stage].map((step) => STEP_ALIASES[step] || step);
+      return;
+    }
+    const legacyStage = Object.entries(STAGE_ALIASES).find(([, target]) => target === stage)?.[0];
+    if (legacyStage && source.stage_steps && Array.isArray(source.stage_steps[legacyStage])) {
+      merged[key] = source.stage_steps[legacyStage].map((step) => STEP_ALIASES[step] || step);
       return;
     }
     merged[key] = preset[key] || [];
@@ -718,6 +731,10 @@ function normalizeState(state = {}) {
   if (!Object.prototype.hasOwnProperty.call(source, "feature_steps")) {
     merged.feature_steps = featureRoundsForProfile(scenarioProfile);
   }
+  merged.feature_steps = (merged.feature_steps || []).map((step) => (step === "d01_d02" ? "prescreen" : step));
+  STAGE_GROUPS.forEach(({ key }) => {
+    merged[key] = (merged[key] || []).map((step) => STEP_ALIASES[step] || step);
+  });
 
   return merged;
 }
@@ -736,7 +753,7 @@ function stageStepsForState(state) {
 function featureRoundsForState(state) {
   const rounds = [];
   if ((state.feature_metadata_steps || []).length) rounds.push("metadata");
-  if ((state.d01_d02_screening_steps || []).length) rounds.push("d01_d02");
+  if ((state.feature_prescreen_steps || []).length) rounds.push("prescreen");
   if ((stageStepsForState(state).feature_refine || []).length) rounds.push("refine");
   return rounds;
 }
@@ -759,8 +776,8 @@ function buildStepParams(state) {
   if (selectedSteps.has("monthly_label_distribution")) {
     addStepParam(params, "monthly_label_distribution", "min_samples_per_month", state.sample_min_monthly_count);
   }
-  if (selectedSteps.has("d01_d02_batch_screening")) {
-    addStepParam(params, "d01_d02_batch_screening", "require_sql_approval", Boolean(state.require_sql_approval));
+  if (selectedSteps.has("feature_quality_prescreen")) {
+    addStepParam(params, "feature_quality_prescreen", "require_sql_approval", Boolean(state.require_sql_approval));
   }
   if (selectedSteps.has("sql_review_gate")) {
     addStepParam(params, "sql_review_gate", "block_on_high_risk", Boolean(state.sql_block_high_risk));

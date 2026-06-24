@@ -13,27 +13,27 @@ def test_progress_reporter_writes_chinese_message_and_run_state(tmp_path):
     state = create_run_state(tmp_path / "project", run_id="run1", workflow="full_modeling")
     save_run_state(run_path, state)
 
-    reporter = ProgressReporter(run_path, "d01_d02_screening", emit_terminal=False)
+    reporter = ProgressReporter(run_path, "feature_prescreen", emit_terminal=False)
     reporter.emit(
-        step="d01_done",
-        message="表 9/50：D01 完成，保留 86/120 个变量",
+        step="quality_screen_done",
+        message="表 9/50：质量初筛完成，保留 86/120 个变量",
         current=9,
         total=50,
         metrics={"table": "demo.table", "d01_remain": 86},
     )
 
     events = load_progress_events(run_path)
-    assert events[-1]["message"] == "表 9/50：D01 完成，保留 86/120 个变量"
+    assert events[-1]["message"] == "表 9/50：质量初筛完成，保留 86/120 个变量"
     assert events[-1]["percent"] == 18.0
     assert events[-1]["metrics"]["d01_remain"] == 86
 
     summary = load_progress_summary(run_path)
-    assert summary["stage_label"] == "特征筛选-D01/D02"
+    assert summary["stage_label"] == "特征初筛"
     assert summary["latest_event"]["message"].startswith("表 9/50")
 
     updated = yaml.safe_load((run_path / "run_state.yml").read_text(encoding="utf-8"))
-    progress = updated["stages"]["d01_d02_screening"]["progress"]
-    assert progress["message"] == "表 9/50：D01 完成，保留 86/120 个变量"
+    progress = updated["stages"]["feature_prescreen"]["progress"]
+    assert progress["message"] == "表 9/50：质量初筛完成，保留 86/120 个变量"
     assert progress["percent"] == 18.0
 
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Project wrapper for the standard per-table D01/D02 screening flow."""
+"""Project wrapper for the standard per-table feature prescreening flow."""
 
 from __future__ import annotations
 

@@ -1,7 +1,7 @@
 feature_refine:
   input:
     wide_table: ""
-    feature_map: runs/d01_d02_batch_select/results/d01_d02_wide_feature_map.csv
+    feature_map: runs/feature_prescreen/results/prescreen_wide_feature_map.csv
     label_column: {{target_column}}
     split_column: final_flag
     train_value: DEV
@@ -23,7 +23,7 @@ feature_refine:
 
   dp_feather:
     dataset_id: feature_refine_wide_sample
-    description: D01/D02后宽表抽样，用于随机噪声、空标签重要性和基线重要性筛选。
+    description: 特征初筛后宽表抽样，用于随机噪声、空标签重要性和基线重要性筛选。
     data_dir: data/local/dp_feather
     metadata_dir: data/profile/dp_feather_datasets
 

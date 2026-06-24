@@ -70,7 +70,7 @@ def test_imported_excel_report_layout(tmp_path):
 
     screening = workbook["变量筛选过程和模型参数"]
     assert _find_cell(screening, "筛选方法") is not None
-    assert _find_cell(screening, "分表基础预筛：缺失率 < 0.95，相关性 < 0.80，IV >= 0.005") is not None
+    assert _find_cell(screening, "特征初筛-质量规则：缺失率 < 0.95，相关性 < 0.80，IV >= 0.005") is not None
 
     sloping = workbook["模型效果-模型sloping"]
     assert _find_cell(sloping, "2、模型sloping") is not None
@@ -126,7 +126,7 @@ def test_train_300_report_uses_current_run_training_features(tmp_path):
     report_html = output_path.with_name("model_report.html").read_text(encoding="utf-8")
 
     assert "最终入模变量 300 个" in report_text
-    assert "当前 run 未登记独立 D01/D02 或 feature_refine 筛选过程产物" in report_text
+    assert "当前 run 未登记独立特征初筛或特征精筛过程产物" in report_text
     assert "| 训练输入 |" in report_text
     assert "| 训练预处理 |" in report_text
     assert "| 最终入模 | LightGBM 实际入模变量数 | 300 |" in report_text

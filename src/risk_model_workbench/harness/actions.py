@@ -93,18 +93,18 @@ ACTION_SPECS: tuple[ActionSpec, ...] = (
         mutates_manifest=True,
     ),
     ActionSpec(
-        id="d01_d02_screening",
-        command="rmw feature d01-d02 --project <project> --run-id <run_id>",
-        description="Run or dry-run D01/D02 batch feature screening.",
+        id="feature_prescreen",
+        command="rmw feature prescreen --project <project> --run-id <run_id>",
+        description="Run or dry-run coarse feature prescreening before wide-table refinement.",
         kind="stage",
-        stage="d01_d02_screening",
+        stage="feature_prescreen",
         inputs=("project.yml", "feature metadata", "SQL review approval for DP pull"),
-        outputs=("feature_selection/d01_d02_*",),
+        outputs=("feature_selection/prescreen_*", "feature_selection/*_run_summary.json", "feature_selection/*_final_remain_features.json"),
         approval_required=True,
         approval_type="sql_review",
         retry_policy="never",
         failure_codes=(SQL_APPROVAL_REQUIRED, *COMMON_STAGE_FAILURES),
-        artifact_rules=("feature_selection/d01_d02_*",),
+        artifact_rules=("feature_selection/prescreen_*", "feature_selection/*_run_summary.json", "feature_selection/*_final_remain_features.json"),
         mutates_run_state=True,
         mutates_manifest=True,
     ),
@@ -114,7 +114,7 @@ ACTION_SPECS: tuple[ActionSpec, ...] = (
         description="Generate wide-table SQL and feature mapping from remaining features.",
         kind="stage",
         stage="build_wide_sql",
-        inputs=("feature_selection/d01_d02_final_remain_features.json", "project.yml"),
+        inputs=("feature prescreen remaining features", "project.yml"),
         outputs=("queries/*.sql", "feature_selection/wide_sql_summary.json"),
         failure_codes=COMMON_STAGE_FAILURES,
         artifact_rules=("queries/*.sql", "feature_selection/wide_sql_summary.json"),
@@ -247,6 +247,9 @@ ACTION_SPECS: tuple[ActionSpec, ...] = (
 )
 
 ACTION_REGISTRY: dict[str, ActionSpec] = {spec.id: spec for spec in ACTION_SPECS}
+ACTION_ALIASES = {
+    "d01_d02_screening": "feature_prescreen",
+}
 
 
 def list_action_specs(*, kind: str | None = None) -> tuple[ActionSpec, ...]:
@@ -257,6 +260,7 @@ def list_action_specs(*, kind: str | None = None) -> tuple[ActionSpec, ...]:
 
 
 def get_action_spec(action_id: str) -> ActionSpec:
+    action_id = ACTION_ALIASES.get(action_id, action_id)
     try:
         return ACTION_REGISTRY[action_id]
     except KeyError as exc:

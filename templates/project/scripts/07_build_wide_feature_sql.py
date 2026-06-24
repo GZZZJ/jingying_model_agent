@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate SQL for joining D01/D02 remaining features into one wide table."""
+"""Generate SQL for joining prescreened features into one wide table."""
 
 from __future__ import annotations
 
@@ -17,26 +17,26 @@ from risk_model_workbench.wide_sql import generate_wide_sql
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Build D01/D02 wide feature table SQL.")
+    parser = argparse.ArgumentParser(description="Build prescreened wide feature table SQL.")
     parser.add_argument("--project-dir", default=str(PROJECT_DIR), help="Project workspace directory.")
     parser.add_argument(
         "--remain-features",
-        default="runs/d01_d02_batch_select/results/d01_d02_final_remain_features.json",
+        default="runs/feature_prescreen/results/prescreen_final_remain_features.json",
         help="Remaining feature JSON, relative to project-dir unless absolute.",
     )
     parser.add_argument(
         "--sql-output",
-        default="queries/06_build_d01_d02_wide_table.sql",
+        default="queries/06_build_prescreen_wide_table.sql",
         help="SQL output path, relative to project-dir unless absolute.",
     )
     parser.add_argument(
         "--feature-map-output",
-        default="runs/d01_d02_batch_select/results/d01_d02_wide_feature_map.csv",
+        default="runs/feature_prescreen/results/prescreen_wide_feature_map.csv",
         help="Output feature mapping CSV, relative to project-dir unless absolute.",
     )
     parser.add_argument(
         "--summary-output",
-        default="runs/d01_d02_batch_select/results/d01_d02_wide_sql_summary.json",
+        default="runs/feature_prescreen/results/prescreen_wide_sql_summary.json",
         help="Output summary JSON, relative to project-dir unless absolute.",
     )
     parser.add_argument("--base-table", default=None, help="Override base sample table.")

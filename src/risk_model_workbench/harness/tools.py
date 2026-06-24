@@ -77,18 +77,18 @@ TOOL_SPECS: tuple[ToolSpec, ...] = (
         description="Write feature metadata artifacts and stage state.",
     ),
     ToolSpec(
-        name="feature_d01_d02_dry_run",
-        action_id="d01_d02_screening",
-        command="rmw feature d01-d02 --project <project> --run-id <run_id> --dry-run-sql",
+        name="feature_prescreen_dry_run",
+        action_id="feature_prescreen",
+        command="rmw feature prescreen --project <project> --run-id <run_id> --dry-run-sql",
         permission="writes_run",
-        description="Generate SQL review artifacts without DP pull.",
+        description="Generate feature prescreen SQL review artifacts without DP pull.",
     ),
     ToolSpec(
-        name="feature_d01_d02_pull",
-        action_id="d01_d02_screening",
-        command="rmw feature d01-d02 --project <project> --run-id <run_id> --sql-approved",
+        name="feature_prescreen_pull",
+        action_id="feature_prescreen",
+        command="rmw feature prescreen --project <project> --run-id <run_id> --sql-approved",
         permission="dp_sql_pull",
-        description="Run D01/D02 screening with approved DP/SQL access.",
+        description="Run feature prescreening with approved DP/SQL access.",
         requires_approval=True,
     ),
     ToolSpec(
@@ -144,6 +144,10 @@ TOOL_SPECS: tuple[ToolSpec, ...] = (
 )
 
 TOOL_REGISTRY: dict[str, ToolSpec] = {spec.name: spec for spec in TOOL_SPECS}
+TOOL_ALIASES = {
+    "feature_d01_d02_dry_run": "feature_prescreen_dry_run",
+    "feature_d01_d02_pull": "feature_prescreen_pull",
+}
 
 
 def list_tool_specs(*, permission: str | None = None) -> tuple[ToolSpec, ...]:
@@ -154,6 +158,7 @@ def list_tool_specs(*, permission: str | None = None) -> tuple[ToolSpec, ...]:
 
 
 def get_tool_spec(name: str) -> ToolSpec:
+    name = TOOL_ALIASES.get(name, name)
     try:
         return TOOL_REGISTRY[name]
     except KeyError as exc:

@@ -121,39 +121,6 @@
       "registered_at": "2026-06-16T17:48:24"
     },
     {
-      "path": "reports/model_report.xlsx",
-      "size_bytes": 4280088,
-      "mtime": "2026-06-16T17:48:28",
-      "sha256": "c53ab71e435f02e4a0fe362c0ca33ce2ab4cbeadf584e2182771d58d485eaeee",
-      "stage": "report",
-      "kind": "file",
-      "source": "generated",
-      "description": "",
-      "registered_at": "2026-06-16T17:48:28"
-    },
-    {
-      "path": "reports/model_report.md",
-      "size_bytes": 26479,
-      "mtime": "2026-06-16T17:48:28",
-      "sha256": "bde55526d4b96c9ec5df9535e3def8dbcb02f706236664126ca039ba40d70f4b",
-      "stage": "report",
-      "kind": "file",
-      "source": "generated",
-      "description": "",
-      "registered_at": "2026-06-16T17:48:28"
-    },
-    {
-      "path": "reports/model_report.html",
-      "size_bytes": 43616,
-      "mtime": "2026-06-16T17:48:28",
-      "sha256": "7ff83ba93fdd7758320cda343f587e4e0d59e6e2a268ed116e0f7c1114dbb0ff",
-      "stage": "report",
-      "kind": "file",
-      "source": "generated",
-      "description": "",
-      "registered_at": "2026-06-16T17:48:28"
-    },
-    {
       "path": "reports/model_report_missing_results.md",
       "size_bytes": 2009,
       "mtime": "2026-06-16T17:48:28",
@@ -394,7 +361,40 @@
       "source": "generated",
       "description": "",
       "registered_at": "2026-06-16T17:48:28"
+    },
+    {
+      "path": "reports/model_report.xlsx",
+      "size_bytes": 4293441,
+      "mtime": "2026-06-24T16:59:06",
+      "sha256": "2782746be6e9db0b6c38a4da5ba736d2c435ff3a654c803f89c3289ff20d8fba",
+      "stage": "report",
+      "kind": "excel",
+      "source": "generated",
+      "description": "Excel Summary rebuilt to manual vertical structure with feature screening, parameters, V6 AUC/KS side-by-side comparisons, risk availability notes, and PSI stability.",
+      "registered_at": "2026-06-24T16:59:59"
+    },
+    {
+      "path": "reports/model_report.md",
+      "size_bytes": 24708,
+      "mtime": "2026-06-24T15:51:25",
+      "sha256": "fd499d76557ae392d8a41a8cee43da3493a9142a697d4e5a78d08a95fb415f38",
+      "stage": "report",
+      "kind": "markdown",
+      "source": "generated",
+      "description": "Markdown report split V6 AUC and KS comparisons into side-by-side small tables",
+      "registered_at": "2026-06-24T15:54:40"
+    },
+    {
+      "path": "reports/model_report.html",
+      "size_bytes": 44893,
+      "mtime": "2026-06-24T15:53:47",
+      "sha256": "7344ce875a0b10d03ecf9e5719f31b0cffccd9c8cc242379487881d37a071db3",
+      "stage": "report",
+      "kind": "html",
+      "source": "generated",
+      "description": "HTML report split V6 AUC and KS comparisons into responsive side-by-side small tables",
+      "registered_at": "2026-06-24T15:54:40"
     }
   ],
-  "updated_at": "2026-06-16T17:48:28"
+  "updated_at": "2026-06-24T16:59:59"
 }

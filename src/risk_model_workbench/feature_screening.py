@@ -14,6 +14,13 @@ def _read_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def _first_existing(paths: list[Path]) -> Path:
+    for path in paths:
+        if path.exists():
+            return path
+    return paths[0]
+
+
 def _read_feature_count(path: Path) -> int:
     return sum(1 for line in path.read_text(encoding="utf-8").splitlines() if line.strip())
 
@@ -63,7 +70,13 @@ def build_feature_screening_summary(project_dir: str | Path) -> dict[str, Any]:
     feature_select_config = load_yaml(project_path / "configs" / "feature_select.yaml").get("feature_select", {})
     refine_config = load_yaml(project_path / "configs" / "refine_features.yaml")["feature_refine"]
 
-    d01_d02 = _read_json(project_path / "runs" / "d01_d02_batch_select" / "results" / "d01_d02_run_summary.json")
+    prescreen_summary_path = _first_existing(
+        [
+            project_path / "runs" / "feature_prescreen" / "results" / "prescreen_run_summary.json",
+            project_path / "runs" / "d01_d02_batch_select" / "results" / "d01_d02_run_summary.json",
+        ]
+    )
+    prescreen = _read_json(prescreen_summary_path)
     preferred_refine_dir = project_path / "runs" / "feature_refine_feather"
     configured_refine_dir = project_path / refine_config.get("output_dir", "runs/feature_refine_wide")
     refine_dir = configured_refine_dir if (configured_refine_dir / "stage_summary.json").exists() else preferred_refine_dir
@@ -74,15 +87,15 @@ def build_feature_screening_summary(project_dir: str | Path) -> dict[str, Any]:
 
     final_count = _read_feature_count(final_features_path)
     thresholds = feature_select_config.get("thresholds", {})
-    d01_d02_config = feature_select_config.get("d01_d02", {})
-    train_value = d01_d02_config.get("train_value", "DEV")
-    valid_value = d01_d02_config.get("valid_value", "OOT")
-    d01_thresholds = (
+    prescreen_config = feature_select_config.get("prescreen", {}) or feature_select_config.get("d01_d02", {})
+    train_value = prescreen_config.get("train_value", "DEV")
+    valid_value = prescreen_config.get("valid_value", "OOT")
+    quality_thresholds = (
         f"缺失率 < {float(thresholds.get('empty', 0.95)):.2f}，"
         f"相关性 < {float(thresholds.get('corr', 0.80)):.2f}，"
         f"IV >= {float(thresholds.get('iv', 0.005)):.3f}"
     )
-    d02_threshold = f"{train_value} vs {valid_value}，PSI <= {float(thresholds.get('psi', 0.10)):.2f}"
+    psi_threshold = f"{train_value} vs {valid_value}，PSI <= {float(thresholds.get('psi', 0.10)):.2f}"
     global_corr = refine_config["global_corr"]
     d03 = dict(refine_config["d03_random_importance"])
     if refine_summary.get("d03_mode"):
@@ -92,26 +105,28 @@ def build_feature_screening_summary(project_dir: str | Path) -> dict[str, Any]:
     d04 = refine_config["d04_null_importance"]
     d05 = refine_config["d05_baseline_importance"]
 
-    initial_feature_count = int(d01_d02["input_features"])
-    initial_table_count = int(d01_d02.get("tables", 0)) or len(feature_select_config.get("bigtable", {}).get("tables", []))
+    initial_feature_count = int(prescreen["input_features"])
+    initial_table_count = int(prescreen.get("tables", 0)) or len(feature_select_config.get("bigtable", {}).get("tables", []))
+    quality_remain = int(prescreen.get("quality_remain", prescreen.get("d01_remain", 0)))
+    prescreen_source = str(prescreen_summary_path.relative_to(project_path))
     screening_rows = [
         {
             "step": "初始",
             "method": f"初始候选变量总数：{initial_table_count}张特征表，共{initial_feature_count:,}个字段级候选变量",
             "remaining_features": initial_feature_count,
-            "source": "runs/d01_d02_batch_select/results/d01_d02_run_summary.json",
+            "source": prescreen_source,
         },
         {
             "step": 1,
-            "method": f"分表基础预筛：{d01_thresholds}",
-            "remaining_features": int(d01_d02["d01_remain"]),
-            "source": "runs/d01_d02_batch_select/results/d01_d02_run_summary.json",
+            "method": f"特征初筛-质量规则：{quality_thresholds}",
+            "remaining_features": quality_remain,
+            "source": prescreen_source,
         },
         {
             "step": 2,
-            "method": f"稳定性筛选：{d02_threshold}",
-            "remaining_features": int(d01_d02["final_remain"]),
-            "source": "runs/d01_d02_batch_select/results/d01_d02_run_summary.json",
+            "method": f"特征初筛-稳定性规则：{psi_threshold}",
+            "remaining_features": int(prescreen["final_remain"]),
+            "source": prescreen_source,
         },
         {
             "step": 3,

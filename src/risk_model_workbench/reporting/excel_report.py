@@ -1352,7 +1352,7 @@ def _training_feature_preparation_frame(train_dir: Path, run_config: dict[str, A
     rows = [
         {
             "步骤": "训练输入",
-            "处理说明": "读取本轮训练候选特征列表；当前 run 未登记独立 D01/D02 或 feature_refine 筛选过程产物",
+            "处理说明": "读取本轮训练候选特征列表；当前 run 未登记独立特征初筛或特征精筛过程产物",
             "变量个数": candidate_count if candidate_count is not None else "N/A",
             "来源": "modeling/main_lgbm/candidate_feature_list.txt",
         },
@@ -1667,7 +1667,7 @@ def _write_model_reports(
     elif stage_summary:
         screening_frame = _screening_steps_frame(stage_summary, feature_dir)
     else:
-        lines.append("- 当前 run 未登记独立 D01/D02 或 feature_refine 筛选过程产物；以下只展示训练阶段实际候选和入模特征准备结果。")
+        lines.append("- 当前 run 未登记独立特征初筛或特征精筛过程产物；以下只展示训练阶段实际候选和入模特征准备结果。")
         lines.append("")
         screening_frame = _training_feature_preparation_frame(train_dir, run_config)
     lines.extend(_markdown_table(screening_frame))
@@ -2178,7 +2178,7 @@ def _write_missing_results_doc(output_path: Path, *, train_dir: Path | None = No
 | # | 缺少字段/结果 | 原因 |
 |---|---|---|
 | 1 | 变量分布/分箱图 | 当前评分 feather 仅含模型分数和标签，不含原始特征值 |
-| 2 | 变量中文描述、业务标签 | 需要业务知识和 D01/D02 特征字典 |
+| 2 | 变量中文描述、业务标签 | 需要业务知识、特征字典或业务标签 |
 | 3 | MOB1/MOB3 历史风险 | 需要未来期还款表现数据，当前数据仅含 30 天发起标签和观察风险字段 |
 {model_score_section}
 {historical_section}

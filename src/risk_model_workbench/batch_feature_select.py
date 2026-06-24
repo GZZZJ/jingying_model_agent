@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run per-table D01 TOAD and D02 PSI screening for feature tables.
+"""Run per-table coarse feature prescreening for feature tables.
 
 The flow is configuration-driven so a new model project can reuse the same
 pre-refinement screening contract.
@@ -55,6 +55,7 @@ OOT_PARTITION_DS_LIST = ["20251231", "20260131"]
 DEFAULT_ROUND_NUM = 500
 DEFAULT_RANDOM_SEED = 0
 DEFAULT_WORKERS = 4
+DEFAULT_STAGE = "feature_prescreen"
 
 
 DEFAULT_PROJECT_DIR = Path.cwd()
@@ -82,7 +83,7 @@ class BatchSelectSettings:
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run D01/D02 feature screening by feature table.")
+    parser = argparse.ArgumentParser(description="Run coarse feature prescreening by feature table.")
     parser.add_argument("--project-dir", default=str(DEFAULT_PROJECT_DIR), help="Project workspace directory.")
     parser.add_argument(
         "--config",
@@ -109,7 +110,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--table", action="append", help="Only run the specified full table name. Repeatable.")
     parser.add_argument("--max-tables", type=int, default=None, help="Optional cap for smoke runs.")
-    parser.add_argument("--round-num", type=int, default=None, help="D01 feature batch size.")
+    parser.add_argument("--round-num", type=int, default=None, help="Feature batch size for coarse prescreening.")
     parser.add_argument("--random-seed", type=int, default=None, help="Random seed for feature order.")
     parser.add_argument("--force", action="store_true", help="Overwrite table checkpoints if they already exist.")
     parser.add_argument(
@@ -133,7 +134,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--dry-run-sql",
         action="store_true",
-        help="Write and print DP sample SQL metadata only; do not query DP or run D01/D02.",
+        help="Write and print DP sample SQL metadata only; do not query DP or run feature prescreening.",
     )
     parser.add_argument(
         "--refresh-dp-cache",
@@ -146,6 +147,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Confirm that all generated DP SQL has been reviewed and may be executed.",
     )
     parser.add_argument("--run-dir", default=None, help=argparse.SUPPRESS)
+    parser.add_argument("--stage", default=DEFAULT_STAGE, help=argparse.SUPPRESS)
     return parser.parse_args(argv)
 
 
@@ -158,18 +160,18 @@ def split_csv(value: str | None) -> list[str]:
 def load_batch_settings(project_dir: Path, args: argparse.Namespace) -> BatchSelectSettings:
     config_path = resolve_project_path(project_dir, args.config)
     feature_config = load_yaml(config_path).get("feature_select", {})
-    d01_d02_cfg = feature_config.get("d01_d02", {}) or {}
-    thresholds_cfg = d01_d02_cfg.get("thresholds", {}) or feature_config.get("thresholds", {}) or {}
-    sampling_cfg = d01_d02_cfg.get("sampling", {}) or {}
-    dp_feather_cfg = d01_d02_cfg.get("dp_feather", {}) or {}
+    prescreen_cfg = feature_config.get("prescreen", {}) or feature_config.get("d01_d02", {}) or {}
+    thresholds_cfg = prescreen_cfg.get("thresholds", {}) or feature_config.get("thresholds", {}) or {}
+    sampling_cfg = prescreen_cfg.get("sampling", {}) or {}
+    dp_feather_cfg = prescreen_cfg.get("dp_feather", {}) or {}
 
     project_cfg_path = project_dir / "project.yml" if (project_dir / "project.yml").exists() else project_dir / "project.yaml"
     split_cfg = load_yaml(project_cfg_path).get("split", {})
     data_cfg = load_yaml(project_cfg_path).get("data", {})
-    target_col = d01_d02_cfg.get("target_col") or data_cfg.get("target_column") or TARGET_COL
-    split_col = d01_d02_cfg.get("split_col") or split_cfg.get("source_column") or SPLIT_COL
-    train_value = d01_d02_cfg.get("train_value") or (split_cfg.get("ins_values") or [DEV_VALUE])[0]
-    valid_value = d01_d02_cfg.get("valid_value") or (split_cfg.get("oot_values") or [OOT_VALUE])[0]
+    target_col = prescreen_cfg.get("target_col") or data_cfg.get("target_column") or TARGET_COL
+    split_col = prescreen_cfg.get("split_col") or split_cfg.get("source_column") or SPLIT_COL
+    train_value = prescreen_cfg.get("train_value") or (split_cfg.get("ins_values") or [DEV_VALUE])[0]
+    valid_value = prescreen_cfg.get("valid_value") or (split_cfg.get("oot_values") or [OOT_VALUE])[0]
     partition_col = args.partition_col or sampling_cfg.get("partition_col") or data_cfg.get("period_column")
 
     train_partitions = split_csv(args.dev_partition_ds) or list(sampling_cfg.get("train_partitions", []))
@@ -179,8 +181,8 @@ def load_batch_settings(project_dir: Path, args: argparse.Namespace) -> BatchSel
         sample_where = f"{split_col} in ('{train_value}', '{valid_value}') and {target_col} in (0,1)"
 
     return BatchSelectSettings(
-        feature_columns=args.feature_columns or d01_d02_cfg.get("feature_columns", "data/profile/feature_metadata/feature_columns.csv"),
-        output_dir=args.output_dir or d01_d02_cfg.get("output_dir", "runs/d01_d02_batch_select"),
+        feature_columns=args.feature_columns or prescreen_cfg.get("feature_columns", "data/profile/feature_metadata/feature_columns.csv"),
+        output_dir=args.output_dir or prescreen_cfg.get("output_dir", "runs/feature_prescreen"),
         target_col=target_col,
         split_col=split_col,
         train_value=train_value,
@@ -195,11 +197,11 @@ def load_batch_settings(project_dir: Path, args: argparse.Namespace) -> BatchSel
             "iv": float(thresholds_cfg.get("iv", D01_THRESHOLDS["iv"])),
         },
         d02_psi_threshold=float(thresholds_cfg.get("psi", D02_PSI_THRESHOLD)),
-        round_num=int(args.round_num if args.round_num is not None else d01_d02_cfg.get("round_num", DEFAULT_ROUND_NUM)),
-        random_seed=int(args.random_seed if args.random_seed is not None else d01_d02_cfg.get("random_seed", DEFAULT_RANDOM_SEED)),
-        workers=int(args.workers if args.workers is not None else d01_d02_cfg.get("workers", DEFAULT_WORKERS)),
-        dp_data_dir=dp_feather_cfg.get("data_dir", "data/local/dp_feather/d01_d02_batch_select"),
-        dp_metadata_dir=dp_feather_cfg.get("metadata_dir", "data/profile/dp_feather_datasets/d01_d02_batch_select"),
+        round_num=int(args.round_num if args.round_num is not None else prescreen_cfg.get("round_num", DEFAULT_ROUND_NUM)),
+        random_seed=int(args.random_seed if args.random_seed is not None else prescreen_cfg.get("random_seed", DEFAULT_RANDOM_SEED)),
+        workers=int(args.workers if args.workers is not None else prescreen_cfg.get("workers", DEFAULT_WORKERS)),
+        dp_data_dir=dp_feather_cfg.get("data_dir", "data/local/dp_feather/feature_prescreen"),
+        dp_metadata_dir=dp_feather_cfg.get("metadata_dir", "data/profile/dp_feather_datasets/feature_prescreen"),
     )
 
 
@@ -279,8 +281,8 @@ def build_sample_sql(
     return "\nunion all\n".join(blocks)
 
 
-def d01_d02_dataset_id(table_name: str) -> str:
-    return f"d01_d02_{table_slug(table_name)}"
+def prescreen_dataset_id(table_name: str) -> str:
+    return f"feature_prescreen_{table_slug(table_name)}"
 
 
 def coerce_features(df: pd.DataFrame, feature_list: list[str]) -> list[str]:
@@ -361,7 +363,7 @@ def run_d02(
     dev_df = df[df[split_col] == train_value].copy()
     oot_df = df[df[split_col] == valid_value].copy()
     if dev_df.empty or oot_df.empty:
-        raise RuntimeError(f"D02 requires both {train_value} and {valid_value} rows.")
+        raise RuntimeError(f"PSI stability prescreen requires both {train_value} and {valid_value} rows.")
     data_iter = iter(
         [
             (f"base_{train_value}", dev_df.loc[:, remain_features]),
@@ -439,14 +441,15 @@ def process_single_table(
     sql_approved: bool,
     feature_select_code_dir: str,
     run_dir: str | None,
+    stage: str = DEFAULT_STAGE,
 ) -> dict | None:
-    """Process one feature table end-to-end: fetch -> D01 -> D02 -> checkpoint.
+    """Process one feature table end-to-end: fetch -> quality screen -> PSI screen -> checkpoint.
 
     Returns the summary dict, or None if table was skipped via checkpoint.
     Runs in a worker process and reads DP samples through the local feather cache.
     """
     cache_path = Path(cache_dir) / f"{table_slug(table_name)}.pkl"
-    reporter = ProgressReporter(run_dir, "d01_d02_screening") if run_dir else None
+    reporter = ProgressReporter(run_dir, stage) if run_dir else None
     if cache_path.exists():
         with cache_path.open("rb") as handle:
             checkpoint = pickle.load(handle)
@@ -490,8 +493,8 @@ def process_single_table(
     sql_path.parent.mkdir(parents=True, exist_ok=True)
     sql_path.write_text(sample_sql.strip() + "\n", encoding="utf-8")
 
-    dataset_id = d01_d02_dataset_id(table_name)
-    description = f"D01/D02分表筛选样本：{table_name}，DEV/OOT分区抽样后用于D01预筛和D02 PSI。"
+    dataset_id = prescreen_dataset_id(table_name)
+    description = f"特征初筛样本：{table_name}，DEV/OOT 分区抽样后用于质量初筛和 PSI 稳定性初筛。"
     sample = load_or_fetch_dp_feather(
         project_dir=Path(project_dir),
         sql=sample_sql,
@@ -522,8 +525,8 @@ def process_single_table(
     )
     if reporter:
         reporter.emit(
-            step="d01_done",
-            message=f"表 {table_index}/{total_tables}：D01 完成，保留 {len(d01_remain)}/{len(available_features)} 个变量",
+            step="quality_screen_done",
+            message=f"表 {table_index}/{total_tables}：质量初筛完成，保留 {len(d01_remain)}/{len(available_features)} 个变量",
             current=table_index - 1,
             total=total_tables,
             metrics={"table": table_name, "input_features": len(available_features), "d01_remain": len(d01_remain)},
@@ -540,8 +543,8 @@ def process_single_table(
     final_remain = [feature for feature in d01_remain if feature not in set(psi_drop_features)]
     if reporter:
         reporter.emit(
-            step="d02_done",
-            message=f"表 {table_index}/{total_tables}：D02 PSI 完成，最终保留 {len(final_remain)} 个变量",
+            step="psi_screen_done",
+            message=f"表 {table_index}/{total_tables}：PSI 稳定性初筛完成，最终保留 {len(final_remain)} 个变量",
             current=table_index - 1,
             total=total_tables,
             metrics={"table": table_name, "d02_psi_drop": len(psi_drop_features), "final_remain": len(final_remain)},
@@ -583,7 +586,7 @@ def process_single_table(
             step="table_done",
             message=(
                 f"表 {table_index}/{total_tables}：筛选完成，输入 {len(available_features)} 个，"
-                f"D01 保留 {len(d01_remain)} 个，最终保留 {len(final_remain)} 个"
+                f"质量初筛保留 {len(d01_remain)} 个，最终保留 {len(final_remain)} 个"
             ),
             current=table_index,
             total=total_tables,
@@ -599,7 +602,8 @@ def process_single_table(
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     project_dir = Path(args.project_dir).resolve()
-    reporter = ProgressReporter(args.run_dir, "d01_d02_screening") if args.run_dir else None
+    stage = args.stage or DEFAULT_STAGE
+    reporter = ProgressReporter(args.run_dir, stage) if args.run_dir else None
     settings = load_batch_settings(project_dir, args)
     feature_select_code_dir = find_feature_select_code_dir(project_dir, args.feature_select_code_dir)
 
@@ -621,7 +625,7 @@ def main(argv: list[str] | None = None) -> int:
     if reporter:
         reporter.emit(
             step="load_feature_map",
-            message=f"D01/D02 分表筛选准备完成，共 {len(table_items)} 张表",
+            message=f"特征初筛准备完成，共 {len(table_items)} 张表",
             current=0,
             total=len(table_items),
             percent=5,
@@ -641,14 +645,14 @@ def main(argv: list[str] | None = None) -> int:
         "feature_columns": str(feature_columns_path),
         "feature_select_code_dir": str(feature_select_code_dir),
         "thresholds": {
-            "d01": settings.d01_thresholds,
-            "d02_psi": settings.d02_psi_threshold,
+            "quality": settings.d01_thresholds,
+            "psi": settings.d02_psi_threshold,
         },
         "sampling": {
             "partition_col": settings.partition_col,
             "where": settings.sample_where,
-            "d01": f"{settings.split_col} = '{settings.train_value}'",
-            "d02": f"{settings.train_value} vs {settings.valid_value}",
+            "quality_sample": f"{settings.split_col} = '{settings.train_value}'",
+            "stability_compare": f"{settings.train_value} vs {settings.valid_value}",
         },
         "partitions": {
             "train": settings.train_partitions,
@@ -678,10 +682,10 @@ def main(argv: list[str] | None = None) -> int:
             sql_path = sql_dir / f"{table_slug(table_name)}.sql"
             sql_path.parent.mkdir(parents=True, exist_ok=True)
             sql_path.write_text(sample_sql.strip() + "\n", encoding="utf-8")
-            dataset_id = d01_d02_dataset_id(table_name)
+            dataset_id = prescreen_dataset_id(table_name)
             feather_path = dp_data_dir / f"{table_slug(table_name)}.feather"
             metadata_path = dp_metadata_dir / f"{table_slug(table_name)}.json"
-            description = f"D01/D02分表筛选样本：{table_name}，DEV/OOT分区抽样后用于D01预筛和D02 PSI。"
+            description = f"特征初筛样本：{table_name}，DEV/OOT 分区抽样后用于质量初筛和 PSI 稳定性初筛。"
             write_dataset_metadata(
                 project_dir=project_dir,
                 metadata_path=metadata_path,
@@ -717,7 +721,7 @@ def main(argv: list[str] | None = None) -> int:
             reporter.emit(
                 step="dry_run_sql_done",
                 status="waiting_for_approval",
-                message=f"D01/D02 SQL 生成完成，共 {len(table_items)} 张表，等待人工审批后执行",
+                message=f"特征初筛 SQL 生成完成，共 {len(table_items)} 张表，等待人工审批后执行",
                 current=len(table_items),
                 total=len(table_items),
                 percent=100,
@@ -773,6 +777,7 @@ def main(argv: list[str] | None = None) -> int:
                 sql_approved=args.sql_approved,
                 feature_select_code_dir=str(feature_select_code_dir),
                 run_dir=args.run_dir,
+                stage=stage,
             )
             futures[future] = table_name
 
@@ -812,24 +817,30 @@ def main(argv: list[str] | None = None) -> int:
     table_order = {name: idx for idx, (name, _) in enumerate(table_items)}
     summary_rows.sort(key=lambda r: table_order.get(r["table"], 999))
 
+    run_summary = {
+        "tables": len(summary_rows),
+        "input_features": sum(int(row["input_features"]) for row in summary_rows),
+        "quality_remain": sum(int(row["d01_remain"]) for row in summary_rows),
+        "psi_drop": sum(int(row["d02_psi_drop"]) for row in summary_rows),
+        "final_remain": sum(int(row["final_remain"]) for row in summary_rows),
+    }
+    legacy_run_summary = {
+        **run_summary,
+        "d01_remain": run_summary["quality_remain"],
+        "d02_psi_drop": run_summary["psi_drop"],
+    }
+    write_summary_csv(results_dir / "prescreen_table_summary.csv", summary_rows)
     write_summary_csv(results_dir / "d01_d02_table_summary.csv", summary_rows)
+    write_json(results_dir / "prescreen_final_remain_features.json", final_remain_by_table)
     write_json(results_dir / "d01_d02_final_remain_features.json", final_remain_by_table)
-    write_json(
-        results_dir / "d01_d02_run_summary.json",
-        {
-            "tables": len(summary_rows),
-            "input_features": sum(int(row["input_features"]) for row in summary_rows),
-            "d01_remain": sum(int(row["d01_remain"]) for row in summary_rows),
-            "d02_psi_drop": sum(int(row["d02_psi_drop"]) for row in summary_rows),
-            "final_remain": sum(int(row["final_remain"]) for row in summary_rows),
-        },
-    )
+    write_json(results_dir / "prescreen_run_summary.json", run_summary)
+    write_json(results_dir / "d01_d02_run_summary.json", legacy_run_summary)
     print(f"[DONE] output: {output_dir}")
     if reporter:
         reporter.emit(
             step="stage_outputs",
             status="done",
-            message=f"D01/D02 分表筛选完成：成功 {len(summary_rows)}/{total_tables} 张表，最终保留 {sum(int(row['final_remain']) for row in summary_rows)} 个变量",
+            message=f"特征初筛完成：成功 {len(summary_rows)}/{total_tables} 张表，最终保留 {sum(int(row['final_remain']) for row in summary_rows)} 个变量",
             current=len(summary_rows),
             total=total_tables,
             percent=100,

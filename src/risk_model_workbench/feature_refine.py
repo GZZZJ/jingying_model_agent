@@ -717,7 +717,7 @@ def main(argv: list[str] | None = None) -> int:
     dataset_id = dp_cache_cfg.get("dataset_id", "feature_refine_wide_sample")
     description = dp_cache_cfg.get(
         "description",
-        "D01/D02 wide-table sample for D03-D05 feature refinement.",
+        "Feature prescreen wide-table sample for feature refinement.",
     )
     feather_path, metadata_path = default_dataset_paths(
         project_dir,

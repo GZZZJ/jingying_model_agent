@@ -6,6 +6,7 @@ import argparse
 import importlib.util
 import json
 import shutil
+import sys
 import time
 from datetime import datetime
 from pathlib import Path
@@ -60,8 +61,25 @@ from risk_model_workbench.workflow_contracts import validate_workflow_definition
 from risk_model_workbench.wide_sql import generate_wide_sql
 
 
+FEATURE_PRESCREEN_STAGE = "feature_prescreen"
+LEGACY_FEATURE_PRESCREEN_STAGE = "d01_d02_screening"
+DEFAULT_PRESCREEN_REMAIN_FEATURES = "runs/feature_prescreen/results/prescreen_final_remain_features.json"
+LEGACY_PRESCREEN_REMAIN_FEATURES = "runs/d01_d02_batch_select/results/d01_d02_final_remain_features.json"
+
+
 def _run_path(args: argparse.Namespace) -> Path:
     return run_dir(resolve_project_path(args.project), args.run_id)
+
+
+def _feature_prescreen_stage(run_path: Path) -> str:
+    """Prefer the generic stage name while allowing old run_state.yml files."""
+    try:
+        stages = load_run_state(run_path).get("stages") or {}
+    except FileNotFoundError:
+        return FEATURE_PRESCREEN_STAGE
+    if FEATURE_PRESCREEN_STAGE in stages or LEGACY_FEATURE_PRESCREEN_STAGE not in stages:
+        return FEATURE_PRESCREEN_STAGE
+    return LEGACY_FEATURE_PRESCREEN_STAGE
 
 
 def _write_json(path: Path, payload: dict[str, Any]) -> Path:
@@ -522,12 +540,13 @@ def cmd_feature_metadata(args: argparse.Namespace) -> int:
     return code
 
 
-def cmd_feature_d01_d02(args: argparse.Namespace) -> int:
+def cmd_feature_prescreen(args: argparse.Namespace) -> int:
     path = _run_path(args)
-    stage_action_started(path, "d01_d02_screening")
+    stage = _feature_prescreen_stage(path)
+    stage_action_started(path, stage)
     from risk_model_workbench.batch_feature_select import main as batch_select_main
 
-    argv = ["--project-dir", str(resolve_project_path(args.project)), "--run-dir", str(path)]
+    argv = ["--project-dir", str(resolve_project_path(args.project)), "--run-dir", str(path), "--stage", stage]
     if args.config:
         argv.extend(["--config", args.config])
     if args.max_tables is not None:
@@ -547,13 +566,13 @@ def cmd_feature_d01_d02(args: argparse.Namespace) -> int:
     if code == 0:
         stage_action_done(
             path,
-            "d01_d02_screening",
+            stage,
             scaffold=args.dry_run_sql,
             message="SQL dry run waiting for approval" if args.dry_run_sql else "",
             failure_code=SQL_APPROVAL_REQUIRED if args.dry_run_sql else "",
         )
     else:
-        stage_action_failed(path, "d01_d02_screening", f"d01-d02 command exited with code {code}")
+        stage_action_failed(path, stage, f"feature prescreen command exited with code {code}")
     return code
 
 
@@ -566,10 +585,17 @@ def cmd_build_wide_sql(args: argparse.Namespace) -> int:
         stage_action_started(run_path, "build_wide_sql")
         reporter = ProgressReporter(run_path, "build_wide_sql")
         reporter.emit(step="build_sql", message="开始生成宽表 SQL", percent=10)
+    remain_features_path = Path(args.remain_features)
+    if not remain_features_path.is_absolute():
+        remain_features_path = project_dir / remain_features_path
+    if args.remain_features == DEFAULT_PRESCREEN_REMAIN_FEATURES and not remain_features_path.exists():
+        legacy_path = project_dir / LEGACY_PRESCREEN_REMAIN_FEATURES
+        if legacy_path.exists():
+            remain_features_path = legacy_path
     try:
         sql_path, feature_map_path, summary_path = generate_wide_sql(
             project_dir=project_dir,
-            remain_features_path=resolve_project_path(project_dir / args.remain_features) if not Path(args.remain_features).is_absolute() else Path(args.remain_features),
+            remain_features_path=remain_features_path,
             sql_output_path=project_dir / args.sql_output if not Path(args.sql_output).is_absolute() else Path(args.sql_output),
             feature_map_path=project_dir / args.feature_map_output if not Path(args.feature_map_output).is_absolute() else Path(args.feature_map_output),
             summary_path=project_dir / args.summary_output if not Path(args.summary_output).is_absolute() else Path(args.summary_output),
@@ -1100,17 +1126,9 @@ def _add_feature_parser(subparsers: argparse._SubParsersAction[argparse.Argument
     metadata.add_argument("--tables-file", default=None)
     metadata.set_defaults(func=cmd_feature_metadata)
 
-    d01_d02 = feature_sub.add_parser("d01-d02")
-    d01_d02.add_argument("--project", required=True)
-    d01_d02.add_argument("--run-id", required=True)
-    d01_d02.add_argument("--config", default=None)
-    d01_d02.add_argument("--table", action="append")
-    d01_d02.add_argument("--max-tables", type=int, default=None)
-    d01_d02.add_argument("--dry-run-sql", action="store_true")
-    d01_d02.add_argument("--refresh-dp-cache", action="store_true")
-    d01_d02.add_argument("--sql-approved", action="store_true")
-    d01_d02.add_argument("--force", action="store_true")
-    d01_d02.set_defaults(func=cmd_feature_d01_d02)
+    prescreen = feature_sub.add_parser("prescreen")
+    _add_feature_prescreen_args(prescreen)
+    prescreen.set_defaults(func=cmd_feature_prescreen)
 
     refine = feature_sub.add_parser("refine")
     refine.add_argument("--project", required=True)
@@ -1120,6 +1138,18 @@ def _add_feature_parser(subparsers: argparse._SubParsersAction[argparse.Argument
     refine.add_argument("--refresh-dp-cache", action="store_true")
     refine.add_argument("--sql-approved", action="store_true")
     refine.set_defaults(func=cmd_feature_refine)
+
+
+def _add_feature_prescreen_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--project", required=True)
+    parser.add_argument("--run-id", required=True)
+    parser.add_argument("--config", default=None)
+    parser.add_argument("--table", action="append")
+    parser.add_argument("--max-tables", type=int, default=None)
+    parser.add_argument("--dry-run-sql", action="store_true")
+    parser.add_argument("--refresh-dp-cache", action="store_true")
+    parser.add_argument("--sql-approved", action="store_true")
+    parser.add_argument("--force", action="store_true")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -1204,10 +1234,10 @@ def build_parser() -> argparse.ArgumentParser:
     build_wide_sql = subparsers.add_parser("build-wide-sql")
     build_wide_sql.add_argument("--project", required=True)
     build_wide_sql.add_argument("--run-id", default=None, help="optional run id for progress tracking")
-    build_wide_sql.add_argument("--remain-features", default="runs/d01_d02_batch_select/results/d01_d02_final_remain_features.json")
-    build_wide_sql.add_argument("--sql-output", default="queries/06_build_d01_d02_wide_table.sql")
-    build_wide_sql.add_argument("--feature-map-output", default="runs/d01_d02_batch_select/results/d01_d02_wide_feature_map.csv")
-    build_wide_sql.add_argument("--summary-output", default="runs/d01_d02_batch_select/results/d01_d02_wide_sql_summary.json")
+    build_wide_sql.add_argument("--remain-features", default=DEFAULT_PRESCREEN_REMAIN_FEATURES)
+    build_wide_sql.add_argument("--sql-output", default="queries/06_build_prescreen_wide_table.sql")
+    build_wide_sql.add_argument("--feature-map-output", default="runs/feature_prescreen/results/prescreen_wide_feature_map.csv")
+    build_wide_sql.add_argument("--summary-output", default="runs/feature_prescreen/results/prescreen_wide_sql_summary.json")
     build_wide_sql.add_argument("--base-table", default=None)
     build_wide_sql.add_argument("--output-table", default=None)
     build_wide_sql.add_argument("--base-where", default=None)
@@ -1219,5 +1249,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
-    args = parser.parse_args(argv)
+    raw_argv = list(sys.argv[1:] if argv is None else argv)
+    if len(raw_argv) >= 2 and raw_argv[0] == "feature" and raw_argv[1] == "d01-d02":
+        raw_argv[1] = "prescreen"
+    args = parser.parse_args(raw_argv)
     return args.func(args)

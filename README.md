@@ -19,8 +19,8 @@
 - 当前项目断点文件是 `projects/2026-05-fujie-gcard-v1/project_state.yml`。
 - 当前 active run 是 `2026-06-imported-gcard-main-lgbm`。
 - 当前目标是 `复借G卡主模型产物标准化与连续性交接机制建设`。
-- `rmw project status` 显示项目状态为 `active`，active run 的 stage counts 为 `done=7, pending=3`。
-- `rmw run audit` 当前 verdict 是 `open`，因为 `feature_metadata`、`d01_d02_screening`、`build_wide_sql` 仍为 pending，且已完成阶段是 imported evidence。
+- `rmw project status` 显示项目状态为 `active`，active run 的 stage counts 为 `done=6, pending=3, scaffold=1`。
+- `rmw run audit` 当前 verdict 是 `open`，因为 `feature_metadata`、`feature_prescreen`、`build_wide_sql` 仍为 pending，且已完成阶段是 imported evidence 或 scaffold evidence。
 
 active run 是远端真实复借 G 卡训练、评估和报告产物导入后的标准 run。它是真实历史产物的标准化登记，不是当前本地环境端到端重跑证据。
 
@@ -209,29 +209,29 @@ rmw run import-gcard-model-artifacts \
 rmw feature metadata --project projects/2026-05-fujie-gcard-v1 --run-id <run_id>
 ```
 
-先生成分表 D01/D02 取数 SQL 给使用者确认，不拉数：
+先生成特征初筛取数 SQL 给使用者确认，不拉数：
 
 ```bash
-rmw feature d01-d02 \
+rmw feature prescreen \
   --project projects/2026-05-fujie-gcard-v1 \
   --run-id <run_id> \
   --dry-run-sql
 ```
 
-确认 SQL 后执行分表 D01/D02，数据先落本地 feather：
+确认 SQL 后执行特征初筛，数据先落本地 feather：
 
 ```bash
-rmw feature d01-d02 \
+rmw feature prescreen \
   --project projects/2026-05-fujie-gcard-v1 \
   --run-id <run_id> \
   --refresh-dp-cache \
   --sql-approved
 ```
 
-生成 D01/D02 后宽表 SQL：
+生成特征初筛后的宽表 SQL：
 
 ```bash
-rmw build-wide-sql --project projects/2026-05-fujie-gcard-v1
+rmw build-wide-sql --project projects/2026-05-fujie-gcard-v1 --run-id <run_id>
 ```
 
 先生成宽表后收敛取数 SQL 给使用者确认，不拉数：
@@ -294,11 +294,12 @@ rmw report --project projects/2026-05-fujie-gcard-v1 --run-id <run_id>
 
 如果本地 feather 训练数据或打分结果不可用，部分命令可能生成 scaffold artifact。scaffold artifact 不能当成真实建模证据。
 
-## 当前筛选口径
+## 当前特征筛选口径
 
-- D01：TOAD 初筛，阈值默认缺失率 `0.95`、相关性 `0.80`、IV `0.005`，可在项目 `configs/feature_select.yaml` 覆盖。
-- D02：PSI 筛选，默认阈值 `0.10`，训练/验证切分值由项目配置控制。
-- 抽样：每张特征表使用 `feature_select.d01_d02.sampling.where`，宽表后收敛使用 `configs/refine_features.yaml`。
+- 特征初筛：在候选特征过多时先抽样检查基础质量和稳定性，默认关注缺失率、恒一/近恒一值占比、PSI 等规则，减少后续宽表规模。
+- 宽表 SQL：初筛后把保留特征组装为宽表 SQL，尽量使用更完整的数据进入后续精筛。
+- 特征精筛：在宽表样本上做可用性过滤、全局相关性去重、随机噪声重要性、Null Importance 和基线模型重要性筛选。
+- 抽样：每张特征表使用 `feature_select.prescreen.sampling.where`，宽表后收敛使用 `configs/refine_features.yaml`。
 - 执行策略：每个特征组或特征表单独筛选，支持 checkpoint 跳过已完成表。
 - 宽表 join 主键：`uid`、`mdl_dte`。
 - `ds` 作为底表保留字段和过滤字段，不作为特征表 join key。
@@ -321,7 +322,7 @@ rmw report --project projects/2026-05-fujie-gcard-v1 --run-id <run_id>
 - `tmlpatch`：提供 `TMLSQLClient`
 - `pandas`
 - `numpy`
-- `toad`：D01 优先使用；缺失时可通过脚本参数或配置使用 native selector
+- `toad`：特征初筛质量规则优先使用；缺失时可通过脚本参数或配置使用 native selector
 - `lightgbm`
 - `xgboost`
 - `pyarrow`

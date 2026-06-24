@@ -35,7 +35,7 @@ def test_create_execution_plan_from_request():
     plan = create_execution_plan(request_doc, "projects/2026-05-fujie-gcard-v1")
     task_ids = [task["task_id"] for task in plan["tasks"]]
     assert "sample_check_profile" in task_ids
-    assert "feature_d01_d02" in task_ids
+    assert "feature_prescreen" in task_ids
     assert "train_baseline_all" in task_ids
     assert task_ids[-1] == "report_final"
     assert plan["scenario_profile"] == "fujie_gcard_main_lgbm"
