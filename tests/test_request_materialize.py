@@ -67,6 +67,7 @@ def _request_doc() -> dict:
             "request_id": "req-1",
             "project": "pytest-project",
             "workflow": "full_modeling",
+            "data_source_mode": "local_feather",
             "target_column": "target",
             "id_columns": ["uid", "sample_date"],
             "time_column": "apply_time",
@@ -121,6 +122,13 @@ def test_materialize_request_runtime_configs_maps_builder_fields(tmp_path):
     report = yaml.safe_load((run_dir / "configs_runtime" / "report.yaml").read_text(encoding="utf-8"))
 
     assert runtime_project["data"]["raw_path"] == "data/raw/model.feather"
+    assert runtime_project["data"].get("source_table") is None
+    assert runtime_project["request"]["data_source_mode"] == "local_feather"
+    assert runtime_project["request"]["sample_location"] == "data/raw/model.feather"
+    request_runtime = yaml.safe_load((run_dir / "configs_runtime" / "request_runtime.yaml").read_text(encoding="utf-8"))
+    assert request_runtime["data_source_mode"] == "local_feather"
+    assert request_runtime["sample_location"] == "data/raw/model.feather"
+    assert refine["feature_refine"]["input"]["local_feather_path"] == "data/raw/model.feather"
     assert runtime_project["split"]["oos_values"] == ["DEV-OOS"]
     assert refine["feature_refine"]["preprocessing"]["min_non_null_rate"] == 0.12
     assert refine["feature_refine"]["preprocessing"]["max_unique_values"] == 2
@@ -133,6 +141,41 @@ def test_materialize_request_runtime_configs_maps_builder_fields(tmp_path):
     assert evaluate["evaluation"]["score_columns"] == ["model_score", "score_v1", "score_v2"]
     assert "zc_level" in evaluate["evaluation"]["segment_columns"]
     assert report["report"]["output_formats"] == ["markdown", "html"]
+
+
+def test_materialize_remote_table_mode_overrides_project_raw_path(tmp_path):
+    project_dir = tmp_path / "project"
+    run_dir = project_dir / "runs" / "run1"
+    _write_project(project_dir)
+    project_yml = project_dir / "project.yml"
+    project_yml.write_text(project_yml.read_text(encoding="utf-8") + "  raw_path: data/raw/stale.feather\n", encoding="utf-8")
+    request_doc = _request_doc()
+    request_doc["metadata"]["data_source_mode"] = "remote_table"
+    request_doc["metadata"]["sample_location"] = "mart.request_sample"
+
+    materialize_request_runtime_configs(request_doc=request_doc, project_dir=project_dir, run_dir=run_dir)
+
+    runtime_project = yaml.safe_load((run_dir / "configs_runtime" / "project.yml").read_text(encoding="utf-8"))
+    train = yaml.safe_load((run_dir / "configs_runtime" / "train.yaml").read_text(encoding="utf-8"))
+    assert runtime_project["data"]["source_table"] == "mart.request_sample"
+    assert runtime_project["data"].get("raw_path") is None
+    assert runtime_project["request"]["data_source_mode"] == "remote_table"
+    assert "feather_path" not in train["input"]
+
+
+def test_materialize_refine_only_remote_table_uses_request_table_as_wide_input(tmp_path):
+    project_dir = tmp_path / "project"
+    run_dir = project_dir / "runs" / "run1"
+    _write_project(project_dir)
+    request_doc = _request_doc()
+    request_doc["metadata"]["data_source_mode"] = "remote_table"
+    request_doc["metadata"]["sample_location"] = "pdm_risk.large_wide_table"
+    request_doc["metadata"]["feature_selection"] = {"rounds": ["refine"]}
+
+    materialize_request_runtime_configs(request_doc=request_doc, project_dir=project_dir, run_dir=run_dir)
+
+    refine = yaml.safe_load((run_dir / "configs_runtime" / "refine_features.yaml").read_text(encoding="utf-8"))
+    assert refine["feature_refine"]["input"]["wide_table"] == "pdm_risk.large_wide_table"
 
 
 def test_run_init_materializes_and_registers_runtime_configs(tmp_path):

@@ -8,6 +8,9 @@ from risk_model_workbench.cli import main
 from risk_model_workbench.reporting.excel_report import REPORT_SHEETS, generate_excel_report
 
 
+GCARD_REPORT_SHEETS = ["Summary", *REPORT_SHEETS]
+
+
 def test_report_scaffold():
     project = "projects/2026-05-fujie-gcard-v1"
     run_id = "pytest_report_scaffold"
@@ -33,10 +36,19 @@ def test_imported_excel_report_layout(tmp_path):
     )
 
     workbook = load_workbook(output_path)
-    assert workbook.sheetnames == REPORT_SHEETS
+    assert workbook.sheetnames == GCARD_REPORT_SHEETS
     assert output_path.with_name("model_report_missing_results.md").exists()
     assert output_path.with_name("model_report.md").exists()
     assert output_path.with_name("model_report.html").exists()
+
+    summary = workbook["Summary"]
+    assert _find_cell(summary, "复借G卡模型对比 Summary") is not None
+    assert _find_cell_contains(summary, "新版模型（model_score） vs 旧版全客群模型（G卡V6）") is not None
+    assert _find_cell(summary, "整体效果对比 AUC") is not None
+    assert _find_cell(summary, "整体效果对比 KS") is not None
+    assert _find_cell(summary, "模型sloping（OOT-OOS，10箱完整表现）") is not None
+    assert _find_cell(summary, "稳定性分箱明细覆盖") is not None
+    assert _find_cell_contains(summary, "当前 run audit 仍应以 rmw run audit 输出为准") is not None
 
     description = workbook["模型描述"]
     assert _find_cell(description, "模型结论摘要") is None
@@ -104,6 +116,7 @@ def test_imported_excel_report_layout(tmp_path):
     assert "OOT-OOS 30天发起：在老户次新效果" in report_text
     assert "3、意愿交叉风险（DEV-OOS）" in report_text
     assert "老户 - 占比 - 本轮模型" in report_text
+    assert "## Summary（新版模型 vs G卡V6）" in report_text
 
     assert len(workbook["模型效果-模型sloping"].conditional_formatting) == 0
     assert len(workbook["模型效果-意愿交叉风险（DEV-OOS）"].conditional_formatting) > 0
@@ -141,6 +154,16 @@ def test_train_300_report_uses_current_run_training_features(tmp_path):
     assert "全客群 by月效果" in report_html
 
     workbook = load_workbook(output_path)
+    assert workbook.sheetnames == GCARD_REPORT_SHEETS
+    summary = workbook["Summary"]
+    assert _find_cell(summary, "复借G卡模型对比 Summary") is not None
+    assert _find_cell(summary, "OOT-OOS 分客群切片 AUC") is not None
+    assert _find_cell(summary, "OOS 按月 AUC") is not None
+    assert _find_cell(summary, "本轮模型") is not None
+    assert _find_cell(summary, "G卡V6") is not None
+    assert _find_cell_contains(summary, "分客群仅作为切片效果") is not None
+    assert _find_cell_contains(summary, "证据提示") is not None
+
     screening = workbook["变量筛选过程和模型参数"]
     assert _find_cell(screening, "训练特征准备") is not None
     assert _find_cell(screening, "最终入模") is not None

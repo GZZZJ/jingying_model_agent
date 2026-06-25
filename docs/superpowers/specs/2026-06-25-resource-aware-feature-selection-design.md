@@ -23,11 +23,11 @@ This design applies to the reusable `rmw` workbench. Fujie GCard is the active c
 - Apply a peak-memory multiplier before deciding row capacity:
   - feature prescreening: default `3.0`
   - feature refinement and model-importance stages: default `4.0`
-- At the beginning of feature selection, detect the current execution platform and select the DP data-pull engine.
+- At the beginning of feature selection, detect the current execution platform and record the DP data-pull policy.
 - Use `sh_dp_mcp` for remote select-only exploration on every platform: counts, split distribution, schema-like probes, random-field checks, and created-table validation.
-- Use local `dp_cli` for DP data extraction on Windows and macOS environments.
-- Use `TMLSQLClient` for DP data extraction on Linux and other environments.
-- Keep create-table execution as a separate reviewed execution path. By default, CTAS execution still uses the existing approved execution wrapper unless a future implementation proves `dp_cli` can support the same DDL safety contract.
+- Do not auto-select `dp_cli` for Windows/macOS. Desktop runs should use `local_feather` mode for an already-downloaded local file, or an explicit reviewed remote-pull override.
+- Use `TMLSQLClient` by default for DP data extraction on Linux and other environments.
+- Keep create-table execution as a separate reviewed execution path.
 - If row count is too large, reduce the random sampling ratio and/or add a `limit`.
 - If feature count is too large, process features in batches. The default batch size is 1000 feature columns.
 - Release no-longer-needed in-memory tables, feature frames, model objects, and LightGBM datasets throughout the flow.
@@ -38,8 +38,8 @@ This design applies to the reusable `rmw` workbench. Fujie GCard is the active c
 
 - Do not remove the existing SQL approval gate.
 - Do not make `sh_dp_mcp` responsible for bulk data transfer or table creation.
-- Do not use `dp_cli` for metadata exploration when `sh_dp_mcp` is available; `dp_cli` is only the selected data-pull engine on Windows/macOS.
-- Do not assume the Windows/macOS `dp_cli` pull path can safely execute CTAS DDL.
+- Do not use `dp_cli` for metadata exploration when `sh_dp_mcp` is available.
+- Do not treat a local feather file as a data-pull engine; it is an existing-file data source independent from DP pull.
 - Do not upload, copy into Git, or register raw local feather data as a tracked artifact.
 - Do not run remote table profiling or DP pulling when the request explicitly selects local feather mode and no remote table is configured.
 - Do not store raw row-level data, feather files, pickle caches, model binaries, secrets, or local credentials in Git.
@@ -76,7 +76,7 @@ request-builder HTML
   -> uniform random sampling plan
   -> feature batch plan
   -> reviewed SQL generation
-  -> dp_cli/TMLSQLClient data pull or local feather read
+  -> configured remote data pull or local feather read
   -> feature screening/refinement
   -> per-batch evidence and aggregate result
 ```
@@ -151,8 +151,8 @@ Default engine mapping:
 
 | Platform | Data-pull engine | Reason |
 | --- | --- | --- |
-| Windows | local `dp_cli` | Local desktop environment should avoid `TMLSQLClient` for bulk pull. |
-| macOS | local `dp_cli` | Local desktop environment should avoid `TMLSQLClient` for bulk pull. |
+| Windows | none by default | Use `local_feather` for an existing local file or set an explicit reviewed remote-pull override. |
+| macOS | none by default | Use `local_feather` for an existing local file or set an explicit reviewed remote-pull override. |
 | Linux | `TMLSQLClient` | Server/notebook environment keeps existing behavior. |
 | Other | `TMLSQLClient` | Conservative fallback to existing behavior. |
 
@@ -165,12 +165,12 @@ Output:
 Responsibilities:
 
 - Expose one interface for reviewed DP select queries that return local DataFrames or feather files.
-- Use `dp_cli` on Windows/macOS.
+- Do not auto-select a remote DP pull engine on Windows/macOS.
 - Use `TMLSQLClient` on Linux/other platforms.
 - Keep SQL approval behavior identical regardless of selected engine.
 - Persist engine, platform, SQL hash, row count, column count, and local data path in metadata.
 
-This boundary applies to remote data extraction for prescreening and refinement. It does not replace `sh_dp_mcp` profiling, it does not automatically replace CTAS execution, and it is bypassed when local feather mode is active.
+This boundary applies to remote data extraction for prescreening and refinement. It does not replace `sh_dp_mcp` profiling, it does not automatically replace CTAS execution, and it is separate from local feather mode.
 
 ### Remote Table Profiler
 
@@ -370,7 +370,7 @@ The current repository `.gitignore` already excludes these data and binary artif
 
 - Every generated SQL must be written before execution.
 - Create-table SQL still goes through static SQL review.
-- `--sql-approved` remains required before either `dp_cli` or `TMLSQLClient` runs data pulls.
+- `--sql-approved` remains required before any configured remote data-pull engine runs data pulls.
 - `--sql-approved` remains required before the reviewed CTAS execution path runs create-table statements.
 - `sh_dp_mcp` exploration queries are select-only and bounded by the MCP result limit.
 - High-risk SQL review findings block execution even when approval is present.

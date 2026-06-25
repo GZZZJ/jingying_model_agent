@@ -157,6 +157,17 @@ def test_request_builder_stage_and_step_ids_are_known_to_planner():
     assert step_ids <= set(STEP_REGISTRY)
 
 
+def test_request_builder_exports_data_source_mode_contract():
+    html = Path("tools/model_request_builder/index.html").read_text(encoding="utf-8")
+    app_js = Path("tools/model_request_builder/app.js").read_text(encoding="utf-8")
+
+    assert 'name="data_source_mode"' in html
+    assert 'value="remote_table"' in html
+    assert 'value="local_feather"' in html
+    assert 'data_source_mode: "remote_table"' in app_js
+    assert "`data_source_mode: ${yamlScalar(state.data_source_mode)}`" in app_js
+
+
 def test_request_builder_workflows_are_known_and_limit_planned_tasks():
     html = Path("tools/model_request_builder/index.html").read_text(encoding="utf-8")
     workflow_select = re.search(r'<select name="workflow">(?P<body>.*?)</select>', html, flags=re.S)
@@ -206,6 +217,35 @@ def test_request_without_id_columns_fails_without_project_contract():
 
     assert result["status"] == "failed"
     assert "missing required field: id_columns" in result["errors"][-1]
+
+
+def test_validate_explicit_local_feather_source_mode():
+    request_doc = _request_doc(data_source_mode="local_feather", sample_location="data/raw/model.feather")
+
+    result = validate_model_request(request_doc, Path("projects/2026-05-fujie-gcard-v1"))
+
+    assert result["status"] == "ok"
+
+
+def test_validate_rejects_local_feather_mode_without_feather_path():
+    request_doc = _request_doc(data_source_mode="local_feather", sample_location="mart.sample_table")
+
+    result = validate_model_request(request_doc, Path("projects/2026-05-fujie-gcard-v1"))
+
+    assert result["status"] == "failed"
+    assert "local_feather data_source_mode requires sample_location ending with .feather" in result["errors"]
+
+
+def test_local_feather_defaults_to_refine_only_without_remote_feature_source():
+    request_doc = _request_doc(data_source_mode="local_feather", sample_location="data/raw/model.feather")
+
+    plan = create_execution_plan(request_doc, "projects/2026-05-fujie-gcard-v1")
+    task_ids = [task["task_id"] for task in plan["tasks"]]
+
+    assert "feature_metadata" not in task_ids
+    assert "feature_prescreen" not in task_ids
+    assert "build_wide_sql" not in task_ids
+    assert "feature_refine" in task_ids
 
 
 def test_task_mode_label_is_plan_compatible():

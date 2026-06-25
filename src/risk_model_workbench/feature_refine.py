@@ -48,8 +48,11 @@ from risk_model_workbench.dp_feather import (
     print_sql_review,
     write_dataset_metadata,
 )
+from risk_model_workbench.data.local_feather_profile import profile_local_feather, write_local_feather_profile
 from risk_model_workbench.manifest import write_manifest
 from risk_model_workbench.progress import ProgressReporter
+from risk_model_workbench.resource_planning import default_peak_multiplier_for_stage
+from risk_model_workbench.resource_usage import ProcessMemoryTracker, dataframe_memory_bytes
 
 
 DEFAULT_PROJECT_DIR = Path.cwd()
@@ -101,8 +104,41 @@ def resolve_project_path(project_dir: Path, value: str | Path) -> Path:
     return path if path.is_absolute() else project_dir / path
 
 
+def configured_local_feather_path(project_dir: Path, cfg: dict[str, Any]) -> Path | None:
+    input_cfg = cfg.get("input", {}) or {}
+    dp_cache_cfg = cfg.get("dp_feather", {}) or {}
+    runtime_request = cfg.get("runtime_request", {}) or {}
+    candidates = [
+        input_cfg.get("local_feather_path"),
+        input_cfg.get("raw_path"),
+        input_cfg.get("feather_path"),
+        dp_cache_cfg.get("approved_local_feather_path"),
+        dp_cache_cfg.get("local_feather_path"),
+    ]
+    if runtime_request.get("data_source_mode") == "local_feather":
+        candidates.append(runtime_request.get("sample_location"))
+    for value in candidates:
+        if value:
+            return resolve_project_path(project_dir, value)
+    return None
+
+
 def load_feature_list(project_dir: Path, cfg: dict[str, Any]) -> list[str]:
-    feature_map_path = resolve_project_path(project_dir, cfg["input"]["feature_map"])
+    input_cfg = cfg.get("input", {}) or {}
+    feature_map = input_cfg.get("feature_map")
+    if not feature_map:
+        local_feather = configured_local_feather_path(project_dir, cfg)
+        if local_feather is None:
+            raise KeyError("feature_refine.input.feature_map")
+        columns = [str(column) for column in pd.read_feather(local_feather).columns]
+        base_columns = set(input_cfg.get("base_columns", []))
+        id_columns = set(input_cfg.get("id_columns", []))
+        label_column = input_cfg["label_column"]
+        split_column = input_cfg["split_column"]
+        exclude = base_columns | id_columns | {label_column, split_column}
+        return [column for column in columns if column not in exclude]
+
+    feature_map_path = resolve_project_path(project_dir, feature_map)
     with feature_map_path.open("r", encoding="utf-8-sig", newline="") as handle:
         rows = list(csv.DictReader(handle))
     features = [row["output_feature"] for row in rows if row.get("output_feature")]
@@ -130,6 +166,17 @@ def build_sampling_sql(cfg: dict[str, Any], features: list[str]) -> str:
     if sampling.get("max_rows"):
         sql += f"\nlimit {int(sampling['max_rows'])}"
     return sql + "\n"
+
+
+def apply_local_sampling(df: pd.DataFrame, cfg: dict[str, Any]) -> pd.DataFrame:
+    sampling = cfg.get("sampling", {}) or {}
+    max_rows = sampling.get("max_rows")
+    if not max_rows:
+        return df
+    max_rows = int(max_rows)
+    if max_rows <= 0 or len(df) <= max_rows:
+        return df
+    return df.sample(n=max_rows, random_state=int(cfg.get("random_seed", 0))).reset_index(drop=True)
 
 
 def apply_sample_max_rows_override(cfg: dict[str, Any], sample_max_rows: int | None) -> None:
@@ -714,6 +761,14 @@ def display_path(path: Path, base_dir: Path) -> str:
         return str(path)
 
 
+def configured_peak_multiplier(cfg: dict[str, Any]) -> float:
+    resource_cfg = cfg.get("resource", {}) or cfg.get("resource_planning", {})
+    for key in ("peak_multiplier", "peak_memory_multiplier"):
+        if key in resource_cfg:
+            return float(resource_cfg[key])
+    return default_peak_multiplier_for_stage("feature_refine")
+
+
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     project_dir = Path(args.project_dir).resolve()
@@ -723,11 +778,19 @@ def main(argv: list[str] | None = None) -> int:
     apply_sample_max_rows_override(cfg, args.sample_max_rows)
     output_dir = resolve_project_path(project_dir, cfg["output_dir"])
     output_dir.mkdir(parents=True, exist_ok=True)
+    memory_tracker = ProcessMemoryTracker(stage="feature_refine")
+    peak_multiplier = configured_peak_multiplier(cfg)
 
     initial_features = load_feature_list(project_dir, cfg)
+    memory_tracker.record(
+        "load_feature_list",
+        initial_features=len(initial_features),
+        config_path=display_path(config_path, project_dir),
+    )
     if reporter:
         reporter.emit(step="load_feature_list", message=f"读取精筛输入变量完成，共 {len(initial_features)} 个", percent=5)
-    sql = build_sampling_sql(cfg, initial_features)
+    local_feather_path = configured_local_feather_path(project_dir, cfg)
+    sql = "" if local_feather_path is not None else build_sampling_sql(cfg, initial_features)
 
     dp_cache_cfg = cfg.get("dp_feather", {})
     dataset_id = dp_cache_cfg.get("dataset_id", "feature_refine_wide_sample")
@@ -741,6 +804,46 @@ def main(argv: list[str] | None = None) -> int:
         data_dir=dp_cache_cfg.get("data_dir", "data/local/dp_feather"),
         metadata_dir=dp_cache_cfg.get("metadata_dir", "data/profile/dp_feather_datasets"),
     )
+    if args.dry_run_sql and local_feather_path is not None:
+        profile = profile_local_feather(
+            local_feather_path,
+            required_columns=list(
+                dict.fromkeys(
+                    list(cfg.get("input", {}).get("id_columns", []))
+                    + [cfg["input"]["label_column"], cfg["input"]["split_column"]]
+                )
+            ),
+            split_column=cfg["input"].get("split_column"),
+            target_column=cfg["input"].get("label_column"),
+            feature_exclude_columns=cfg["input"].get("base_columns", []) + cfg["input"].get("id_columns", []),
+            feature_columns=initial_features,
+        )
+        write_local_feather_profile(profile, output_dir / "local_feather_profile.json")
+        write_dataset_metadata(
+            project_dir=project_dir,
+            metadata_path=metadata_path,
+            feather_path=local_feather_path,
+            dataset_id=dataset_id,
+            description=description,
+            sql="",
+            status="ready",
+            row_count=profile["row_count"],
+            column_count=profile["column_count"],
+            columns=profile["columns"],
+            source="local_feather",
+            source_path=local_feather_path,
+            note="Local feather mode uses an existing user-provided file; no remote DP SQL was generated or executed.",
+        )
+        if reporter:
+            reporter.emit(
+                step="local_feather_ready",
+                status="done",
+                message="本地 feather 数据源已识别，无需生成 DP SQL",
+                percent=100,
+                metrics={"feather_path": display_path(local_feather_path, project_dir)},
+            )
+        return 0
+
     if args.dry_run_sql:
         write_dataset_metadata(
             project_dir=project_dir,
@@ -780,10 +883,31 @@ def main(argv: list[str] | None = None) -> int:
         metadata_path=metadata_path,
         refresh=args.refresh_dp_cache,
         sql_approved=args.sql_approved,
+        approved_local_feather_path=local_feather_path,
         progress=reporter,
     )
+    if local_feather_path is not None:
+        raw_df = apply_local_sampling(raw_df, cfg)
+    raw_df_memory = dataframe_memory_bytes(raw_df)
+    memory_tracker.record(
+        "load_sample",
+        rows=int(len(raw_df)),
+        columns=int(len(raw_df.columns)),
+        dataframe_memory_bytes=raw_df_memory,
+    )
     x, available_features, preprocess_stats = coerce_feature_frame(raw_df, initial_features, cfg)
+    feature_matrix_memory = dataframe_memory_bytes(x)
+    memory_tracker.record(
+        "preprocess_done",
+        available_features=len(available_features),
+        feature_matrix_memory_bytes=feature_matrix_memory,
+    )
     parts = make_dataset_parts(raw_df, x, cfg)
+    memory_tracker.record(
+        "split_dataset",
+        train_samples=int(len(parts.train_x)),
+        valid_samples=int(len(parts.valid_x)),
+    )
     print(f"[STAGE] raw_rows={len(raw_df)} initial_feat={len(initial_features)} "
           f"available={len(available_features)} train={len(parts.train_x)} valid={len(parts.valid_x)}")
     if reporter:
@@ -804,6 +928,11 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     corr_features, corr_drops = global_corr_select(parts.train_x.loc[:, available_features], parts.train_y, cfg)
+    memory_tracker.record(
+        "global_corr_done",
+        kept=len(corr_features),
+        dropped=len(corr_drops),
+    )
     print(f"[STAGE] after_global_corr: {len(corr_features)} (dropped {len(corr_drops)})")
     if reporter:
         reporter.emit(
@@ -814,6 +943,11 @@ def main(argv: list[str] | None = None) -> int:
         )
     parts_corr = DatasetParts(parts.train_x.loc[:, corr_features], parts.train_y, parts.valid_x.loc[:, corr_features], parts.valid_y)
     d03_features, d03_detail = d03_random_importance(parts_corr, corr_features, cfg, progress=reporter)
+    memory_tracker.record(
+        "d03_done",
+        kept=len(d03_features),
+        dropped=len(corr_features) - len(d03_features),
+    )
     print(f"[STAGE] after_d03: {len(d03_features)} (dropped {len(corr_features) - len(d03_features)})")
     if reporter:
         reporter.emit(
@@ -829,6 +963,11 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     parts_d03 = DatasetParts(parts_corr.train_x.loc[:, d03_features], parts_corr.train_y, parts_corr.valid_x.loc[:, d03_features], parts_corr.valid_y)
     d04_features, d04_detail = d04_null_importance(parts_d03, d03_features, cfg, progress=reporter)
+    memory_tracker.record(
+        "d04_done",
+        kept=len(d04_features),
+        dropped=len(d03_features) - len(d04_features),
+    )
     if reporter:
         reporter.emit(
             step="d04_done",
@@ -838,12 +977,25 @@ def main(argv: list[str] | None = None) -> int:
         )
     parts_d04 = DatasetParts(parts_d03.train_x.loc[:, d04_features], parts_d03.train_y, parts_d03.valid_x.loc[:, d04_features], parts_d03.valid_y)
     final_features, d05_importance, d05_auc = d05_top_importance(parts_d04, d04_features, cfg, progress=reporter)
+    memory_tracker.record(
+        "d05_done",
+        final_features=len(final_features),
+        d05_valid_auc=d05_auc,
+    )
+    resource_usage = memory_tracker.summary(
+        matrix_bytes=feature_matrix_memory or raw_df_memory,
+        row_count=int(len(raw_df)),
+        column_count=int(len(raw_df.columns)),
+        feature_count=len(available_features),
+        configured_peak_multiplier=peak_multiplier,
+    )
 
     preprocess_stats.to_csv(output_dir / "preprocess_feature_stats.csv", index=False, encoding="utf-8-sig")
     corr_drops.to_csv(output_dir / "d00_global_corr_drops.csv", index=False, encoding="utf-8-sig")
     d03_detail.to_csv(output_dir / "d03_random_importance_detail.csv", index=False, encoding="utf-8-sig")
     d04_detail.to_csv(output_dir / "d04_null_importance_detail.csv", index=False, encoding="utf-8-sig")
     d05_importance.to_csv(output_dir / "d05_baseline_importance.csv", index=False, encoding="utf-8-sig")
+    write_json(output_dir / "resource_usage.json", resource_usage)
     write_feature_list(output_dir / "final_500_features.txt", final_features)
     write_feature_list(output_dir / "final_features.txt", final_features)
     with (output_dir / "sample.pkl").open("wb") as handle:
@@ -853,7 +1005,8 @@ def main(argv: list[str] | None = None) -> int:
         {
             "created_at": datetime.now().isoformat(timespec="seconds"),
             "wide_table": cfg["input"]["wide_table"],
-            "feather_path": display_path(feather_path, project_dir),
+            "feather_path": display_path(local_feather_path or feather_path, project_dir),
+            "data_source_mode": "local_feather" if local_feather_path is not None else "remote_table",
             "raw_rows": int(len(raw_df)),
             "total_rows": int(len(raw_df)),
             "train_samples": int(len(parts.train_x)),
@@ -868,6 +1021,9 @@ def main(argv: list[str] | None = None) -> int:
             "d05_valid_auc": d05_auc,
             "sampling_where": cfg["sampling"].get("where"),
             "sampling_max_rows": cfg["sampling"].get("max_rows"),
+            "configured_peak_multiplier": peak_multiplier,
+            "observed_peak_multiplier": resource_usage.get("observed_peak_multiplier"),
+            "resource_usage_path": "resource_usage.json",
         },
     )
     manifest = write_manifest(
@@ -879,6 +1035,7 @@ def main(argv: list[str] | None = None) -> int:
         ],
         outputs=[
             output_dir / "stage_summary.json",
+            output_dir / "resource_usage.json",
             output_dir / "final_500_features.txt",
             output_dir / "final_features.txt",
             output_dir / "d05_baseline_importance.csv",

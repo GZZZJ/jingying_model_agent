@@ -7,6 +7,15 @@ from typing import Any
 
 from risk_model_workbench.config import load_yaml
 from risk_model_workbench.paths import project_config_path, workflow_path
+from risk_model_workbench.request.data_source import (
+    LOCAL_FEATHER,
+    REMOTE_TABLE,
+    VALID_DATA_SOURCE_MODES,
+    has_explicit_data_source_mode,
+    is_feather_location,
+    resolve_data_source_mode,
+    sample_location,
+)
 from risk_model_workbench.planning.steps import resolve_step_configuration
 
 
@@ -105,6 +114,27 @@ def validate_model_request(request_doc: dict[str, Any], project_dir: str | Path 
     workflow = metadata.get("workflow", "full_modeling")
     if workflow and not workflow_path(str(workflow)).exists():
         errors.append(f"unknown workflow: {workflow}")
+
+    raw_data_source_mode = str(metadata.get("data_source_mode") or "").strip()
+    if raw_data_source_mode and raw_data_source_mode not in VALID_DATA_SOURCE_MODES:
+        errors.append(f"unsupported data_source_mode: {raw_data_source_mode}")
+    data_source_mode = resolve_data_source_mode(metadata)
+    location = sample_location(metadata)
+    if data_source_mode == LOCAL_FEATHER:
+        if not location:
+            errors.append("local_feather data_source_mode requires sample_location")
+        elif not is_feather_location(location):
+            errors.append("local_feather data_source_mode requires sample_location ending with .feather")
+        else:
+            local_path = Path(location)
+            if not local_path.is_absolute():
+                first_part = local_path.parts[0] if local_path.parts else ""
+                if first_part not in {"data", "runs"}:
+                    warnings.append("local_feather sample_location should usually live under an ignored data/ or runs/ path")
+            if not has_explicit_data_source_mode(metadata):
+                warnings.append("data_source_mode inferred as local_feather from .feather sample_location")
+    elif raw_data_source_mode == REMOTE_TABLE and is_feather_location(location):
+        errors.append("remote_table data_source_mode must not use a .feather sample_location")
 
     evaluation = metadata.get("evaluation") or {}
     if not isinstance(evaluation, dict):

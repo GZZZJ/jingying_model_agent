@@ -109,6 +109,11 @@ const TASK_MODE_LABELS = {
   challenger_evaluation: "挑战者评估",
 };
 
+const DATA_SOURCE_MODE_LABELS = {
+  remote_table: "远程 DP 表或 SQL",
+  local_feather: "本地 feather 文件",
+};
+
 const PROFILE_LABELS = {
   acquisition: "获客通用",
   acquisition_quality: "获客质量",
@@ -468,6 +473,7 @@ const defaults = {
   business_domain: "inloan_operation",
   scenario_profile: "fujie_gcard_main_lgbm",
   objective: "训练候选复借意愿模型，并与历史 GCard 分数进行 champion/challenger 对比。",
+  data_source_mode: "remote_table",
   sample_location: "ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_sample",
   feature_location: "70张候选特征表；详见 configs/feature_tables.txt",
   target_column: "ftr_30d_ord_flag",
@@ -521,6 +527,7 @@ const newDocumentDefaults = {
   business_domain: "preloan",
   scenario_profile: "preloan_credit_card",
   objective: "",
+  data_source_mode: "remote_table",
   sample_location: "",
   feature_location: "",
   target_column: "",
@@ -688,6 +695,13 @@ function featureRoundsForProfile(profile) {
   return PROFILE_FEATURE_ROUNDS[profile] || PROFILE_FEATURE_ROUNDS.preloan_credit_card;
 }
 
+function inferDataSourceMode(source = {}) {
+  if (source.data_source_mode === "remote_table" || source.data_source_mode === "local_feather") {
+    return source.data_source_mode;
+  }
+  return String(source.sample_location || "").trim().toLowerCase().endsWith(".feather") ? "local_feather" : "remote_table";
+}
+
 function normalizeState(state = {}) {
   const source = state || {};
   const sourceWithSplitMigration = { ...source };
@@ -707,6 +721,7 @@ function normalizeState(state = {}) {
     ...sourceWithSplitMigration,
     business_domain: businessDomain,
     scenario_profile: scenarioProfile,
+    data_source_mode: inferDataSourceMode(sourceWithSplitMigration),
   };
 
   STAGE_GROUPS.forEach(({ stage, key }) => {
@@ -880,6 +895,9 @@ function buildNextActions(state) {
   if (!state.target_column || !state.split_column) {
     actions.push("补齐标签字段和切分字段。");
   }
+  if (state.data_source_mode === "local_feather" && !String(state.sample_location || "").trim().toLowerCase().endsWith(".feather")) {
+    actions.push("本地 feather 模式下，样本位置需填写 .feather 文件路径。");
+  }
   if (!stageStepCount) {
     actions.push("应用模板或切换业务域，让系统生成执行步骤。");
   }
@@ -899,6 +917,20 @@ function buildNextActions(state) {
   return actions.slice(0, 5);
 }
 
+function updateDataSourceModeHints(state) {
+  const sampleInput = form.elements.sample_location;
+  const helper = document.querySelector("#sampleLocationHelp");
+  if (!sampleInput) return;
+
+  if (state.data_source_mode === "local_feather") {
+    sampleInput.placeholder = "data/raw/model.feather";
+    if (helper) helper.textContent = "本地 feather 文件只作为运行时输入，不会复制、上传或作为 tracked artifact 注册。";
+  } else {
+    sampleInput.placeholder = "ads_app_off_feature.some_sample_table";
+    if (helper) helper.textContent = "远程模式填写 DP 表名或 SQL 来源；真实拉数仍需要先生成 SQL 并获得审批。";
+  }
+}
+
 function updateHelperPanel(state) {
   const step = FORM_STEPS.find((item) => item.id === activeSectionId) || FORM_STEPS[0];
   const stageSteps = stageStepsForState(state);
@@ -911,7 +943,8 @@ function updateHelperPanel(state) {
   if (currentStageTitleEl) currentStageTitleEl.textContent = step.title;
   if (currentStageHintEl) currentStageHintEl.textContent = step.hint;
   if (summaryTextEl) {
-    summaryTextEl.textContent = `${title}：${domainLabel}场景，任务模式为${state.task_mode}，使用 ${profileLabel} profile，已选择 ${stepCount} 个执行步骤、${experimentCount} 个实验、${state.metrics.length} 个评估指标。`;
+    const dataSourceLabel = DATA_SOURCE_MODE_LABELS[state.data_source_mode] || "未选择数据源";
+    summaryTextEl.textContent = `${title}：${domainLabel}场景，任务模式为${state.task_mode}，数据源为${dataSourceLabel}，使用 ${profileLabel} profile，已选择 ${stepCount} 个执行步骤、${experimentCount} 个实验、${state.metrics.length} 个评估指标。`;
   }
   if (domainBadgeEl) domainBadgeEl.textContent = domainLabel;
   if (profileBadgeEl) profileBadgeEl.textContent = profileLabel;
@@ -1080,6 +1113,7 @@ function collectState() {
     scenario_profile: field("scenario_profile") || scenarioProfileForBusinessDomain(field("business_domain")),
     project: getProjectName(),
     objective: field("objective"),
+    data_source_mode: inferDataSourceMode({ data_source_mode: field("data_source_mode"), sample_location: field("sample_location") }),
     sample_location: field("sample_location"),
     feature_location: field("feature_location"),
     target_column: field("target_column"),
@@ -1179,6 +1213,7 @@ function buildMarkdown(state) {
     `business_domain: ${yamlScalar(state.business_domain)}`,
     `scenario_profile: ${yamlScalar(state.scenario_profile)}`,
     "",
+    `data_source_mode: ${yamlScalar(state.data_source_mode)}`,
     `sample_location: ${yamlScalar(state.sample_location)}`,
     `target_column: ${yamlScalar(state.target_column)}`,
     `time_column: ${yamlScalar(state.time_column)}`,
@@ -1270,6 +1305,7 @@ function update({ persist = true } = {}) {
   const markdown = buildMarkdown(state);
   preview.textContent = markdown;
   filenameHint.textContent = `${state.request_id || "model_request"}.md`;
+  updateDataSourceModeHints(state);
   updateMethodParamAvailability();
   updateHelperPanel(state);
   if (persist) {

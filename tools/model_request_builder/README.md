@@ -10,6 +10,9 @@
 中文“任务模式”，导出的 Markdown 仍保留底层 `workflow` 值以兼容 `rmw`。
 样本页只要求用户填写样本位置、标签字段、时间字段、切分字段和
 DEV/OOS/OOT 取值；`id_columns` 可由 project.yml 的数据契约提供。
+样本页也会显式导出 `data_source_mode`：`remote_table` 表示 DP 表或
+SQL 来源，`local_feather` 表示本地 `.feather` 文件。选择本地 feather
+时，文件仅作为运行时输入，不能上传、复制进 Git 或注册为 tracked artifact。
 真实拉数前 SQL 审批默认开启，不作为普通表单开关暴露。
 
 页面默认打开为空白需求，不会自动应用 GCard 模板，也不会自动恢复本地草稿。

@@ -10,6 +10,7 @@ import yaml
 
 from risk_model_workbench.paths import workflow_path
 from risk_model_workbench.planning.steps import implemented_step_ids_for_stage, resolve_step_configuration, step_params_for
+from risk_model_workbench.request.data_source import LOCAL_FEATHER, has_remote_feature_source, resolve_data_source_mode
 
 
 class _NoAliasDumper(yaml.SafeDumper):
@@ -157,7 +158,13 @@ def create_execution_plan(request_doc: dict[str, Any], project_path: str | Path)
             )
 
     feature_cfg = metadata.get("feature_selection") or {}
-    raw_feature_rounds = _as_list(feature_cfg.get("rounds"), default=["metadata", "prescreen", "refine"])
+    local_feather_without_remote_features = (
+        resolve_data_source_mode(metadata) == LOCAL_FEATHER
+        and not has_remote_feature_source(metadata)
+        and "feature_selection" not in metadata
+    )
+    default_feature_rounds = ["refine"] if local_feather_without_remote_features else ["metadata", "prescreen", "refine"]
+    raw_feature_rounds = _as_list(feature_cfg.get("rounds"), default=default_feature_rounds)
     has_wide_sql_round = any(
         (item.get("name") if isinstance(item, dict) else str(item)).replace("-", "_")
         in {"build_wide_sql", "wide_sql", "build_wide"}

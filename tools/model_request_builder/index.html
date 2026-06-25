@@ -99,8 +99,16 @@
               <input type="hidden" name="period_column" />
               <div class="field-grid two">
                 <label>
+                  <span>数据源模式</span>
+                  <select name="data_source_mode">
+                    <option value="remote_table">DP 表或 SQL 来源</option>
+                    <option value="local_feather">本地 feather 文件</option>
+                  </select>
+                </label>
+                <label>
                   <span>样本位置</span>
-                  <input name="sample_location" placeholder="表名或 data/raw/sample.feather" />
+                  <input name="sample_location" placeholder="ads_app_off_feature.some_sample_table" aria-describedby="sampleLocationHelp" />
+                  <small id="sampleLocationHelp" class="field-help">远程模式填写 DP 表名或 SQL 来源；本地模式填写不会提交入库的 .feather 路径。</small>
                 </label>
                 <label>
                   <span>标签字段</span>

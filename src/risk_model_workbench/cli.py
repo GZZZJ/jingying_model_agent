@@ -152,6 +152,41 @@ def _feature_refine_output_dir_for_run(project_dir: Path, run_path: Path, config
     return output_dir if output_dir.is_absolute() else project_dir / output_dir
 
 
+def _feature_prescreen_output_dir(project_dir: Path, config: str | None) -> Path:
+    candidates = (
+        [Path(config)]
+        if config
+        else [project_dir / "configs" / "feature_select.yaml", project_dir / "configs" / "feature_select.yml"]
+    )
+    cfg_path = None
+    for path in candidates:
+        candidate = path if path.is_absolute() else project_dir / path
+        if candidate.exists():
+            cfg_path = candidate
+            break
+    cfg = load_yaml(cfg_path) if cfg_path else {}
+    feature_cfg = cfg.get("feature_select", {})
+    prescreen_cfg = feature_cfg.get("prescreen", {}) or feature_cfg.get("d01_d02", {}) or {}
+    output_dir = Path(prescreen_cfg.get("output_dir", "runs/feature_prescreen"))
+    return output_dir if output_dir.is_absolute() else project_dir / output_dir
+
+
+def _register_feature_prescreen_artifacts(run_path: Path, stage: str, project_dir: Path, config: str | None) -> None:
+    results_dir = _feature_prescreen_output_dir(project_dir, config) / "results"
+    for name in [
+        "prescreen_run_summary.json",
+        "prescreen_final_remain_features.json",
+        "prescreen_table_summary.csv",
+    ]:
+        _copy_and_register_artifact(
+            run_path,
+            stage,
+            results_dir / name,
+            Path("feature_selection") / name,
+            description="Feature prescreen tracked evidence",
+        )
+
+
 def _register_woe_artifacts(path: Path, stage: str, artifact_dir: Path) -> None:
     if not artifact_dir.exists():
         return
@@ -203,6 +238,219 @@ def _load_runtime_project_config(project_dir: Path, run_path: Path) -> dict[str,
 def _load_runtime_config(project_dir: Path, run_path: Path, name: str) -> dict[str, Any]:
     path = _runtime_config_path(run_path, project_dir, name)
     return load_yaml(path) if path.exists() else {}
+
+
+def _as_list(value: Any) -> list[Any]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return value
+    if isinstance(value, tuple):
+        return list(value)
+    if isinstance(value, str):
+        return [item.strip() for item in value.split(",") if item.strip()]
+    return [value]
+
+
+def _first_value(*values: Any) -> Any:
+    for value in values:
+        if value not in (None, ""):
+            return value
+    return None
+
+
+def _resolve_project_relative(project_dir: Path, value: str | Path) -> Path:
+    path = Path(value)
+    return path if path.is_absolute() else project_dir / path
+
+
+def _register_if_exists(run_path: Path, stage: str, relative_path: str | Path, *, description: str = "") -> None:
+    if (run_path / relative_path).exists():
+        register_artifact(run_path, stage, str(relative_path), description=description)
+
+
+def _feature_columns_from_csv(path: Path) -> list[str]:
+    if not path.exists():
+        return []
+    import csv
+
+    columns: list[str] = []
+    with path.open("r", encoding="utf-8-sig", newline="") as handle:
+        reader = csv.DictReader(handle)
+        for row in reader:
+            value = row.get("output_feature") or row.get("feature_name") or row.get("feature")
+            if value:
+                columns.append(str(value))
+    return list(dict.fromkeys(columns))
+
+
+def _refine_feature_columns(project_dir: Path, cfg: dict[str, Any]) -> list[str]:
+    refine_cfg = cfg.get("feature_refine", cfg)
+    input_cfg = refine_cfg.get("input", {}) or {}
+    feature_map = input_cfg.get("feature_map")
+    if feature_map:
+        return _feature_columns_from_csv(_resolve_project_relative(project_dir, feature_map))
+    local_path = _first_value(
+        input_cfg.get("local_feather_path"),
+        input_cfg.get("raw_path"),
+        input_cfg.get("feather_path"),
+        (refine_cfg.get("runtime_request") or {}).get("sample_location")
+        if (refine_cfg.get("runtime_request") or {}).get("data_source_mode") == "local_feather"
+        else None,
+    )
+    if not local_path:
+        return []
+    try:
+        import pandas as pd
+
+        frame = pd.read_feather(_resolve_project_relative(project_dir, local_path))
+    except Exception:
+        return []
+    required = set(_as_list(input_cfg.get("id_columns")))
+    required.update(_as_list(input_cfg.get("base_columns")))
+    required.update(str(column) for column in [input_cfg.get("label_column"), input_cfg.get("split_column")] if column)
+    return [str(column) for column in frame.columns if str(column) not in required]
+
+
+def _write_feature_intake_evidence(
+    *,
+    run_path: Path,
+    project_dir: Path,
+    stage: str,
+    stage_config: dict[str, Any],
+    feature_columns: list[str],
+    required_columns: list[str],
+    source_table: str | None = None,
+    local_feather_path: str | Path | None = None,
+    total_rows: int | None = None,
+    random_columns: list[str] | None = None,
+) -> None:
+    from risk_model_workbench.data.local_feather_profile import profile_local_feather, write_local_feather_profile
+    from risk_model_workbench.data.pull_engine import select_data_pull_engine, write_execution_environment
+    from risk_model_workbench.data.table_profile import build_static_table_profile, write_table_profile
+    from risk_model_workbench.feature_selection.intake_plan import build_feature_batch_plan, build_sampling_plan, persist_intake_plan
+    from risk_model_workbench.resource_planning import build_resource_plan_payload, default_peak_multiplier_for_stage, probe_memory
+
+    try:
+        runtime_project = _load_runtime_project_config(project_dir, run_path)
+    except FileNotFoundError:
+        runtime_project = {}
+    request_cfg = runtime_project.get("request", {}) or {}
+    data_cfg = runtime_project.get("data", {}) or {}
+    data_source_mode = str(request_cfg.get("data_source_mode") or ("local_feather" if local_feather_path else "remote_table"))
+    resolved_local_path = _resolve_project_relative(project_dir, local_feather_path) if local_feather_path else None
+    resolved_source_table = source_table or data_cfg.get("source_table")
+
+    contract = {
+        "data_source_mode": data_source_mode,
+        "source_table": resolved_source_table if data_source_mode != "local_feather" else None,
+        "local_feather_path": str(resolved_local_path) if resolved_local_path else None,
+        "stage": stage,
+        "created_at": datetime.now().isoformat(timespec="seconds"),
+        "note": (
+            "local_feather uses an existing local file and is independent from remote DP pull"
+            if data_source_mode == "local_feather"
+            else "remote_table keeps DP pull/profiling separate from local feather mode"
+        ),
+    }
+    _write_json(run_path / "feature_selection" / "data_source_contract.json", contract)
+
+    selection = select_data_pull_engine(data_source_mode=data_source_mode)
+    write_execution_environment(run_path, selection)
+
+    profile_rows = int(total_rows or 0)
+    local_file_size = None
+    if data_source_mode == "local_feather" and resolved_local_path is not None:
+        profile = profile_local_feather(
+            resolved_local_path,
+            required_columns=required_columns,
+            split_column=data_cfg.get("split_column") or data_cfg.get("source_column") or runtime_project.get("split", {}).get("source_column"),
+            target_column=data_cfg.get("target_column"),
+            feature_exclude_columns=required_columns,
+            feature_columns=feature_columns or None,
+        )
+        profile_rows = int(profile["row_count"])
+        local_file_size = int(profile["size_bytes"])
+        write_local_feather_profile(profile, run_path / "feature_selection" / "profiles" / "local_feather_profile.json")
+        if not feature_columns:
+            feature_columns = list(profile.get("candidate_feature_columns", []))
+    else:
+        profile = build_static_table_profile(
+            str(resolved_source_table or ""),
+            row_count=profile_rows or None,
+            column_count=(len(feature_columns) + len(required_columns)) if feature_columns or required_columns else None,
+            feature_count=len(feature_columns),
+            note="Live select-only profiling not executed in this run; static metadata recorded for planning.",
+        )
+        write_table_profile(profile, run_path / "feature_selection" / "profiles" / "source_table_profile.json")
+
+    resource_cfg = stage_config.get("resource", {}) or stage_config.get("resource_planning", {}) or {}
+    memory_snapshot = probe_memory(
+        total_bytes=resource_cfg.get("total_memory_bytes"),
+        available_bytes=resource_cfg.get("available_memory_bytes"),
+    )
+    peak_multiplier = float(resource_cfg.get("peak_multiplier") or resource_cfg.get("peak_memory_multiplier") or default_peak_multiplier_for_stage(stage))
+    resource_plan = build_resource_plan_payload(
+        data_source_mode=data_source_mode,
+        stage=stage,
+        memory_snapshot=memory_snapshot,
+        total_rows=profile_rows,
+        feature_column_count=max(len(feature_columns), 0),
+        required_non_feature_column_count=max(len(required_columns), 1),
+        peak_multiplier=peak_multiplier,
+        memory_budget_fraction=float(resource_cfg.get("memory_budget_fraction", 0.8)),
+        local_file_size_bytes=local_file_size,
+    )
+    _write_json(run_path / "feature_selection" / "resource_plan.json", resource_plan)
+
+    max_rows = int(resource_plan["capacity"]["max_rows"])
+    sampling_plan = build_sampling_plan(
+        data_source_mode=data_source_mode,
+        total_rows=profile_rows,
+        max_rows=max_rows,
+        random_columns=random_columns or [],
+        preferred_random_column=(random_columns or [None])[0],
+    )
+    batch_size = int(resource_cfg.get("max_features_per_batch") or stage_config.get("max_features_per_batch") or 1000)
+    batch_plan = build_feature_batch_plan(
+        feature_columns=feature_columns,
+        required_columns=required_columns,
+        max_features_per_batch=batch_size,
+    )
+    persist_intake_plan(run_path, sampling_plan=sampling_plan, batch_plan=batch_plan)
+
+    for relative in [
+        "feature_selection/data_source_contract.json",
+        "feature_selection/execution_environment.json",
+        "feature_selection/resource_plan.json",
+        "feature_selection/sampling_plan.json",
+        "feature_selection/batch_plan.json",
+    ]:
+        _register_if_exists(run_path, stage, relative, description="Resource-aware feature intake evidence")
+    for artifact in sorted((run_path / "feature_selection" / "profiles").glob("*.json")):
+        register_artifact(run_path, stage, str(artifact.relative_to(run_path)), description="Feature source profile evidence")
+    for artifact in sorted((run_path / "feature_selection" / "batches").glob("*.json")):
+        register_artifact(run_path, stage, str(artifact.relative_to(run_path)), description="Feature batch plan")
+
+
+def _write_sql_evidence_from_dir(run_path: Path, stage: str, sql_dir: Path) -> None:
+    if not sql_dir.exists():
+        return
+    from risk_model_workbench.data.sql_evidence import write_sql_evidence
+
+    for sql_file in sorted(sql_dir.glob("*.sql")):
+        write_sql_evidence(
+            run_path,
+            sql_file.read_text(encoding="utf-8"),
+            source=str(sql_file),
+            purpose=sql_file.stem,
+            stage=stage,
+            sql_kind="generated",
+            name=sql_file.name,
+        )
+    _register_if_exists(run_path, stage, "queries/sql_evidence_manifest.json", description="SQL evidence manifest")
+    for artifact in sorted((run_path / "queries" / "generated").glob("*.sql")):
+        register_artifact(run_path, stage, str(artifact.relative_to(run_path)), description="Generated SQL evidence")
 
 
 def _runtime_config_arg(project_dir: Path, run_path: Path, name: str, explicit: str | None = None) -> str | None:
@@ -636,7 +884,7 @@ def cmd_sample_check(args: argparse.Namespace) -> int:
     stage_action_started(path, "sample_check")
     config = _load_runtime_project_config(project_dir, path)
     data_cfg = config.get("data", {})
-    raw_path = Path(data_cfg.get("raw_path", "data/raw/sample.feather"))
+    raw_path = Path(data_cfg.get("raw_path") or "data/raw/sample.feather")
     if not raw_path.is_absolute():
         raw_path = project_dir / raw_path
     if raw_path.exists():
@@ -809,6 +1057,54 @@ def cmd_feature_prescreen(args: argparse.Namespace) -> int:
         argv.append("--force")
     code = batch_select_main(argv)
     if code == 0:
+        try:
+            feature_cfg = _load_runtime_config(project_dir, path, "feature_select").get("feature_select", {})
+            prescreen_cfg = feature_cfg.get("prescreen", {}) or feature_cfg.get("d01_d02", {}) or {}
+            try:
+                runtime_project = _load_runtime_project_config(project_dir, path)
+            except FileNotFoundError:
+                runtime_project = {}
+            data_cfg = runtime_project.get("data", {}) or {}
+            split_cfg = runtime_project.get("split", {}) or {}
+            feature_columns_path = _resolve_project_relative(
+                project_dir,
+                prescreen_cfg.get("feature_columns", "data/profile/feature_metadata/feature_columns.csv"),
+            )
+            feature_columns = _feature_columns_from_csv(feature_columns_path)
+            required_columns = list(
+                dict.fromkeys(
+                    [*map(str, _as_list(data_cfg.get("id_columns")))]
+                    + [
+                        str(_first_value(prescreen_cfg.get("target_col"), data_cfg.get("target_column"), "")),
+                        str(_first_value(prescreen_cfg.get("split_col"), split_cfg.get("source_column"), data_cfg.get("split_column"), "")),
+                    ]
+                    + [str(data_cfg.get("period_column") or "")]
+                )
+            )
+            required_columns = [column for column in required_columns if column]
+            resource_cfg = prescreen_cfg.get("resource", {}) or prescreen_cfg.get("resource_planning", {}) or {}
+            random_cfg = prescreen_cfg.get("sampling", {}) or {}
+            random_columns = [str(item) for item in _as_list(_first_value(random_cfg.get("random_columns"), random_cfg.get("random_column")))]
+            _write_feature_intake_evidence(
+                run_path=path,
+                project_dir=project_dir,
+                stage=stage,
+                stage_config=prescreen_cfg,
+                feature_columns=feature_columns,
+                required_columns=required_columns or ["__required_placeholder"],
+                source_table=data_cfg.get("source_table"),
+                local_feather_path=data_cfg.get("raw_path") if data_cfg.get("raw_path") else None,
+                total_rows=resource_cfg.get("total_rows") or random_cfg.get("total_rows"),
+                random_columns=random_columns,
+            )
+            sql_dir = _feature_prescreen_output_dir(project_dir, config_arg) / "sql"
+            _write_sql_evidence_from_dir(path, stage, sql_dir)
+        except Exception as exc:
+            stage_action_failed(path, stage, f"feature intake evidence failed: {exc}", failure_code=classify_exception(exc))
+            print(f"feature prescreen evidence registration failed: {exc}", file=sys.stderr)
+            return 1
+        if not args.dry_run_sql:
+            _register_feature_prescreen_artifacts(path, stage, project_dir, config_arg)
         stage_action_done(
             path,
             stage,
@@ -878,10 +1174,23 @@ def cmd_build_wide_sql(args: argparse.Namespace) -> int:
                 "feature_selection/wide_sql_summary.json",
                 description="Wide-table SQL generation summary",
             )
+            from risk_model_workbench.data.sql_evidence import write_sql_evidence
+
+            sql_text = sql_path.read_text(encoding="utf-8")
+            write_sql_evidence(
+                run_path,
+                sql_text,
+                source=str(sql_path),
+                purpose="build_wide_sql",
+                stage="build_wide_sql",
+                sql_kind="generated",
+                name=sql_path.name,
+            )
+            _register_if_exists(run_path, "build_wide_sql", "queries/sql_evidence_manifest.json", description="SQL evidence manifest")
+            _register_if_exists(run_path, "build_wide_sql", Path("queries") / "generated" / sql_path.name, description="Generated wide SQL evidence")
             from risk_model_workbench.data.sql_review import review_sql_text
 
             runtime_project = _load_runtime_project_config(project_dir, run_path)
-            sql_text = sql_path.read_text(encoding="utf-8")
             review_config = load_yaml(config_path).get("feature_select", {}) if config_path and config_path.exists() else {}
             runtime_request = review_config.get("runtime_request", {})
             sql_gate_cfg = (runtime_request.get("step_params") or {}).get("sql_review_gate", {})
@@ -931,6 +1240,26 @@ def cmd_build_wide_sql(args: argparse.Namespace) -> int:
                     execution_path,
                     "feature_selection/wide_table_execution.json",
                     description="Wide-table create SQL execution metadata",
+                )
+                from risk_model_workbench.data.table_profile import build_static_table_profile, write_table_profile
+
+                wide_profile = build_static_table_profile(
+                    str(summary_payload.get("output_table") or args.output_table or ""),
+                    column_count=summary_payload.get("features"),
+                    feature_count=summary_payload.get("features"),
+                    source="wide_sql_execution_metadata",
+                    status="metadata_only_after_ctas",
+                    note="CTAS execution completed; live select-only post-create profiling was not executed in this environment.",
+                )
+                profile_path = write_table_profile(
+                    wide_profile,
+                    run_path / "feature_selection" / "profiles" / "wide_table_profile.json",
+                )
+                register_artifact(
+                    run_path,
+                    "build_wide_sql",
+                    str(profile_path.relative_to(run_path)),
+                    description="Wide table post-create profile metadata",
                 )
     except Exception as exc:
         if run_path:
@@ -984,6 +1313,52 @@ def cmd_feature_refine(args: argparse.Namespace) -> int:
         print(f"feature refine failed: {exc}", file=sys.stderr)
         return 1
     if code == 0:
+        try:
+            refine_cfg = _load_runtime_config(project_dir, path, "refine_features").get("feature_refine", {})
+            try:
+                runtime_project = _load_runtime_project_config(project_dir, path)
+            except FileNotFoundError:
+                runtime_project = {}
+            data_cfg = runtime_project.get("data", {}) or {}
+            input_cfg = refine_cfg.get("input", {}) or {}
+            required_columns = list(
+                dict.fromkeys(
+                    [*map(str, _as_list(input_cfg.get("id_columns") or data_cfg.get("id_columns")))]
+                    + [str(item) for item in _as_list(input_cfg.get("base_columns"))]
+                    + [
+                        str(_first_value(input_cfg.get("label_column"), data_cfg.get("target_column"), "")),
+                        str(_first_value(input_cfg.get("split_column"), data_cfg.get("split_column"), "")),
+                    ]
+                )
+            )
+            required_columns = [column for column in required_columns if column]
+            runtime_request = refine_cfg.get("runtime_request", {}) or {}
+            local_path = _first_value(
+                input_cfg.get("local_feather_path"),
+                input_cfg.get("raw_path"),
+                input_cfg.get("feather_path"),
+                runtime_request.get("sample_location") if runtime_request.get("data_source_mode") == "local_feather" else None,
+                data_cfg.get("raw_path"),
+            )
+            sampling_cfg = refine_cfg.get("sampling", {}) or {}
+            resource_cfg = refine_cfg.get("resource", {}) or refine_cfg.get("resource_planning", {}) or {}
+            random_columns = [str(item) for item in _as_list(_first_value(sampling_cfg.get("random_columns"), sampling_cfg.get("random_column")))]
+            _write_feature_intake_evidence(
+                run_path=path,
+                project_dir=project_dir,
+                stage="feature_refine",
+                stage_config=refine_cfg,
+                feature_columns=_refine_feature_columns(project_dir, {"feature_refine": refine_cfg}),
+                required_columns=required_columns or ["__required_placeholder"],
+                source_table=input_cfg.get("wide_table") or data_cfg.get("source_table"),
+                local_feather_path=local_path,
+                total_rows=resource_cfg.get("total_rows") or sampling_cfg.get("total_rows"),
+                random_columns=random_columns,
+            )
+        except Exception as exc:
+            stage_action_failed(path, "feature_refine", f"feature intake evidence failed: {exc}", failure_code=classify_exception(exc))
+            print(f"feature refine evidence registration failed: {exc}", file=sys.stderr)
+            return 1
         if not args.dry_run_sql:
             output_dir = _feature_refine_output_dir_for_run(project_dir, path, config_arg)
             try:
@@ -1007,6 +1382,17 @@ def cmd_feature_refine(args: argparse.Namespace) -> int:
                     )
                     if copied is None:
                         raise FileNotFoundError(f"required feature refine artifact missing: {source}")
+                optional_outputs = [
+                    (output_dir / "resource_usage.json", "feature_selection/resource_usage.json", "Feature refinement runtime memory usage"),
+                ]
+                for source, target, description in optional_outputs:
+                    _copy_and_register_artifact(
+                        path,
+                        "feature_refine",
+                        source,
+                        target,
+                        description=description,
+                    )
             except Exception as exc:
                 stage_action_failed(path, "feature_refine", str(exc), failure_code=classify_exception(exc))
                 print(f"feature refine artifact registration failed: {exc}", file=sys.stderr)

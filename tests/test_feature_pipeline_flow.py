@@ -119,6 +119,8 @@ def test_build_wide_sql_execute_registers_artifacts(tmp_path, monkeypatch):
     assert "feature_selection/wide_sql_summary.json" in manifest_paths
     assert "feature_selection/prescreen_wide_feature_map.csv" in manifest_paths
     assert "feature_selection/wide_table_execution.json" in manifest_paths
+    assert "feature_selection/profiles/wide_table_profile.json" in manifest_paths
+    assert "queries/sql_evidence_manifest.json" in manifest_paths
     assert not (project_dir / "feature_selection" / "wide_table_execution.json").exists()
 
 
@@ -159,6 +161,39 @@ def test_sql_review_safe_and_high_risk_patterns():
     assert safe["risk_level"] == "low"
     assert unsafe["high_risk"] is True
     assert any(item["rule_id"] == "cartesian_join_condition" for item in unsafe["findings"])
+
+
+def test_feature_prescreen_cli_registers_run_artifacts(tmp_path, monkeypatch):
+    project_dir = tmp_path / "project"
+    run_dir = _write_minimal_project(project_dir)
+    seen_argv: list[str] = []
+
+    def fake_prescreen_main(argv):
+        seen_argv.extend(argv)
+        results_dir = project_dir / "runs" / "feature_prescreen" / "results"
+        results_dir.mkdir(parents=True, exist_ok=True)
+        (results_dir / "prescreen_run_summary.json").write_text('{"final_remain": 2}\n', encoding="utf-8")
+        (results_dir / "prescreen_final_remain_features.json").write_text('{"mart.feature_a": ["feat_a", "feat_b"]}\n', encoding="utf-8")
+        (results_dir / "prescreen_table_summary.csv").write_text("table,final_remain\nmart.feature_a,2\n", encoding="utf-8")
+        return 0
+
+    import risk_model_workbench.batch_feature_select as batch_feature_select_module
+
+    monkeypatch.setattr(batch_feature_select_module, "main", fake_prescreen_main)
+
+    code = main(["feature", "prescreen", "--project", str(project_dir), "--run-id", "run1"])
+
+    assert code == 0
+    assert "--run-dir" in seen_argv
+    state = load_run_state(run_dir)
+    artifacts = set(state["stages"]["feature_prescreen"]["artifacts"])
+    assert "feature_selection/prescreen_run_summary.json" in artifacts
+    assert "feature_selection/prescreen_final_remain_features.json" in artifacts
+    assert "feature_selection/prescreen_table_summary.csv" in artifacts
+    manifest_paths = {item["path"] for item in load_artifact_manifest(run_dir)["artifacts"]}
+    assert "feature_selection/prescreen_run_summary.json" in manifest_paths
+    assert "feature_selection/prescreen_final_remain_features.json" in manifest_paths
+    assert "feature_selection/prescreen_table_summary.csv" in manifest_paths
 
 
 def test_feature_refine_sample_max_rows_overrides_dry_run_sql(tmp_path):
@@ -209,6 +244,62 @@ def test_feature_refine_sample_max_rows_overrides_dry_run_sql(tmp_path):
     assert "limit 10" not in metadata["sql"]
 
 
+def test_feature_refine_local_feather_dry_run_writes_profile_without_sql(tmp_path):
+    import pandas as pd
+
+    project_dir = tmp_path / "project"
+    (project_dir / "configs").mkdir(parents=True)
+    local_path = project_dir / "data" / "raw" / "model.feather"
+    local_path.parent.mkdir(parents=True)
+    pd.DataFrame(
+        {
+            "uid": [1, 2, 3, 4],
+            "target": [0, 1, 0, 1],
+            "final_flag": ["DEV", "DEV", "OOT", "OOT"],
+            "feat_a": [0.1, 0.2, 0.3, 0.4],
+            "feat_b": [1, 2, 3, 4],
+        }
+    ).to_feather(local_path)
+    (project_dir / "configs" / "refine_features.yaml").write_text(
+        "\n".join(
+            [
+                "feature_refine:",
+                "  input:",
+                "    local_feather_path: data/raw/model.feather",
+                "    label_column: target",
+                "    split_column: final_flag",
+                "    train_value: DEV",
+                "    valid_value: OOT",
+                "    id_columns: [uid]",
+                "    base_columns: [uid, target, final_flag]",
+                "  output_dir: runs/refine",
+                "  dp_feather:",
+                "    dataset_id: local_refine_sample",
+                "  preprocessing: {}",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    code = feature_refine_main(
+        [
+            "--project-dir",
+            str(project_dir),
+            "--config",
+            "configs/refine_features.yaml",
+            "--dry-run-sql",
+        ]
+    )
+
+    assert code == 0
+    metadata = json.loads((project_dir / "data" / "profile" / "dp_feather_datasets" / "local_refine_sample.json").read_text())
+    assert metadata["source"] == "local_feather"
+    assert metadata["sql"] == ""
+    profile = json.loads((project_dir / "runs" / "refine" / "local_feather_profile.json").read_text(encoding="utf-8"))
+    assert profile["candidate_feature_count"] == 2
+
+
 def test_feature_refine_cli_registers_run_feature_outputs(tmp_path, monkeypatch):
     project_dir = tmp_path / "project"
     run_dir = project_dir / "runs" / "run1"
@@ -220,6 +311,7 @@ def test_feature_refine_cli_registers_run_feature_outputs(tmp_path, monkeypatch)
         encoding="utf-8",
     )
     (output_dir / "stage_summary.json").write_text('{"final_features": 2}\n', encoding="utf-8")
+    (output_dir / "resource_usage.json").write_text('{"observed_peak_multiplier": 2.1}\n', encoding="utf-8")
     (output_dir / "final_500_features.txt").write_text("feat_a\nfeat_b\n", encoding="utf-8")
     (output_dir / "final_features.txt").write_text("feat_a\nfeat_b\n", encoding="utf-8")
     save_run_state(run_dir, create_run_state(project_dir, run_id="run1", workflow="full_modeling"))
@@ -254,6 +346,7 @@ def test_feature_refine_cli_registers_run_feature_outputs(tmp_path, monkeypatch)
     artifacts = set(state["stages"]["feature_refine"]["artifacts"])
     assert "feature_selection/stage_summary.json" in artifacts
     assert "feature_selection/feature_stage_summary.json" in artifacts
+    assert "feature_selection/resource_usage.json" in artifacts
     assert "feature_selection/final_500_features.txt" in artifacts
     assert "feature_selection/final_features.txt" in artifacts
 

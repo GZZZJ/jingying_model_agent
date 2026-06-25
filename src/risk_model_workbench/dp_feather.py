@@ -53,6 +53,8 @@ def write_dataset_metadata(
     column_count: int | None = None,
     columns: list[str] | None = None,
     note: str = "",
+    source: str = "dp_query",
+    source_path: str | Path | None = None,
 ) -> None:
     metadata_path.parent.mkdir(parents=True, exist_ok=True)
     payload: dict[str, Any] = {
@@ -64,6 +66,7 @@ def write_dataset_metadata(
             "feather_path": relative_display(feather_path, project_dir),
             "gitignored": True,
         },
+        "source": source,
         "dimensions": {
             "rows": row_count,
             "columns": column_count,
@@ -73,9 +76,25 @@ def write_dataset_metadata(
     }
     if columns is not None:
         payload["columns"] = columns
+    if source_path is not None:
+        resolved_source = resolve_project_path(project_dir, source_path)
+        payload["storage"]["source_path"] = relative_display(resolved_source, project_dir)
     if note:
         payload["note"] = note
     metadata_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def _resolve_approved_local_feather(project_dir: Path, approved_local_feather_path: str | Path | None) -> Path | None:
+    if not approved_local_feather_path:
+        return None
+    path = resolve_project_path(project_dir, approved_local_feather_path)
+    if path.suffix.lower() != ".feather":
+        raise ValueError("approved local feather path must end with .feather")
+    if not path.exists():
+        raise FileNotFoundError(f"approved local feather path does not exist: {path}")
+    if not path.is_file():
+        raise ValueError(f"approved local feather path is not a file: {path}")
+    return path
 
 
 def print_sql_review(
@@ -305,9 +324,42 @@ def load_or_fetch_dp_feather(
     metadata_path: Path,
     refresh: bool = False,
     sql_approved: bool = False,
+    approved_local_feather_path: str | Path | None = None,
     progress: Any | None = None,
 ) -> pd.DataFrame:
     """Return a local feather-backed DP dataset, fetching only after SQL approval."""
+    approved_path = _resolve_approved_local_feather(project_dir, approved_local_feather_path)
+    if approved_path is not None:
+        if progress:
+            progress.emit(
+                step="read_approved_local_feather",
+                message=f"正在读取已确认的本地 feather：{dataset_id}",
+                metrics={"dataset_id": dataset_id, "feather_path": relative_display(approved_path, project_dir)},
+            )
+        df = pd.read_feather(approved_path)
+        write_dataset_metadata(
+            project_dir=project_dir,
+            metadata_path=metadata_path,
+            feather_path=approved_path,
+            dataset_id=dataset_id,
+            description=description,
+            sql=sql,
+            status="ready",
+            row_count=int(len(df)),
+            column_count=int(len(df.columns)),
+            columns=[str(column) for column in df.columns],
+            source="approved_local_feather",
+            source_path=approved_path,
+            note="Read from a user-approved local feather path; no remote DP pull was executed.",
+        )
+        if progress:
+            progress.emit(
+                step="read_approved_local_feather_done",
+                message=f"本地 feather 读取完成：{dataset_id}，{len(df)} 行 {len(df.columns)} 列",
+                metrics={"dataset_id": dataset_id, "rows": int(len(df)), "columns": int(len(df.columns))},
+            )
+        return df
+
     if refresh or not feather_path.exists() or not metadata_path.exists():
         write_dataset_metadata(
             project_dir=project_dir,

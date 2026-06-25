@@ -3,6 +3,7 @@ import shutil
 from pathlib import Path
 
 import yaml
+from openpyxl import load_workbook
 
 from risk_model_workbench.cli import main
 from risk_model_workbench.planning import create_execution_plan
@@ -97,8 +98,10 @@ def test_generic_report_does_not_emit_gcard_defaults(tmp_path):
 
     report_text = output_path.with_name("model_report.md").read_text(encoding="utf-8")
     missing_text = output_path.with_name("model_report_missing_results.md").read_text(encoding="utf-8")
+    workbook = load_workbook(output_path)
     assert "gcard" not in report_text.lower()
     assert "gcard" not in missing_text.lower()
+    assert "Summary" not in workbook.sheetnames
     assert "# Generic Model模型报告" in report_text
 
 

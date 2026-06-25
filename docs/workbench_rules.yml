@@ -40,3 +40,35 @@ rules:
     source:
       type: policy
       path: AGENTS.md
+  - id: explicit-data-source-mode
+    title: Modeling requests must preserve explicit data_source_mode
+    target: guardrail
+    status: enforced
+    enforcement: request validation and runtime materialization resolve remote_table versus local_feather before run execution.
+    source:
+      type: design
+      path: docs/superpowers/specs/2026-06-25-resource-aware-feature-selection-design.md
+  - id: local-feather-not-tracked
+    title: Local feather payloads are runtime inputs, not tracked evidence
+    target: guardrail
+    status: enforced
+    enforcement: local feather profiling records JSON metadata only; feather payloads remain under ignored data/cache paths.
+    source:
+      type: design
+      path: docs/superpowers/specs/2026-06-25-resource-aware-feature-selection-design.md
+  - id: resource-plan-before-dp-pull
+    title: DP feature-selection pulls require planning evidence
+    target: guardrail
+    status: planned
+    enforcement: feature-selection stages must persist data source, environment, resource, sampling, batch, and SQL evidence before bulk pulls.
+    source:
+      type: design
+      path: docs/superpowers/specs/2026-06-25-resource-aware-feature-selection-design.md
+  - id: platform-data-pull-engine
+    title: Feature-selection data-pull engine is platform-aware
+    target: guardrail
+    status: enforced
+    enforcement: pull_engine does not auto-select a remote pull engine on Windows/macOS, defaults to TMLSQLClient on Linux/other platforms, and treats local_feather as a separate existing-file data source rather than a pull engine.
+    source:
+      type: design
+      path: docs/superpowers/specs/2026-06-25-resource-aware-feature-selection-design.md

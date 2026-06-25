@@ -4,9 +4,9 @@
 
 **Goal:** Add a resource-aware data intake gate so a request can choose either a remote DP source or a local feather file, then feature prescreening and refinement can profile the selected source, estimate local memory capacity, choose full-table uniform random sampling when needed, batch excessive features, persist all SQL/evidence artifacts, and release memory after each batch.
 
-**Architecture:** Extend the request-builder HTML and Markdown contract with an explicit data source mode, materialize that request into run-scoped runtime configs, then add reusable planning/profiling modules and integrate them into existing `rmw feature prescreen`, `rmw build-wide-sql`, and `rmw feature refine` flows. Keep `sh_dp_mcp` as select-only profiler for remote sources. For remote feature-selection pulls, detect the platform and choose the DP data-pull engine: local `dp_cli` on Windows/macOS, `TMLSQLClient` on Linux/other platforms. For local feather mode, bypass DP pulls and profile/read the local file directly. Keep CTAS execution as a separate reviewed execution path.
+**Architecture:** Extend the request-builder HTML and Markdown contract with an explicit data source mode, materialize that request into run-scoped runtime configs, then add reusable planning/profiling modules and integrate them into existing `rmw feature prescreen`, `rmw build-wide-sql`, and `rmw feature refine` flows. Keep `sh_dp_mcp` as select-only profiler for remote sources. Keep local feather mode as an independent existing-file data source, not a DP pull engine. For remote feature-selection pulls, detect the platform and record the DP pull policy: Windows/macOS do not auto-select a remote pull engine, while Linux/other platforms default to `TMLSQLClient` unless explicitly overridden. Keep CTAS execution as a separate reviewed execution path.
 
-**Tech Stack:** Static HTML/JS request builder, Python, pandas/pyarrow, pytest, existing `rmw` CLI/state/artifact helpers, local `dp_cli`, existing `TMLSQLClient` wrapper, `sh_dp_mcp` adapter/fake for tests.
+**Tech Stack:** Static HTML/JS request builder, Python, pandas/pyarrow, pytest, existing `rmw` CLI/state/artifact helpers, existing `TMLSQLClient` wrapper, `sh_dp_mcp` adapter/fake for tests.
 
 ---
 
@@ -131,9 +131,9 @@
 
 ## Chunk 4: Runtime Environment and Data Pull Engine
 
-### Task 4: Select DP Data-Pull Engine By Platform
+### Task 4: Record DP Data-Pull Policy By Platform
 
-**Goal:** Detect the execution environment at the beginning of remote-source feature selection and route DP data extraction through the correct local engine.
+**Goal:** Detect the execution environment at the beginning of remote-source feature selection and avoid implicit desktop DP pulls.
 
 **Files:**
 - Create: `src/risk_model_workbench/data/pull_engine.py`
@@ -147,9 +147,9 @@
   - `Darwin` -> `macos`
   - `Linux` -> `linux`
   - any other value -> `other`
-- Add default engine mapping:
-  - `windows` -> `dp_cli`
-  - `macos` -> `dp_cli`
+- Add default policy mapping:
+  - `windows` -> no auto-selected remote pull engine
+  - `macos` -> no auto-selected remote pull engine
   - `linux` -> `tmlsqlclient`
   - `other` -> `tmlsqlclient`
 - Add optional explicit override for controlled tests and emergency operations:
@@ -159,7 +159,6 @@
   - `pull_query_to_dataframe(sql, engine=...)`
   - `pull_query_to_feather(sql, feather_path, metadata_path, engine=...)`
 - Implement fakeable adapters:
-  - `dp_cli` adapter for Windows/macOS local pulls
   - `TMLSQLClient` adapter for Linux/other pulls
 - Keep `sh_dp_mcp` exploration outside this engine; it remains the profiler.
 - Bypass this engine entirely when `data_source_mode=local_feather`.
@@ -171,7 +170,7 @@
   - availability check result
 
 **Acceptance:**
-- On fake Windows/macOS, the selected data-pull engine is `dp_cli`.
+- On fake Windows/macOS, no remote pull engine is auto-selected.
 - On fake Linux/other, the selected data-pull engine is `tmlsqlclient`.
 - `sh_dp_mcp` profiler tests are unaffected by the data-pull engine choice.
 - Local feather mode does not select `dp_cli` or `TMLSQLClient` for data pull.
@@ -332,8 +331,8 @@
   - build sampling plan
   - build per-table/per-batch plan
 - Modify generated sample SQL to include the uniform random predicate.
-- Pull sampled prescreen data through the selected data-pull engine:
-  - Windows/macOS: local `dp_cli`
+- Pull sampled prescreen data through an explicitly selected or default remote data-pull engine:
+  - Windows/macOS: no auto remote pull; use `local_feather` existing-file mode or explicit reviewed override
   - Linux/other: `TMLSQLClient`
 - In local feather mode:
   - read only required columns when possible
@@ -411,8 +410,8 @@
 - Resolve `data_source_mode`.
 - Detect execution environment and selected data-pull engine before pulling refine samples.
 - Build refine sampling SQL from `sampling_plan.json`.
-- Pull sampled refine data through the selected data-pull engine:
-  - Windows/macOS: local `dp_cli`
+- Pull sampled refine data through an explicitly selected or default remote data-pull engine:
+  - Windows/macOS: no auto remote pull; use `local_feather` existing-file mode or explicit reviewed override
   - Linux/other: `TMLSQLClient`
 - In local feather mode:
   - read the local feather directly
@@ -471,8 +470,8 @@
   - Local feather files may be used as full workflow data sources when required fields are present.
   - Local feather payloads must stay ignored and must not be registered as tracked artifacts.
   - Feature selection must detect platform and data-pull engine before pulling DP data.
-  - Windows/macOS feature-selection data pulls use local `dp_cli`.
-  - Linux/other feature-selection data pulls use `TMLSQLClient`.
+  - Windows/macOS feature-selection does not auto-select a remote pull engine.
+  - Linux/other feature-selection data pulls use `TMLSQLClient` by default.
   - `sh_dp_mcp` remains the profiler on every platform.
   - DP pulls require resource and sampling plans.
   - SQL and planning evidence must be tracked.

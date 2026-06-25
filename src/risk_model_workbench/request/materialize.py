@@ -8,6 +8,7 @@ from typing import Any
 
 from risk_model_workbench.config import dump_yaml, load_yaml
 from risk_model_workbench.paths import project_config_path
+from risk_model_workbench.request.data_source import LOCAL_FEATHER, resolve_data_source_mode, sample_location as request_sample_location
 
 
 RUNTIME_CONFIG_DIR = "configs_runtime"
@@ -87,6 +88,12 @@ def _experiments(metadata: dict[str, Any]) -> list[dict[str, Any]]:
     if description:
         return [{"name": "baseline_from_description", "method": "lightgbm", "segment": "all", "description": description}]
     return []
+
+
+def _feature_round_names(metadata: dict[str, Any]) -> list[str]:
+    feature_cfg = metadata.get("feature_selection") if isinstance(metadata.get("feature_selection"), dict) else {}
+    rounds = _as_list(feature_cfg.get("rounds"))
+    return [str(item.get("name") if isinstance(item, dict) else item).replace("-", "_") for item in rounds]
 
 
 def _normal_algorithm(value: Any, default: str = "lightgbm") -> str:
@@ -169,12 +176,15 @@ def materialize_request_runtime_configs(
         data_override["time_column"] = time_column
     if period_column:
         data_override["period_column"] = period_column
-    sample_location = str(metadata.get("sample_location") or "").strip()
+    sample_location = request_sample_location(metadata)
+    data_source_mode = resolve_data_source_mode(metadata)
     if sample_location:
-        if _looks_like_local_data(sample_location):
+        if data_source_mode == LOCAL_FEATHER:
             data_override["raw_path"] = sample_location
+            data_override["source_table"] = None
         else:
             data_override["source_table"] = sample_location
+            data_override["raw_path"] = None
     if metadata.get("sample_definition"):
         data_override["label_definition"] = metadata.get("sample_definition")
     eval_meta = metadata.get("evaluation") or {}
@@ -208,6 +218,8 @@ def materialize_request_runtime_configs(
                 "request_id": metadata.get("request_id"),
                 "title": metadata.get("title"),
                 "workflow": metadata.get("workflow"),
+                "data_source_mode": data_source_mode,
+                "sample_location": sample_location,
                 "business_domain": metadata.get("business_domain"),
                 "scenario_profile": metadata.get("scenario_profile") or (plan or {}).get("scenario_profile"),
             },
@@ -247,6 +259,8 @@ def materialize_request_runtime_configs(
             },
             "wide_table": wide_table_override,
             "runtime_request": {
+                "data_source_mode": data_source_mode,
+                "sample_location": sample_location,
                 "stage_steps": (plan or {}).get("stage_steps") or metadata.get("stage_steps") or {},
                 "step_params": (plan or {}).get("step_params") or metadata.get("step_params") or {},
             },
@@ -275,6 +289,8 @@ def materialize_request_runtime_configs(
             "d04_null_importance": {"enabled": "null_importance_filter" in ((plan or {}).get("step_params") or metadata.get("step_params") or {})},
             "d05_baseline_importance": {"enabled": "baseline_importance_filter" in ((plan or {}).get("step_params") or metadata.get("step_params") or {})},
             "runtime_request": {
+                "data_source_mode": data_source_mode,
+                "sample_location": sample_location,
                 "step_params": (plan or {}).get("step_params") or metadata.get("step_params") or {},
             },
         }
@@ -302,6 +318,18 @@ def materialize_request_runtime_configs(
     if keep_top not in (None, ""):
         refine_override["feature_refine"]["d05_baseline_importance"]["keep_top_n"] = int(keep_top)
         refine_override["feature_refine"]["target_feature_count"] = int(keep_top)
+    feature_round_names = _feature_round_names(metadata)
+    direct_refine_remote_table = (
+        data_source_mode != LOCAL_FEATHER
+        and bool(sample_location)
+        and feature_round_names
+        and "refine" in feature_round_names
+        and not any(round_name in {"prescreen", "feature_prescreen", "coarse_screening", "coarse", "d01_d02", "d01d02", "build_wide_sql", "wide_sql", "build_wide"} for round_name in feature_round_names)
+    )
+    if direct_refine_remote_table:
+        refine_override["feature_refine"].setdefault("input", {})["wide_table"] = sample_location
+    if sample_location and data_source_mode == LOCAL_FEATHER:
+        refine_override["feature_refine"].setdefault("input", {})["local_feather_path"] = sample_location
     runtime_refine = _deep_merge(refine_cfg, refine_override)
 
     experiments = []
@@ -343,7 +371,7 @@ def materialize_request_runtime_configs(
             "historical_score_columns": _score_columns(metadata, project_cfg)[1:],
         },
     }
-    if sample_location and _looks_like_local_data(sample_location):
+    if sample_location and data_source_mode == LOCAL_FEATHER:
         training_override["input"]["feather_path"] = sample_location
     runtime_train = _deep_merge(train_cfg, training_override)
 
@@ -426,6 +454,8 @@ def materialize_request_runtime_configs(
             "request_path": request_doc.get("path"),
             "plan_id": (plan or {}).get("plan_id"),
             "workflow": metadata.get("workflow"),
+            "data_source_mode": data_source_mode,
+            "sample_location": sample_location,
             "materialized_configs": [
                 "project.yml",
                 "sample.yaml",
