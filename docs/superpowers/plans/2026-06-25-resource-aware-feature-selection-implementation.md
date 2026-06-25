@@ -4,9 +4,9 @@
 
 **Goal:** Add a resource-aware data intake gate so feature prescreening and refinement automatically profile remote tables, estimate local memory capacity, choose full-table uniform random sampling, batch excessive features, persist all SQL/evidence artifacts, and release memory after each batch.
 
-**Architecture:** Add small reusable planning/profiling modules, then integrate them into existing `rmw feature prescreen`, `rmw build-wide-sql`, and `rmw feature refine` flows. Keep `sh_dp_mcp` as select-only profiler and `TMLSQLClient` as the approved execution engine.
+**Architecture:** Add small reusable planning/profiling modules, then integrate them into existing `rmw feature prescreen`, `rmw build-wide-sql`, and `rmw feature refine` flows. Keep `sh_dp_mcp` as select-only profiler. At the start of feature selection, detect the platform and choose the DP data-pull engine: local `dp_cli` on Windows/macOS, `TMLSQLClient` on Linux/other platforms. Keep CTAS execution as a separate reviewed execution path.
 
-**Tech Stack:** Python, pandas, pytest, existing `rmw` CLI/state/artifact helpers, existing `TMLSQLClient` wrapper, `sh_dp_mcp` adapter/fake for tests.
+**Tech Stack:** Python, pandas, pytest, existing `rmw` CLI/state/artifact helpers, local `dp_cli`, existing `TMLSQLClient` wrapper, `sh_dp_mcp` adapter/fake for tests.
 
 ---
 
@@ -46,9 +46,59 @@
 **Verification:**
 - [ ] Run `pytest tests/test_resource_planning.py -q`.
 
-## Chunk 2: SQL Evidence Registry
+## Chunk 2: Runtime Environment and Data Pull Engine
 
-### Task 2: Persist User SQL, Generated SQL, and SQL Metadata
+### Task 2: Select DP Data-Pull Engine By Platform
+
+**Goal:** Detect the execution environment at the beginning of feature selection and route DP data extraction through the correct local engine.
+
+**Files:**
+- Create: `src/risk_model_workbench/data/pull_engine.py`
+- Create: `tests/test_data_pull_engine.py`
+- Modify: `src/risk_model_workbench/dp_feather.py`
+- Modify: `src/risk_model_workbench/cli.py`
+
+**Changes:**
+- Add platform normalization:
+  - `Windows` -> `windows`
+  - `Darwin` -> `macos`
+  - `Linux` -> `linux`
+  - any other value -> `other`
+- Add default engine mapping:
+  - `windows` -> `dp_cli`
+  - `macos` -> `dp_cli`
+  - `linux` -> `tmlsqlclient`
+  - `other` -> `tmlsqlclient`
+- Add optional explicit override for controlled tests and emergency operations:
+  - CLI/config key: `data_pull_engine`
+  - accepted values: `auto`, `dp_cli`, `tmlsqlclient`
+- Add a data-pull interface used by DP select-query extraction:
+  - `pull_query_to_dataframe(sql, engine=...)`
+  - `pull_query_to_feather(sql, feather_path, metadata_path, engine=...)`
+- Implement fakeable adapters:
+  - `dp_cli` adapter for Windows/macOS local pulls
+  - `TMLSQLClient` adapter for Linux/other pulls
+- Keep `sh_dp_mcp` exploration outside this engine; it remains the profiler.
+- Persist:
+  - `feature_selection/execution_environment.json`
+  - selected platform
+  - selected data-pull engine
+  - override source, if any
+  - availability check result
+
+**Acceptance:**
+- On fake Windows/macOS, the selected data-pull engine is `dp_cli`.
+- On fake Linux/other, the selected data-pull engine is `tmlsqlclient`.
+- `sh_dp_mcp` profiler tests are unaffected by the data-pull engine choice.
+- SQL approval behavior remains identical for both data-pull engines.
+- If the selected engine is unavailable, the stage fails before pulling data and writes a clear failure message.
+
+**Verification:**
+- [ ] Run `pytest tests/test_data_pull_engine.py -q`.
+
+## Chunk 3: SQL Evidence Registry
+
+### Task 3: Persist User SQL, Generated SQL, and SQL Metadata
 
 **Goal:** Ensure all SQL inputs and generated SQL are saved in tracked locations with hashes and purpose metadata.
 
@@ -79,9 +129,9 @@
 **Verification:**
 - [ ] Run `pytest tests/test_sql_evidence.py -q`.
 
-## Chunk 3: Remote Table Profiling Adapter
+## Chunk 4: Remote Table Profiling Adapter
 
-### Task 3: Add Select-Only DP Profiling Layer
+### Task 4: Add Select-Only DP Profiling Layer
 
 **Goal:** Use `sh_dp_mcp`-style select queries to profile table scale and random sampling fields without moving bulk data.
 
@@ -106,15 +156,16 @@
 
 **Acceptance:**
 - The adapter does not run CTAS or non-select SQL.
+- The adapter does not switch to `dp_cli` on Windows/macOS; profiling stays on `sh_dp_mcp`.
 - Profile outputs include enough information to justify sampling and row-capacity choices.
 - Failed profile queries produce clear failure codes.
 
 **Verification:**
 - [ ] Run `pytest tests/test_table_profile.py -q`.
 
-## Chunk 4: Sampling and Batch Plan Generation
+## Chunk 5: Sampling and Batch Plan Generation
 
-### Task 4: Build Uniform Random Sampling and Feature Batch Planner
+### Task 5: Build Uniform Random Sampling and Feature Batch Planner
 
 **Goal:** Convert memory and table profile evidence into executable sampling and feature-batch plans.
 
@@ -147,9 +198,9 @@
 **Verification:**
 - [ ] Run `pytest tests/test_feature_intake_plan.py -q`.
 
-## Chunk 5: Prescreen Integration
+## Chunk 6: Prescreen Integration
 
-### Task 5: Make `feature prescreen` Resource-Aware
+### Task 6: Make `feature prescreen` Resource-Aware
 
 **Goal:** Apply resource planning before D01/D02 prescreening and persist per-table/per-batch evidence.
 
@@ -164,16 +215,21 @@
 **Changes:**
 - Add CLI/config knobs:
   - `--auto-sample`
+  - `--data-pull-engine`
   - `--memory-budget-fraction`
   - `--peak-memory-multiplier`
   - `--max-features-per-batch`
   - optional manual memory override for tests or managed environments
 - Before fetching table data:
+  - detect execution environment and selected data-pull engine
   - profile table if profile evidence is missing or refresh requested
   - estimate capacity
   - build sampling plan
   - build per-table/per-batch plan
 - Modify generated sample SQL to include the uniform random predicate.
+- Pull sampled prescreen data through the selected data-pull engine:
+  - Windows/macOS: local `dp_cli`
+  - Linux/other: `TMLSQLClient`
 - If feature count exceeds batch size, process feature batches and aggregate results.
 - Write JSON/CSV per-batch results in addition to existing `.pkl` checkpoint.
 - Release dataframes and intermediate screening objects after each batch.
@@ -181,6 +237,7 @@
 **Acceptance:**
 - Existing fixed `sample_where` remains supported for backward compatibility.
 - New auto mode writes resource, sampling, profile, and batch artifacts.
+- Execution environment and data-pull engine evidence are registered.
 - Per-batch JSON/CSV results are tracked evidence; `.pkl` remains cache only.
 - Stage state and artifact manifest include the new evidence files.
 
@@ -188,11 +245,11 @@
 - [ ] Run `pytest tests/test_feature_pipeline_flow.py -q`.
 - [ ] Run `rmw feature prescreen --project projects/2026-05-fujie-gcard-v1 --run-id <test_run> --dry-run-sql` on a non-production/smoke run if fixtures allow it.
 
-## Chunk 6: Wide Table Execution and Post-Create Profile
+## Chunk 7: Wide Table Execution and Post-Create Profile
 
-### Task 6: Profile the Wide Table After CTAS Execution
+### Task 7: Profile the Wide Table After CTAS Execution
 
-**Goal:** After `TMLSQLClient` creates the wide table, immediately validate the created table through select-only profiling.
+**Goal:** After reviewed CTAS execution creates the wide table, immediately validate the created table through select-only profiling.
 
 **Files:**
 - Modify: `src/risk_model_workbench/cli.py`
@@ -202,6 +259,7 @@
 
 **Changes:**
 - Keep current static SQL review and `--sql-approved` gate.
+- Keep CTAS execution separate from the platform-selected data-pull engine unless a future implementation proves the local `dp_cli` path can satisfy the same DDL safety contract.
 - After successful CTAS execution:
   - run table profile on the output wide table
   - persist `feature_selection/profiles/wide_table_profile.json`
@@ -222,9 +280,9 @@
 - [ ] Run `pytest tests/test_feature_pipeline_flow.py::test_build_wide_sql_execute_registers_artifacts -q`.
 - [ ] Run all table-profile focused tests.
 
-## Chunk 7: Refine Integration
+## Chunk 8: Refine Integration
 
-### Task 7: Make `feature refine` Resource-Aware and Batch-Capable
+### Task 8: Make `feature refine` Resource-Aware and Batch-Capable
 
 **Goal:** Apply the same memory and sampling gate to refinement, with a final global convergence pass when features are batched.
 
@@ -237,7 +295,11 @@
 
 **Changes:**
 - Add auto-planning knobs equivalent to prescreen.
+- Detect execution environment and selected data-pull engine before pulling refine samples.
 - Build refine sampling SQL from `sampling_plan.json`.
+- Pull sampled refine data through the selected data-pull engine:
+  - Windows/macOS: local `dp_cli`
+  - Linux/other: `TMLSQLClient`
 - If remaining features fit memory:
   - keep existing one-shot flow.
 - If remaining features exceed capacity:
@@ -250,6 +312,7 @@
 
 **Acceptance:**
 - Existing dry-run SQL behavior remains unchanged unless auto-planning is enabled.
+- Refine stage records execution environment and data-pull engine evidence.
 - Batch mode writes per-batch evidence and final aggregate evidence.
 - Final feature list remains registered as `feature_selection/final_features.txt`.
 - The run summary states whether the refine result came from one-shot or batch-plus-convergence mode.
@@ -257,9 +320,9 @@
 **Verification:**
 - [ ] Run `pytest tests/test_feature_refine_d03.py tests/test_feature_pipeline_flow.py -q`.
 
-## Chunk 8: Workflow Contracts, Rules, and Documentation
+## Chunk 9: Workflow Contracts, Rules, and Documentation
 
-### Task 8: Register New Evidence and Guardrails
+### Task 9: Register New Evidence and Guardrails
 
 **Goal:** Make the new resource-aware behavior visible in workflow audit and project documentation.
 
@@ -274,12 +337,17 @@
 
 **Changes:**
 - Add accepted artifact sets for:
+  - `feature_selection/execution_environment.json`
   - `feature_selection/resource_plan.json`
   - `feature_selection/sampling_plan.json`
   - `feature_selection/batch_plan.json`
   - `feature_selection/profiles/*.json`
   - `queries/sql_evidence_manifest.json`
 - Add rules:
+  - Feature selection must detect platform and data-pull engine before pulling DP data.
+  - Windows/macOS feature-selection data pulls use local `dp_cli`.
+  - Linux/other feature-selection data pulls use `TMLSQLClient`.
+  - `sh_dp_mcp` remains the profiler on every platform.
   - DP pulls require resource and sampling plans.
   - SQL and planning evidence must be tracked.
   - Data files and heavy caches must stay ignored.
@@ -294,9 +362,9 @@
 - [ ] Run `pytest tests/test_workflow_state.py tests/test_harness_hardening.py -q`.
 - [ ] Run `rmw workflow validate --workflow workflows/full_modeling.yml`.
 
-## Chunk 9: End-to-End Verification
+## Chunk 10: End-to-End Verification
 
-### Task 9: Final Checks
+### Task 10: Final Checks
 
 **Goal:** Verify the implementation without relying on real DP data pulls.
 
@@ -316,9 +384,8 @@
 - Final response reports any unverified DP-live behavior separately.
 
 **Verification:**
-- [ ] Run `pytest tests/test_resource_planning.py tests/test_sql_evidence.py tests/test_table_profile.py tests/test_feature_intake_plan.py tests/test_feature_pipeline_flow.py -q`.
+- [ ] Run `pytest tests/test_resource_planning.py tests/test_data_pull_engine.py tests/test_sql_evidence.py tests/test_table_profile.py tests/test_feature_intake_plan.py tests/test_feature_pipeline_flow.py -q`.
 - [ ] Run `pytest tests -q`.
 - [ ] Run `rmw workflow validate --workflow workflows/full_modeling.yml`.
 - [ ] Run `rmw project validate --project projects/2026-05-fujie-gcard-v1`.
 - [ ] Run `git status --short`.
-

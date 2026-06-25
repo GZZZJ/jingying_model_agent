@@ -18,8 +18,11 @@ This design applies to the reusable `rmw` workbench. Fujie GCard is the active c
 - Apply a peak-memory multiplier before deciding row capacity:
   - feature prescreening: default `3.0`
   - feature refinement and model-importance stages: default `4.0`
-- Use `sh_dp_mcp` for remote select-only exploration: counts, split distribution, schema-like probes, random-field checks, and created-table validation.
-- Use `TMLSQLClient` for actual data extraction and create-table execution after SQL review and approval.
+- At the beginning of feature selection, detect the current execution platform and select the DP data-pull engine.
+- Use `sh_dp_mcp` for remote select-only exploration on every platform: counts, split distribution, schema-like probes, random-field checks, and created-table validation.
+- Use local `dp_cli` for DP data extraction on Windows and macOS environments.
+- Use `TMLSQLClient` for DP data extraction on Linux and other environments.
+- Keep create-table execution as a separate reviewed execution path. By default, CTAS execution still uses the existing approved execution wrapper unless a future implementation proves `dp_cli` can support the same DDL safety contract.
 - If row count is too large, reduce the random sampling ratio and/or add a `limit`.
 - If feature count is too large, process features in batches. The default batch size is 1000 feature columns.
 - Release no-longer-needed in-memory tables, feature frames, model objects, and LightGBM datasets throughout the flow.
@@ -30,6 +33,8 @@ This design applies to the reusable `rmw` workbench. Fujie GCard is the active c
 
 - Do not remove the existing SQL approval gate.
 - Do not make `sh_dp_mcp` responsible for bulk data transfer or table creation.
+- Do not use `dp_cli` for metadata exploration when `sh_dp_mcp` is available; `dp_cli` is only the selected data-pull engine on Windows/macOS.
+- Do not assume the Windows/macOS `dp_cli` pull path can safely execute CTAS DDL.
 - Do not store raw row-level data, feather files, pickle caches, model binaries, secrets, or local credentials in Git.
 - Do not treat `.pkl` checkpoints or `.feather` files as the only audit evidence.
 - Do not require DEV/OOT balanced sampling unless a future request explicitly changes the default.
@@ -41,7 +46,7 @@ The existing workbench already has these reusable pieces:
 - `src/risk_model_workbench/batch_feature_select.py`: per-table feature prescreening, DP feather cache, D01/D02 screening, and parallel table processing.
 - `src/risk_model_workbench/feature_refine.py`: wide-table sampling SQL, `--sample-max-rows`, DP feather cache, D03/D04/D05 refinement.
 - `src/risk_model_workbench/wide_sql.py`: wide-table CTAS SQL generation.
-- `src/risk_model_workbench/dp_feather.py`: `TMLSQLClient` query execution, local feather writing, create-table execution, and SQL approval prompts.
+- `src/risk_model_workbench/dp_feather.py`: DP query execution, local feather writing, create-table execution, and SQL approval prompts. It currently uses `TMLSQLClient` and should gain an environment-selected data-pull engine.
 - `src/risk_model_workbench/cli.py`: run-stage orchestration and artifact registration.
 - `workflows/full_modeling.yml`: stage contracts for feature metadata, prescreening, wide-table build, refinement, training, evaluation, comparison, and reporting.
 
@@ -53,6 +58,7 @@ Add a shared resource-aware intake layer used by both feature prescreening and f
 
 ```text
 user/request SQL
+  -> execution environment detection
   -> SQL evidence registry
   -> remote table profiling through sh_dp_mcp
   -> local memory probe
@@ -60,7 +66,7 @@ user/request SQL
   -> uniform random sampling plan
   -> feature batch plan
   -> reviewed SQL generation
-  -> TMLSQLClient execution or local cache read
+  -> dp_cli or TMLSQLClient data pull, selected by platform
   -> feature screening/refinement
   -> per-batch evidence and aggregate result
 ```
@@ -72,6 +78,7 @@ user/request SQL
 Responsibilities:
 
 - Read total memory and currently available memory for the running environment.
+- Record the platform name used by the data-pull engine selector.
 - Compute the usable memory budget: `available_memory_bytes * memory_budget_fraction`.
 - Estimate matrix capacity after peak multiplier.
 - Record the environment snapshot and formulas used.
@@ -79,6 +86,40 @@ Responsibilities:
 Output:
 
 - `runs/<run_id>/feature_selection/resource_plan.json`
+
+### Execution Environment Detector
+
+Responsibilities:
+
+- Detect the current platform before feature selection data access begins.
+- Normalize platform values into `windows`, `macos`, `linux`, or `other`.
+- Persist the selected data-pull engine and reason.
+- Fail early when the selected engine is unavailable and no explicit override is configured.
+
+Default engine mapping:
+
+| Platform | Data-pull engine | Reason |
+| --- | --- | --- |
+| Windows | local `dp_cli` | Local desktop environment should avoid `TMLSQLClient` for bulk pull. |
+| macOS | local `dp_cli` | Local desktop environment should avoid `TMLSQLClient` for bulk pull. |
+| Linux | `TMLSQLClient` | Server/notebook environment keeps existing behavior. |
+| Other | `TMLSQLClient` | Conservative fallback to existing behavior. |
+
+Output:
+
+- `runs/<run_id>/feature_selection/execution_environment.json`
+
+### Data Pull Engine
+
+Responsibilities:
+
+- Expose one interface for reviewed DP select queries that return local DataFrames or feather files.
+- Use `dp_cli` on Windows/macOS.
+- Use `TMLSQLClient` on Linux/other platforms.
+- Keep SQL approval behavior identical regardless of selected engine.
+- Persist engine, platform, SQL hash, row count, column count, and local data path in metadata.
+
+This boundary applies to data extraction for prescreening and refinement. It does not replace `sh_dp_mcp` profiling, and it does not automatically replace CTAS execution.
 
 ### Remote Table Profiler
 
@@ -90,7 +131,7 @@ Responsibilities:
 - Capture label-valid counts when a target column exists.
 - Capture available random columns and their usable value ranges.
 - Capture a bounded schema/column probe.
-- Profile newly created wide tables after `TMLSQLClient` CTAS execution.
+- Profile newly created wide tables after reviewed CTAS execution.
 
 Output examples:
 
@@ -221,6 +262,7 @@ runs/<run_id>/
     generated/
     sql_evidence_manifest.json
   feature_selection/
+    execution_environment.json
     resource_plan.json
     sampling_plan.json
     batch_plan.json
@@ -258,7 +300,8 @@ The current repository `.gitignore` already excludes these data and binary artif
 
 - Every generated SQL must be written before execution.
 - Create-table SQL still goes through static SQL review.
-- `--sql-approved` remains required before `TMLSQLClient` runs data pulls or CTAS statements.
+- `--sql-approved` remains required before either `dp_cli` or `TMLSQLClient` runs data pulls.
+- `--sql-approved` remains required before the reviewed CTAS execution path runs create-table statements.
 - `sh_dp_mcp` exploration queries are select-only and bounded by the MCP result limit.
 - High-risk SQL review findings block execution even when approval is present.
 
@@ -267,6 +310,8 @@ The current repository `.gitignore` already excludes these data and binary artif
 Fail fast when:
 
 - memory cannot be probed and no manual memory budget is provided
+- platform detection fails and no explicit pull-engine override is provided
+- the selected data-pull engine is unavailable in the current environment
 - the source table cannot be profiled
 - no usable random column or sampling expression exists
 - sampled rows are estimated to exceed memory budget
@@ -292,7 +337,10 @@ Focused unit tests:
 Integration-style tests with fakes:
 
 - `sh_dp_mcp` table profile adapter using fake query results
-- `TMLSQLClient` execution using fake clients
+- data-pull engine selection for Windows/macOS/Linux/other platforms
+- `dp_cli` data-pull execution using fake clients
+- `TMLSQLClient` data-pull execution using fake clients
+- CTAS execution using fake clients
 - prescreen run writes tracked JSON/CSV/SQL evidence
 - refine dry run writes sampling and batch plans
 - wide-table execution writes profile evidence after CTAS
@@ -303,4 +351,3 @@ Smoke commands:
 - `pytest tests -q`
 - `rmw workflow validate --workflow workflows/full_modeling.yml`
 - `rmw project validate --project projects/2026-05-fujie-gcard-v1`
-
