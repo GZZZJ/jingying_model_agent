@@ -18,7 +18,7 @@ const nextActionsEl = document.querySelector("#nextActions");
 const STORAGE_KEY = "risk_model_request_builder";
 const LEGACY_STORAGE_KEY = "jingying_model_request_builder";
 const CUSTOM_TEMPLATE_STORAGE_KEY = "risk_model_request_builder_custom_templates";
-const DEFAULT_PROJECT_NAME = "new-model-project";
+const DEFAULT_PROJECT_NAME = "2026-05-fujie-gcard-v1";
 
 const FORM_STEPS = [
   {
@@ -81,6 +81,7 @@ const STEP_ALIASES = {
 const CHECKBOX_GROUPS = [
   "feature_steps",
   "metrics",
+  "comparison_dimensions",
   "report_sections",
   ...STAGE_GROUPS.map((item) => item.key),
 ];
@@ -466,16 +467,16 @@ const PROFILE_PRESETS = {
 
 const defaults = {
   request_id: "2026-06-fujie-gcard-baseline",
-  title: "复借 G 卡 baseline 建模需求",
+  title: "复借 G 卡主模型从0重跑",
   project: "2026-05-fujie-gcard-v1",
   owner: "辜子骏",
   workflow: "full_modeling",
   business_domain: "inloan_operation",
   scenario_profile: "fujie_gcard_main_lgbm",
-  objective: "训练候选复借意愿模型，并与历史 GCard 分数进行 champion/challenger 对比。",
+  objective: "基于最新复借G卡宽表数据口径，重新执行样本检查、特征收敛、LightGBM训练、评估、历史分对比和报告生成，形成可审计的新run产物。",
   data_source_mode: "remote_table",
-  sample_location: "ads_app_off_feature.ds29531_backtrack_fj_gcard_model_v6_1_sample",
-  feature_location: "70张候选特征表；详见 configs/feature_tables.txt",
+  sample_location: "pdm_risk.pdm_risk_fujie_gcard_d01_d02_wide_feature_v6_1",
+  feature_location: "复借G卡D01/D02宽表候选特征；特征元数据和映射以本轮run注册产物为准",
   target_column: "ftr_30d_ord_flag",
   id_columns: "uid, mdl_dte",
   time_column: "mdl_dte",
@@ -487,18 +488,20 @@ const defaults = {
   sample_definition: "可经营、当前未逾期用户、重资产订单；标签为观察日30天内是否发起。",
   feature_sources: "已回溯的70张候选特征表，候选字段约15028个。",
   require_sql_approval: true,
-  feature_notes: "真实拉数前必须 dry-run SQL 并获得明确批准；vendor/feature-select-v2/scripts/code/ 视为只读。",
+  feature_notes:
+    "本轮按复借G卡主模型专用链路执行：导出和注册特征元数据，进行特征质量初筛，生成宽表 SQL 并经过 SQL review gate，再在宽表基础上执行可用性、缺失率、常量、IV、相关性、随机噪声、空标签和基线模型重要性筛选。\n\n非特征字段必须从入模候选中排除，包括主键、标签、切分字段、历史分、随机列和报告辅助字段。",
   candidate_targets: "ftr_30d_ord_flag",
   sample_variants: "all, e2e3, b2",
-  experiment_description: "先跑全客群 baseline，再补老户次新、流失户和分客群加权实验。",
-  modeling_notes: "先跑全客群 baseline，再补老户次新、流失户和分客群加权实验。",
+  experiment_description: "训练全客群 LightGBM 主模型 main_lgbm，分客群只用于评估切片。",
+  modeling_notes: "训练前必须确认样本检查、特征清单和 SQL 审批状态；如缺少真实训练数据或特征清单，应停止并标记原因，不得继续产出伪完成结果。",
   champions: "gcard_v2, gcard_v4, gcard_v5, gcard_v6",
-  comparison_dimensions: "split, month, segment, decile",
+  comparison_dimensions: ["split", "month", "segment", "decile"],
   risk_profile_dimensions: "blue_customer_flag, zc_level",
   report_outputs: "model_report.md, model_card.md, executive_summary.md",
-  extra_notes: "缺失真实训练或评估结果时必须标记 scaffold，不得编造指标。",
+  extra_notes:
+    "本次目标是从当前 risk_model_workbench 重新初始化并执行一版复借G卡主模型 run，不复用旧 run 的完成状态。数据口径需与最近一次复借G卡宽表口径保持一致。\n\n真实远端取数、profile、宽表 SQL 或 DP 拉数前必须先生成 SQL 并人工确认。缺失真实训练、评估或对比产物时，只能标记 scaffold，不得把导入产物或占位结果当作本轮重跑证据。\n\nvendor/feature-select-v2/scripts/code/ 只读，不作为本次修改范围。",
   feature_steps: ["metadata", "prescreen", "refine"],
-  metrics: ["auc", "ks", "decile_lift", "ranking_inversion"],
+  metrics: ["auc", "ks", "decile_lift", "ranking_inversion", "psi"],
   report_sections: [
     "sample_overview",
     "feature_screening",
@@ -506,13 +509,16 @@ const defaults = {
     "top_features",
     "model_performance",
     "champion_comparison",
+    "risk_profile",
     "next_action",
   ],
   experiments: [
-    { name: "baseline_all", method: "xgboost", segment: "all", description: "全客群 baseline。" },
-    { name: "baseline_e2e3", method: "xgboost", segment: "e2e3", description: "老户次新客群 baseline。" },
-    { name: "baseline_b2", method: "xgboost", segment: "b2", description: "流失户客群 baseline。" },
-    { name: "weighted_by_segment_v1", method: "xgboost", segment: "all", description: "按客群权重调整的候选实验。" },
+    {
+      name: "main_lgbm",
+      method: "lightgbm",
+      segment: "all",
+      description: "全客群复借G卡主模型，分客群只作为评估切片，不单独训练分客群模型。",
+    },
   ],
   ...BASE_PARAM_DEFAULTS,
   ...PROFILE_PRESETS.fujie_gcard_main_lgbm,
@@ -547,7 +553,7 @@ const newDocumentDefaults = {
   experiment_description: "",
   modeling_notes: "",
   champions: "",
-  comparison_dimensions: "",
+  comparison_dimensions: ["split", "month", "decile"],
   risk_profile_dimensions: "",
   report_outputs: "model_report.md, model_card.md, executive_summary.md",
   extra_notes: "",
@@ -569,6 +575,7 @@ const blankTemplateDefaults = {
   ...newDocumentDefaults,
   feature_steps: [],
   metrics: [],
+  comparison_dimensions: [],
   report_sections: [],
   report_outputs: "",
   experiments: [],
@@ -620,10 +627,18 @@ function taskModeLabel(workflow) {
 }
 
 function list(value) {
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item).trim()).filter(Boolean);
+  }
   return String(value || "")
     .split(/[,\n]/)
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function displayList(value) {
+  const items = list(value);
+  return items.length ? items.join(", ") : "待补充。";
 }
 
 function yamlScalar(value) {
@@ -747,6 +762,7 @@ function normalizeState(state = {}) {
     merged.feature_steps = featureRoundsForProfile(scenarioProfile);
   }
   merged.feature_steps = (merged.feature_steps || []).map((step) => (step === "d01_d02" ? "prescreen" : step));
+  merged.comparison_dimensions = list(merged.comparison_dimensions);
   STAGE_GROUPS.forEach(({ key }) => {
     merged[key] = (merged[key] || []).map((step) => STEP_ALIASES[step] || step);
   });
@@ -1046,7 +1062,7 @@ function setField(name, value) {
   }
 }
 
-function experimentRow(exp = { name: "", method: "xgboost", segment: "all", description: "" }) {
+function experimentRow(exp = { name: "", method: "lightgbm", segment: "all", description: "" }) {
   const row = document.createElement("div");
   row.className = "experiment-row";
   row.innerHTML = `
@@ -1061,7 +1077,7 @@ function experimentRow(exp = { name: "", method: "xgboost", segment: "all", desc
     <button type="button" class="remove-experiment" title="删除实验">×</button>
     <textarea data-exp="description" class="experiment-description" rows="2" placeholder="实验说明（可选）">${escapeHtml(exp.description || "")}</textarea>
   `;
-  row.querySelector('[data-exp="method"]').value = exp.method || "xgboost";
+  row.querySelector('[data-exp="method"]').value = exp.method || "lightgbm";
   row.querySelector(".remove-experiment").addEventListener("click", () => {
     row.remove();
     update();
@@ -1072,7 +1088,7 @@ function experimentRow(exp = { name: "", method: "xgboost", segment: "all", desc
 
 function setExperiments(items) {
   experimentsEl.innerHTML = "";
-  (Array.isArray(items) ? items : [{ name: "baseline_all", method: "xgboost", segment: "all" }]).forEach((item) => {
+  (Array.isArray(items) ? items : [{ name: "baseline_all", method: "lightgbm", segment: "all" }]).forEach((item) => {
     experimentsEl.appendChild(experimentRow(item));
   });
 }
@@ -1136,7 +1152,7 @@ function collectState() {
     modeling_notes: field("modeling_notes"),
     metrics: getCheckboxGroup("metrics"),
     champions: field("champions"),
-    comparison_dimensions: field("comparison_dimensions"),
+    comparison_dimensions: getCheckboxGroup("comparison_dimensions"),
     risk_profile_dimensions: field("risk_profile_dimensions"),
     report_sections: getCheckboxGroup("report_sections"),
     report_outputs: field("report_outputs"),
@@ -1288,9 +1304,9 @@ function buildMarkdown(state) {
     "",
     "# 评估与报告要求",
     "",
-    `重点比较维度：${state.comparison_dimensions || "待补充。"}`,
+    `重点比较维度：${displayList(state.comparison_dimensions)}`,
     "",
-    `风险画像维度：${state.risk_profile_dimensions || "待补充。"}`,
+    `风险画像维度：${displayList(state.risk_profile_dimensions)}`,
     "",
     "# 补充说明",
     "",
@@ -1440,9 +1456,7 @@ function applyState(state, { persist = true } = {}) {
   update({ persist });
 }
 
-function applyBusinessDomainDefaults() {
-  const businessDomain = field("business_domain") || newDocumentDefaults.business_domain;
-  const profile = scenarioProfileForBusinessDomain(businessDomain);
+function applyProfileExecutionDefaults(profile) {
   const preset = profilePreset(profile);
   const paramDefaults = paramDefaultsForProfile(profile);
 
@@ -1457,6 +1471,35 @@ function applyBusinessDomainDefaults() {
     setField(key, value);
   });
   update();
+}
+
+function applyBusinessDomainDefaults() {
+  const businessDomain = field("business_domain") || newDocumentDefaults.business_domain;
+  const profile = scenarioProfileForBusinessDomain(businessDomain);
+  applyProfileExecutionDefaults(profile);
+}
+
+function applyScenarioProfileDefaults() {
+  const profile = field("scenario_profile") || newDocumentDefaults.scenario_profile;
+  const businessDomain = businessDomainForProfile(profile);
+  setField("business_domain", businessDomain);
+
+  if (profile === "fujie_gcard_main_lgbm") {
+    const current = collectState();
+    applyState(
+      {
+        ...current,
+        ...defaults,
+        request_id: current.request_id,
+        title: current.title || defaults.title,
+        owner: current.owner || defaults.owner,
+      },
+      { persist: true },
+    );
+    return;
+  }
+
+  applyProfileExecutionDefaults(profile);
 }
 
 async function copyMarkdown() {
@@ -1589,7 +1632,7 @@ document.addEventListener("keydown", (event) => {
   }
 });
 document.querySelector("#addExperiment").addEventListener("click", () => {
-  experimentsEl.appendChild(experimentRow({ name: "", method: "xgboost", segment: "all" }));
+  experimentsEl.appendChild(experimentRow({ name: "", method: "lightgbm", segment: "all" }));
   update();
 });
 document.querySelector("#prevSection").addEventListener("click", () => {
@@ -1606,6 +1649,10 @@ form.addEventListener("input", update);
 form.addEventListener("change", (event) => {
   if (event.target.name === "business_domain") {
     applyBusinessDomainDefaults();
+    return;
+  }
+  if (event.target.name === "scenario_profile") {
+    applyScenarioProfileDefaults();
     return;
   }
   update();

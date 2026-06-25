@@ -8,8 +8,10 @@
 
 页面会隐藏技术性的 `request_id` 并自动生成；`workflow` 在界面上显示为
 中文“任务模式”，导出的 Markdown 仍保留底层 `workflow` 值以兼容 `rmw`。
-样本页只要求用户填写样本位置、标签字段、时间字段、切分字段和
-DEV/OOS/OOT 取值；`id_columns` 可由 project.yml 的数据契约提供。
+建模场景 `scenario_profile` 在界面上显式选择，用于控制默认执行步骤、
+参数和场景合同；复借 G 卡从 0 重跑应选择“复借 G 卡主模型”。
+样本页要求用户确认样本位置、主键字段、标签字段、时间字段、分区字段、
+切分字段和 DEV/OOS/OOT 取值，避免关键数据合同只藏在 project.yml 中。
 样本页也会显式导出 `data_source_mode`：`remote_table` 表示 DP 表或
 SQL 来源，`local_feather` 表示本地 `.feather` 文件。选择本地 feather
 时，文件仅作为运行时输入，不能上传、复制进 Git 或注册为 tracked artifact。
@@ -23,11 +25,14 @@ SQL 来源，`local_feather` 表示本地 `.feather` 文件。选择本地 feath
 - `恢复草稿`：读取浏览器本地保存的上一份编辑草稿。
 
 页面上的业务域固定为 `获客 / 贷前 / 贷中风险 / 贷中经营` 四类；
-`scenario_profile` 会按业务域自动映射，模板只是初始化表单的一种来源。
+切换业务域会映射到对应的通用场景；如果需要项目专用链路，应在“建模场景”
+里显式选择，例如 `fujie_gcard_main_lgbm`。
 如果只填写“实验一句话描述”而不添加结构化实验，页面会导出一个
 `baseline_from_description` 兼容实验。
-页面本身不直接和某个 project workspace 交互；生成的 Markdown 仍保留
-`project` front matter 占位，实际校验和执行时以 `rmw --project <project>` 为准。
+评估页的重点比较维度使用多选控件，中文选项会导出为稳定 token：
+`split`、`month`、`segment`、`decile`。
+页面本身不直接执行 project workspace；生成的 Markdown 会保留 `project`
+front matter，实际校验和执行时仍以 `rmw --project <project>` 为准。
 
 打开方式：
 

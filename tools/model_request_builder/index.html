@@ -80,7 +80,21 @@
                     <option value="inloan_risk">贷中风险</option>
                     <option value="inloan_operation">贷中经营</option>
                   </select>
-                  <input type="hidden" name="scenario_profile" />
+                </label>
+                <label>
+                  <span>建模场景</span>
+                  <select name="scenario_profile">
+                    <option value="acquisition">获客通用</option>
+                    <option value="acquisition_quality">获客质量</option>
+                    <option value="acquisition_conversion">获客转化</option>
+                    <option value="preloan_credit_card">贷前信用卡</option>
+                    <option value="credit_product_eval">资信产品评估</option>
+                    <option value="inloan_behavior_card">贷中行为卡</option>
+                    <option value="inloan_operation">贷中经营通用</option>
+                    <option value="feature_gain_eval">特征增益评估</option>
+                    <option value="fujie_gcard_main_lgbm">复借 G 卡主模型</option>
+                  </select>
+                  <small class="field-help">决定导出的 stage_steps 和默认参数；复借 G 卡重跑请选择专用场景。</small>
                 </label>
               </div>
               <label>
@@ -94,9 +108,6 @@
                 <h2>样本与切分</h2>
                 <span>数据位置、标签、时间和 DEV/OOS/OOT 口径</span>
               </div>
-              <input type="hidden" name="feature_location" />
-              <input type="hidden" name="id_columns" />
-              <input type="hidden" name="period_column" />
               <div class="field-grid two">
                 <label>
                   <span>数据源模式</span>
@@ -119,6 +130,14 @@
                   <input name="time_column" />
                 </label>
                 <label>
+                  <span>主键字段</span>
+                  <input name="id_columns" placeholder="uid, mdl_dte" />
+                </label>
+                <label>
+                  <span>分区字段</span>
+                  <input name="period_column" placeholder="ds" />
+                </label>
+                <label>
                   <span>切分字段</span>
                   <input name="split_column" required />
                 </label>
@@ -133,6 +152,10 @@
                 <label>
                   <span>OOT 取值</span>
                   <input name="oot_values" placeholder="OOT, OOT-OOS" />
+                </label>
+                <label class="wide-field">
+                  <span>特征来源</span>
+                  <input name="feature_location" placeholder="例如复借G卡D01/D02宽表候选特征；或 configs/feature_tables.txt" />
                 </label>
               </div>
               <label>
@@ -369,10 +392,6 @@
                   <input name="champions" placeholder="gcard_v2, gcard_v4, gcard_v5, gcard_v6" />
                 </label>
                 <label>
-                  <span>重点比较维度</span>
-                  <input name="comparison_dimensions" placeholder="split, month, segment, decile" />
-                </label>
-                <label>
                   <span>风险画像维度</span>
                   <input name="risk_profile_dimensions" placeholder="blue_customer_flag, zc_level, ..." />
                 </label>
@@ -380,6 +399,15 @@
                   <span>报告输出</span>
                   <input name="report_outputs" placeholder="model_report.md, model_card.md, executive_summary.md" />
                 </label>
+              </div>
+              <div class="dimension-panel">
+                <h3>重点比较维度</h3>
+                <div class="check-grid compact" data-group="comparison_dimensions">
+                  <label><input type="checkbox" value="split" checked /> 样本切分</label>
+                  <label><input type="checkbox" value="month" checked /> 月份稳定性</label>
+                  <label><input type="checkbox" value="segment" checked /> 业务客群</label>
+                  <label><input type="checkbox" value="decile" checked /> 分数十分箱</label>
+                </div>
               </div>
             </section>
 
