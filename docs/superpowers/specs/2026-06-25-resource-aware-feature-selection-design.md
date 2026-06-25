@@ -6,13 +6,18 @@ Date: 2026-06-25
 
 Add a resource-aware data intake gate to the risk modeling workbench so feature prescreening and refinement can adapt to the memory capacity of the current execution environment before pulling DP data into memory.
 
-The goal is not to make local machines handle unlimited data. The goal is to make each run explicit about table scale, memory budget, sampling decisions, feature batching, SQL lineage, and intermediate screening evidence.
+The goal is not to make local machines handle unlimited data. The goal is to make each run explicit about data source mode, table scale or local file scale, memory budget, sampling decisions, feature batching, SQL lineage, and intermediate screening evidence.
 
 This design applies to the reusable `rmw` workbench. Fujie GCard is the active case and regression example, but the implementation must stay generic.
 
 ## Confirmed Decisions
 
 - Use full-table uniform random sampling by default, not DEV/OOT stratified sampling.
+- The request-builder HTML must let the user explicitly choose the modeling data source mode:
+  - remote DP table or SQL-backed source
+  - local feather file
+- The exported Markdown must preserve that choice with a stable field such as `data_source_mode: local_feather`.
+- A local feather file can be used directly as the data source for the full workflow when it contains the required sample, split, label, and feature columns.
 - Use the current environment's available memory as the sizing basis.
 - Default readable memory budget is 80% of currently available memory.
 - Apply a peak-memory multiplier before deciding row capacity:
@@ -35,6 +40,8 @@ This design applies to the reusable `rmw` workbench. Fujie GCard is the active c
 - Do not make `sh_dp_mcp` responsible for bulk data transfer or table creation.
 - Do not use `dp_cli` for metadata exploration when `sh_dp_mcp` is available; `dp_cli` is only the selected data-pull engine on Windows/macOS.
 - Do not assume the Windows/macOS `dp_cli` pull path can safely execute CTAS DDL.
+- Do not upload, copy into Git, or register raw local feather data as a tracked artifact.
+- Do not run remote table profiling or DP pulling when the request explicitly selects local feather mode and no remote table is configured.
 - Do not store raw row-level data, feather files, pickle caches, model binaries, secrets, or local credentials in Git.
 - Do not treat `.pkl` checkpoints or `.feather` files as the only audit evidence.
 - Do not require DEV/OOT balanced sampling unless a future request explicitly changes the default.
@@ -50,28 +57,72 @@ The existing workbench already has these reusable pieces:
 - `src/risk_model_workbench/cli.py`: run-stage orchestration and artifact registration.
 - `workflows/full_modeling.yml`: stage contracts for feature metadata, prescreening, wide-table build, refinement, training, evaluation, comparison, and reporting.
 
-The missing piece is a shared gate that decides how much data to pull and how to split feature batches before the heavy work starts.
+The missing piece is a shared gate that decides which data source mode is active, how much data to pull or read, and how to split feature batches before the heavy work starts.
 
 ## Architecture
 
 Add a shared resource-aware intake layer used by both feature prescreening and feature refinement.
 
 ```text
-user/request SQL
+request-builder HTML
+  -> Markdown request with data_source_mode
+  -> request validation and runtime config materialization
+  -> data source resolver
   -> execution environment detection
-  -> SQL evidence registry
-  -> remote table profiling through sh_dp_mcp
+  -> SQL evidence registry when remote SQL/table mode is active
+  -> remote table profiling through sh_dp_mcp or local feather profiling
   -> local memory probe
   -> capacity estimate
   -> uniform random sampling plan
   -> feature batch plan
   -> reviewed SQL generation
-  -> dp_cli or TMLSQLClient data pull, selected by platform
+  -> dp_cli/TMLSQLClient data pull or local feather read
   -> feature screening/refinement
   -> per-batch evidence and aggregate result
 ```
 
 ## Component Boundaries
+
+### Request Builder Data Source Contract
+
+Responsibilities:
+
+- Add an explicit data source selector in `tools/model_request_builder/index.html`.
+- Store the selector in the builder state in `tools/model_request_builder/app.js`.
+- Export the selector to Markdown front matter.
+- Keep `sample_location` as the location field, but validate it according to mode:
+  - remote table mode: table name or SQL reference
+  - local feather mode: local `.feather` path, usually under `data/raw/` or another local ignored data directory
+- Show local feather mode as a first-class user choice, not a hidden convention inferred only from file suffix.
+
+Recommended Markdown fields:
+
+```yaml
+data_source_mode: local_feather
+sample_location: data/raw/model.feather
+```
+
+For remote sources:
+
+```yaml
+data_source_mode: remote_table
+sample_location: ads_app_off_feature.some_sample_table
+```
+
+### Data Source Resolver
+
+Responsibilities:
+
+- Resolve request metadata into one canonical data contract for the run.
+- For `local_feather`, write runtime configs with `data.raw_path` and no required DP pull.
+- For `remote_table`, write runtime configs with `data.source_table` and keep the remote profiling/pull path active.
+- Persist the resolved mode and reason.
+- Fail early when local feather mode is selected but the path is missing, not a feather file, or does not contain required fields.
+
+Output:
+
+- `runs/<run_id>/feature_selection/data_source_contract.json`
+- `runs/<run_id>/configs_runtime/project.yml`
 
 ### Environment Capacity Probe
 
@@ -119,7 +170,7 @@ Responsibilities:
 - Keep SQL approval behavior identical regardless of selected engine.
 - Persist engine, platform, SQL hash, row count, column count, and local data path in metadata.
 
-This boundary applies to data extraction for prescreening and refinement. It does not replace `sh_dp_mcp` profiling, and it does not automatically replace CTAS execution.
+This boundary applies to remote data extraction for prescreening and refinement. It does not replace `sh_dp_mcp` profiling, it does not automatically replace CTAS execution, and it is bypassed when local feather mode is active.
 
 ### Remote Table Profiler
 
@@ -138,6 +189,19 @@ Output examples:
 - `runs/<run_id>/feature_selection/profiles/source_table_profile.json`
 - `runs/<run_id>/feature_selection/profiles/wide_table_profile.json`
 - `runs/<run_id>/feature_selection/profiles/random_column_profile.json`
+
+### Local Feather Profiler
+
+Responsibilities:
+
+- Inspect a local feather file without treating it as a tracked artifact.
+- Capture file path, existence, size, row count, column count, required-field availability, split distribution, label-valid counts, and candidate feature count.
+- Reuse the same memory capacity estimate before reading large local files into pandas.
+- Persist only metadata and profile summaries, never the feather payload.
+
+Output examples:
+
+- `runs/<run_id>/feature_selection/profiles/local_feather_profile.json`
 
 ### SQL Evidence Registry
 
@@ -163,6 +227,7 @@ Responsibilities:
 - Fall back only when the workflow can prove a safe random expression exists.
 - Generate sampling predicates such as `rand_flag0 < 0.1`.
 - Add `limit <max_rows>` when needed to keep memory under budget.
+- For local feather mode, generate an equivalent local row-selection plan rather than SQL predicates.
 - Preserve the user-visible rationale.
 
 Output:
@@ -244,6 +309,8 @@ Prescreening:
 - Existing logic already screens per feature table.
 - Add row-capacity planning and optional intra-table feature batches when a single feature table has too many columns.
 - Persist per-table and per-batch evidence as JSON/CSV, not only `.pkl` checkpoints.
+- In local feather mode, if the file already contains a wide candidate-feature frame, prescreen/refine should operate directly on the local columns and skip remote feature-table pulls.
+- In local feather mode, `build_wide_sql` should be skipped or marked not applicable unless the request also provides remote feature tables.
 
 Refinement:
 
@@ -262,11 +329,13 @@ runs/<run_id>/
     generated/
     sql_evidence_manifest.json
   feature_selection/
+    data_source_contract.json
     execution_environment.json
     resource_plan.json
     sampling_plan.json
     batch_plan.json
     profiles/
+      local_feather_profile.json
       source_table_profile.json
       random_column_profile.json
       wide_table_profile.json
@@ -286,6 +355,7 @@ runs/<run_id>/
 Ignored data/cache artifacts:
 
 ```text
+projects/*/data/raw/*
 projects/*/data/local/**
 projects/*/runs/**/*.feather
 projects/*/runs/**/*.pkl
@@ -304,6 +374,7 @@ The current repository `.gitignore` already excludes these data and binary artif
 - `--sql-approved` remains required before the reviewed CTAS execution path runs create-table statements.
 - `sh_dp_mcp` exploration queries are select-only and bounded by the MCP result limit.
 - High-risk SQL review findings block execution even when approval is present.
+- Local feather mode does not require SQL approval for reading the local file, but it still requires local file profiling, memory planning, and artifact evidence before heavy processing.
 
 ## Failure Handling
 
@@ -312,6 +383,7 @@ Fail fast when:
 - memory cannot be probed and no manual memory budget is provided
 - platform detection fails and no explicit pull-engine override is provided
 - the selected data-pull engine is unavailable in the current environment
+- local feather mode is selected but the file is missing, unreadable, not `.feather`, or lacks required fields
 - the source table cannot be profiled
 - no usable random column or sampling expression exists
 - sampled rows are estimated to exceed memory budget
@@ -338,6 +410,9 @@ Integration-style tests with fakes:
 
 - `sh_dp_mcp` table profile adapter using fake query results
 - data-pull engine selection for Windows/macOS/Linux/other platforms
+- request-builder export of `data_source_mode`
+- local feather request validation and runtime materialization
+- local feather profiling with fake feather fixtures
 - `dp_cli` data-pull execution using fake clients
 - `TMLSQLClient` data-pull execution using fake clients
 - CTAS execution using fake clients
