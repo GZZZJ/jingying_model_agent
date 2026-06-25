@@ -1,6 +1,8 @@
+import re
 from pathlib import Path
 
 from risk_model_workbench.cli import main
+from risk_model_workbench.planning.steps import KNOWN_STAGES, STEP_REGISTRY
 from risk_model_workbench.planning import create_execution_plan
 from risk_model_workbench.request import parse_model_request, validate_model_request
 
@@ -36,8 +38,12 @@ def test_create_execution_plan_from_request():
     task_ids = [task["task_id"] for task in plan["tasks"]]
     assert "sample_check_profile" in task_ids
     assert "feature_prescreen" in task_ids
+    assert "build_wide_sql" in task_ids
     assert "train_baseline_all" in task_ids
     assert task_ids[-1] == "report_final"
+    assert task_ids.index("feature_prescreen") < task_ids.index("build_wide_sql") < task_ids.index("feature_refine")
+    feature_refine = next(task for task in plan["tasks"] if task["task_id"] == "feature_refine")
+    assert feature_refine["depends_on"] == ["build_wide_sql"]
     assert plan["scenario_profile"] == "fujie_gcard_main_lgbm"
     assert "sql_review_gate" in plan["stage_steps"]["build_wide_sql"]
     assert "feature_availability_filter" in plan["stage_steps"]["feature_refine"]
@@ -47,6 +53,18 @@ def test_create_execution_plan_from_request():
     assert "baseline_importance_filter" in plan["stage_steps"]["feature_refine"]
     assert plan["step_params"]["constant_value_filter"]["max_unique_values"] == 1
     assert "hier_ranknet_training" not in {step for steps in plan["stage_steps"].values() for step in steps}
+    assert not plan["planned_steps"]
+
+
+def test_refine_only_feature_rounds_do_not_force_build_wide_sql():
+    request_doc = _request_doc(feature_selection={"rounds": ["refine"]})
+
+    plan = create_execution_plan(request_doc, "projects/2026-05-fujie-gcard-v1")
+    task_ids = [task["task_id"] for task in plan["tasks"]]
+    feature_refine = next(task for task in plan["tasks"] if task["task_id"] == "feature_refine")
+
+    assert "build_wide_sql" not in task_ids
+    assert feature_refine["depends_on"] == ["sample_check_001"]
 
 
 def test_profile_defaults_are_resolved_into_plan_metadata():
@@ -70,7 +88,8 @@ def test_business_domain_defaults_are_resolved_into_profile_metadata():
 
     assert acquisition_plan["scenario_profile"] == "acquisition"
     assert "channel_distribution" in acquisition_plan["stage_steps"]["sample_check"]
-    assert "hier_ranknet_training" in {step["id"] for step in acquisition_plan["planned_steps"]}
+    assert "hier_ranknet_training" in acquisition_plan["stage_steps"]["train_baseline"]
+    assert not acquisition_plan["planned_steps"]
     assert operation_plan["scenario_profile"] == "inloan_operation"
     assert "segment_metrics" in operation_plan["stage_steps"]["evaluate"]
     assert "fujie_gcard_main_lgbm" != operation_plan["scenario_profile"]
@@ -95,6 +114,7 @@ def test_unknown_profile_and_step_fail_validation():
     unknown_profile = validate_model_request(_request_doc(scenario_profile="unknown_profile"))
     unknown_domain = validate_model_request(_request_doc(business_domain="unknown_domain"))
     unknown_step = validate_model_request(_request_doc(stage_steps={"sample_check": ["unknown_step"]}))
+    unknown_workflow = validate_model_request(_request_doc(workflow="unknown_workflow"))
 
     assert unknown_profile["status"] == "failed"
     assert "unknown scenario_profile" in unknown_profile["errors"][0]
@@ -102,17 +122,72 @@ def test_unknown_profile_and_step_fail_validation():
     assert "unknown business_domain" in unknown_domain["errors"][0]
     assert unknown_step["status"] == "failed"
     assert "unknown step id" in unknown_step["errors"][0]
+    assert unknown_workflow["status"] == "failed"
+    assert "unknown workflow" in unknown_workflow["errors"][0]
 
 
-def test_planned_steps_do_not_generate_task_commands():
+def test_custom_training_requires_project_entrypoint():
+    request_doc = _request_doc(experiments=[{"name": "custom_model", "method": "custom"}])
+
+    result = validate_model_request(request_doc, Path("projects/2026-05-fujie-gcard-v1"))
+
+    assert result["status"] == "failed"
+    assert any("custom training requires" in error for error in result["errors"])
+
+
+def test_builder_visible_steps_have_executor_task_binding():
     request_doc = _request_doc(scenario_profile="acquisition_conversion")
 
     plan = create_execution_plan(request_doc, "projects/2026-05-fujie-gcard-v1")
     planned_ids = {step["id"] for step in plan["planned_steps"]}
+    train_task = next(task for task in plan["tasks"] if task["type"] == "train")
 
-    assert "hier_ranknet_training" in planned_ids
-    assert all("hier_ranknet_training" not in task["step_ids"] for task in plan["tasks"])
-    assert all("hier_ranknet" not in " ".join(task["command"]["args"]) for task in plan["tasks"])
+    assert "hier_ranknet_training" not in planned_ids
+    assert "hier_ranknet_training" in train_task["step_ids"]
+
+
+def test_request_builder_stage_and_step_ids_are_known_to_planner():
+    app_js = Path("tools/model_request_builder/app.js").read_text(encoding="utf-8")
+    stage_ids = set(re.findall(r'\{\s*stage:\s*"([^"]+)"', app_js))
+    step_label_block = re.search(r"const STEP_LABELS = \{(?P<body>.*?)\n\};", app_js, flags=re.S)
+    assert step_label_block is not None
+    step_ids = set(re.findall(r"^\s*([a-zA-Z0-9_]+):", step_label_block.group("body"), flags=re.M))
+
+    assert stage_ids <= KNOWN_STAGES
+    assert step_ids <= set(STEP_REGISTRY)
+
+
+def test_request_builder_workflows_are_known_and_limit_planned_tasks():
+    html = Path("tools/model_request_builder/index.html").read_text(encoding="utf-8")
+    workflow_select = re.search(r'<select name="workflow">(?P<body>.*?)</select>', html, flags=re.S)
+    assert workflow_select is not None
+    workflow_options = set(re.findall(r'<option value="([^"]+)"', workflow_select.group("body")))
+
+    expected = {"full_modeling", "feature_selection", "train_baseline", "challenger_evaluation"}
+    assert workflow_options == expected
+
+    feature_plan = create_execution_plan(
+        _request_doc(
+            workflow="feature_selection",
+            scenario_profile="fujie_gcard_main_lgbm",
+            feature_selection={"rounds": ["metadata", "prescreen", "refine"]},
+        ),
+        "projects/2026-05-fujie-gcard-v1",
+    )
+    train_plan = create_execution_plan(_request_doc(workflow="train_baseline"), "projects/2026-05-fujie-gcard-v1")
+    challenger_plan = create_execution_plan(_request_doc(workflow="challenger_evaluation"), "projects/2026-05-fujie-gcard-v1")
+
+    assert [task["task_id"] for task in feature_plan["tasks"]] == [
+        "feature_metadata",
+        "feature_prescreen",
+        "build_wide_sql",
+        "feature_refine",
+    ]
+    assert set(feature_plan["stage_steps"]) == {"feature_metadata", "feature_prescreen", "build_wide_sql", "feature_refine"}
+    assert {task["type"] for task in train_plan["tasks"]} == {"train"}
+    assert set(train_plan["stage_steps"]) == {"train_baseline"}
+    assert [task["task_id"] for task in challenger_plan["tasks"]] == ["evaluate_final", "compare_final"]
+    assert set(challenger_plan["stage_steps"]) == {"evaluate", "compare"}
 
 
 def test_request_without_id_columns_can_use_project_contract():

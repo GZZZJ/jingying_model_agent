@@ -108,7 +108,18 @@ def test_gcard_execution_plan_still_uses_configured_champion():
     plan = create_execution_plan(request_doc, "projects/2026-05-fujie-gcard-v1")
     compare_task = next(task for task in plan["tasks"] if task["task_id"] == "compare_final")
 
-    assert compare_task["command"]["args"][-2:] == ["--champion", "gcard_v6"]
+    args = compare_task["command"]["args"]
+    assert args.count("--champion") == 4
+    assert args[-8:] == [
+        "--champion",
+        "gcard_v2",
+        "--champion",
+        "gcard_v4",
+        "--champion",
+        "gcard_v5",
+        "--champion",
+        "gcard_v6",
+    ]
 
 
 def test_gcard_compare_with_explicit_champion_still_supported():

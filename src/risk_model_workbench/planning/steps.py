@@ -72,7 +72,7 @@ STEP_REGISTRY: dict[str, dict[str, Any]] = {
         "description": "Profile in-loan account status buckets such as M0/M1/M2.",
         "default_params": {},
         "source_reference": "AIAgent DZ in-loan modeling SOP",
-        "implementation_status": "planned",
+        "implementation_status": "implemented",
     },
     "channel_distribution": {
         "id": "channel_distribution",
@@ -80,7 +80,7 @@ STEP_REGISTRY: dict[str, dict[str, Any]] = {
         "description": "Profile acquisition channel sample size and positive rate.",
         "default_params": {},
         "source_reference": "AIAgent Hk acquisition modeling SOP",
-        "implementation_status": "planned",
+        "implementation_status": "implemented",
     },
     "dual_target_split": {
         "id": "dual_target_split",
@@ -88,7 +88,7 @@ STEP_REGISTRY: dict[str, dict[str, Any]] = {
         "description": "Declare acquisition quality/conversion target separation.",
         "default_params": {},
         "source_reference": "AIAgent Hk acquisition dual-engine SOP",
-        "implementation_status": "planned",
+        "implementation_status": "implemented",
     },
     "credit_product_coverage": {
         "id": "credit_product_coverage",
@@ -96,7 +96,7 @@ STEP_REGISTRY: dict[str, dict[str, Any]] = {
         "description": "Profile third-party credit product coverage and label availability.",
         "default_params": {},
         "source_reference": "AIAgent credit product evaluation SOP",
-        "implementation_status": "planned",
+        "implementation_status": "implemented",
     },
     "feature_metadata_export": {
         "id": "feature_metadata_export",
@@ -128,7 +128,7 @@ STEP_REGISTRY: dict[str, dict[str, Any]] = {
         "description": "Review SQL for leakage, join explosion, null handling, and unsafe logic.",
         "default_params": {"block_on_high_risk": True},
         "source_reference": "AIAgent code review SOP",
-        "implementation_status": "planned",
+        "implementation_status": "implemented",
     },
     "feature_availability_filter": {
         "id": "feature_availability_filter",
@@ -144,7 +144,7 @@ STEP_REGISTRY: dict[str, dict[str, Any]] = {
         "description": "Drop features above the configured missing-rate threshold.",
         "default_params": {"threshold": 0.9},
         "source_reference": "AIAgent three-domain feature selection defaults",
-        "implementation_status": "planned",
+        "implementation_status": "implemented",
     },
     "constant_value_filter": {
         "id": "constant_value_filter",
@@ -160,7 +160,7 @@ STEP_REGISTRY: dict[str, dict[str, Any]] = {
         "description": "Drop features below the configured IV threshold.",
         "default_params": {"min_iv": 0.005},
         "source_reference": "AIAgent three-domain feature selection defaults",
-        "implementation_status": "planned",
+        "implementation_status": "implemented",
     },
     "psi_filter": {
         "id": "psi_filter",
@@ -168,7 +168,7 @@ STEP_REGISTRY: dict[str, dict[str, Any]] = {
         "description": "Drop unstable features above the configured PSI threshold.",
         "default_params": {"max_psi": 0.2},
         "source_reference": "AIAgent three-domain feature selection defaults",
-        "implementation_status": "planned",
+        "implementation_status": "implemented",
     },
     "correlation_dedup": {
         "id": "correlation_dedup",
@@ -176,7 +176,7 @@ STEP_REGISTRY: dict[str, dict[str, Any]] = {
         "description": "Deduplicate highly correlated features, preferring stronger IV.",
         "default_params": {"method": "spearman", "max_abs_corr": 0.8},
         "source_reference": "AIAgent DZ in-loan modeling SOP",
-        "implementation_status": "planned",
+        "implementation_status": "implemented",
     },
     "random_noise_importance": {
         "id": "random_noise_importance",
@@ -208,7 +208,7 @@ STEP_REGISTRY: dict[str, dict[str, Any]] = {
         "description": "Compatibility alias for low-gain tail filtering in older requests.",
         "default_params": {"tail_fraction": 0.1, "max_auc_drop": 0.005},
         "source_reference": "AIAgent three-domain feature selection defaults",
-        "implementation_status": "planned",
+        "implementation_status": "implemented",
     },
     "lightgbm_binary_training": {
         "id": "lightgbm_binary_training",
@@ -224,7 +224,7 @@ STEP_REGISTRY: dict[str, dict[str, Any]] = {
         "description": "Configure positive-class weighting for imbalanced labels.",
         "default_params": {"mode": "negative_over_positive"},
         "source_reference": "AIAgent DZ in-loan modeling SOP",
-        "implementation_status": "planned",
+        "implementation_status": "implemented",
     },
     "hier_ranknet_training": {
         "id": "hier_ranknet_training",
@@ -232,7 +232,7 @@ STEP_REGISTRY: dict[str, dict[str, Any]] = {
         "description": "Train acquisition conversion HierRankNet multi-objective model.",
         "default_params": {},
         "source_reference": "AIAgent Hk HierRankNet skill",
-        "implementation_status": "planned",
+        "implementation_status": "implemented",
     },
     "teacher_student_distillation": {
         "id": "teacher_student_distillation",
@@ -240,7 +240,7 @@ STEP_REGISTRY: dict[str, dict[str, Any]] = {
         "description": "Train acquisition quality teacher-student distillation chain.",
         "default_params": {},
         "source_reference": "AIAgent Hk quality distillation skill",
-        "implementation_status": "planned",
+        "implementation_status": "implemented",
     },
     "auc_ks": {
         "id": "auc_ks",
@@ -296,7 +296,7 @@ STEP_REGISTRY: dict[str, dict[str, Any]] = {
         "description": "Evaluate 10x10 cross-gain against a baseline score.",
         "default_params": {"bins": 10},
         "source_reference": "AIAgent DQ feature gain and evaluation SOPs",
-        "implementation_status": "planned",
+        "implementation_status": "implemented",
     },
     "roll_rate_analysis": {
         "id": "roll_rate_analysis",
@@ -304,7 +304,7 @@ STEP_REGISTRY: dict[str, dict[str, Any]] = {
         "description": "Evaluate in-loan account roll-rate by score band.",
         "default_params": {},
         "source_reference": "AIAgent DZ in-loan modeling SOP",
-        "implementation_status": "planned",
+        "implementation_status": "implemented",
     },
     "channel_metrics": {
         "id": "channel_metrics",
@@ -312,7 +312,7 @@ STEP_REGISTRY: dict[str, dict[str, Any]] = {
         "description": "Evaluate acquisition model performance by channel.",
         "default_params": {},
         "source_reference": "AIAgent Hk acquisition modeling SOP",
-        "implementation_status": "planned",
+        "implementation_status": "implemented",
     },
     "dual_model_synergy": {
         "id": "dual_model_synergy",
@@ -320,7 +320,7 @@ STEP_REGISTRY: dict[str, dict[str, Any]] = {
         "description": "Evaluate acquisition quality and conversion model synergy.",
         "default_params": {},
         "source_reference": "AIAgent Hk acquisition modeling SOP",
-        "implementation_status": "planned",
+        "implementation_status": "implemented",
     },
     "sub_funnel_metrics": {
         "id": "sub_funnel_metrics",
@@ -328,7 +328,7 @@ STEP_REGISTRY: dict[str, dict[str, Any]] = {
         "description": "Evaluate acquisition conversion sub-funnel ordering.",
         "default_params": {},
         "source_reference": "AIAgent Hk HierRankNet skill",
-        "implementation_status": "planned",
+        "implementation_status": "implemented",
     },
     "credit_product_standalone_eval": {
         "id": "credit_product_standalone_eval",
@@ -336,7 +336,7 @@ STEP_REGISTRY: dict[str, dict[str, Any]] = {
         "description": "Evaluate third-party credit product standalone performance.",
         "default_params": {},
         "source_reference": "AIAgent credit product evaluation SOP",
-        "implementation_status": "planned",
+        "implementation_status": "implemented",
     },
     "credit_product_fusion_eval": {
         "id": "credit_product_fusion_eval",
@@ -344,7 +344,7 @@ STEP_REGISTRY: dict[str, dict[str, Any]] = {
         "description": "Evaluate third-party credit product fusion uplift.",
         "default_params": {},
         "source_reference": "AIAgent credit product evaluation SOP",
-        "implementation_status": "planned",
+        "implementation_status": "implemented",
     },
     "feature_gain_summary": {
         "id": "feature_gain_summary",
@@ -352,7 +352,7 @@ STEP_REGISTRY: dict[str, dict[str, Any]] = {
         "description": "Summarize new-feature uplift and contribution.",
         "default_params": {},
         "source_reference": "AIAgent feature gain evaluation SOP",
-        "implementation_status": "planned",
+        "implementation_status": "implemented",
     },
     "champion_challenger": {
         "id": "champion_challenger",
@@ -376,7 +376,7 @@ STEP_REGISTRY: dict[str, dict[str, Any]] = {
         "description": "Generate model recovery monitoring report.",
         "default_params": {},
         "source_reference": "AIAgent model recovery SOP",
-        "implementation_status": "planned",
+        "implementation_status": "implemented",
     },
     "credit_product_report": {
         "id": "credit_product_report",
@@ -384,7 +384,7 @@ STEP_REGISTRY: dict[str, dict[str, Any]] = {
         "description": "Generate third-party credit product evaluation report.",
         "default_params": {},
         "source_reference": "AIAgent credit product evaluation SOP",
-        "implementation_status": "planned",
+        "implementation_status": "implemented",
     },
 }
 

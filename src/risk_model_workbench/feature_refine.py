@@ -86,6 +86,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Confirm that the displayed DP SQL has been reviewed and may be executed.",
     )
+    parser.add_argument(
+        "--sample-max-rows",
+        type=int,
+        default=None,
+        help="Override feature_refine.sampling.max_rows after external memory probing.",
+    )
     parser.add_argument("--run-dir", default=None, help=argparse.SUPPRESS)
     return parser.parse_args(argv)
 
@@ -126,11 +132,20 @@ def build_sampling_sql(cfg: dict[str, Any], features: list[str]) -> str:
     return sql + "\n"
 
 
+def apply_sample_max_rows_override(cfg: dict[str, Any], sample_max_rows: int | None) -> None:
+    if sample_max_rows is None:
+        return
+    if sample_max_rows <= 0:
+        raise ValueError("--sample-max-rows must be a positive integer.")
+    cfg.setdefault("sampling", {})["max_rows"] = int(sample_max_rows)
+
+
 def coerce_feature_frame(df: pd.DataFrame, features: list[str], cfg: dict[str, Any]) -> tuple[pd.DataFrame, list[str], pd.DataFrame]:
     preprocessing = cfg["preprocessing"]
     sentinels = preprocessing.get("missing_sentinels", [])
     min_non_null_rate = float(preprocessing.get("min_non_null_rate", 0.0))
     drop_constant = bool(preprocessing.get("drop_constant", True))
+    max_unique_values = int(preprocessing.get("max_unique_values", 1))
 
     available = [feature for feature in features if feature in df.columns]
     if len(available) == 0:
@@ -162,7 +177,7 @@ def coerce_feature_frame(df: pd.DataFrame, features: list[str], cfg: dict[str, A
         drop_reason = ""
         if non_null_rate < min_non_null_rate:
             drop_reason = "low_non_null_rate"
-        elif drop_constant and unique_count <= 1:
+        elif drop_constant and unique_count <= max_unique_values:
             drop_reason = "constant"
         else:
             kept.append(feature)
@@ -705,6 +720,7 @@ def main(argv: list[str] | None = None) -> int:
     reporter = ProgressReporter(args.run_dir, "feature_refine") if args.run_dir else None
     config_path = resolve_project_path(project_dir, args.config)
     cfg = load_yaml(config_path)["feature_refine"]
+    apply_sample_max_rows_override(cfg, args.sample_max_rows)
     output_dir = resolve_project_path(project_dir, cfg["output_dir"])
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -829,6 +845,7 @@ def main(argv: list[str] | None = None) -> int:
     d04_detail.to_csv(output_dir / "d04_null_importance_detail.csv", index=False, encoding="utf-8-sig")
     d05_importance.to_csv(output_dir / "d05_baseline_importance.csv", index=False, encoding="utf-8-sig")
     write_feature_list(output_dir / "final_500_features.txt", final_features)
+    write_feature_list(output_dir / "final_features.txt", final_features)
     with (output_dir / "sample.pkl").open("wb") as handle:
         pickle.dump({"raw_shape": raw_df.shape, "features": final_features}, handle)
     write_json(
@@ -850,6 +867,7 @@ def main(argv: list[str] | None = None) -> int:
             "final_features": len(final_features),
             "d05_valid_auc": d05_auc,
             "sampling_where": cfg["sampling"].get("where"),
+            "sampling_max_rows": cfg["sampling"].get("max_rows"),
         },
     )
     manifest = write_manifest(
@@ -862,6 +880,7 @@ def main(argv: list[str] | None = None) -> int:
         outputs=[
             output_dir / "stage_summary.json",
             output_dir / "final_500_features.txt",
+            output_dir / "final_features.txt",
             output_dir / "d05_baseline_importance.csv",
         ],
     )

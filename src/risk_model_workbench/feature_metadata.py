@@ -32,13 +32,24 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default="configs/feature_tables.txt",
         help="Feature table list, relative to project-dir unless absolute.",
     )
+    parser.add_argument("--config", default=None, help="Feature selection config path.")
+    parser.add_argument("--project-config", default=None, help="Project config path.")
     parser.add_argument("--run-dir", default=None, help=argparse.SUPPRESS)
     return parser.parse_args(argv)
 
 
-def load_metadata_options(project_dir: Path, tables_file_arg: str) -> dict:
-    project_config = load_yaml(project_dir / "project.yml" if (project_dir / "project.yml").exists() else project_dir / "project.yaml")
-    feature_config = load_yaml(project_dir / "configs" / "feature_select.yaml").get("feature_select", {})
+def _resolve(project_dir: Path, value: str | None, default: Path) -> Path:
+    if not value:
+        return default
+    path = Path(value)
+    return path if path.is_absolute() else project_dir / path
+
+
+def load_metadata_options(project_dir: Path, tables_file_arg: str, *, config: str | None = None, project_config: str | None = None) -> dict:
+    project_path = _resolve(project_dir, project_config, project_dir / ("project.yml" if (project_dir / "project.yml").exists() else "project.yaml"))
+    feature_path = _resolve(project_dir, config, project_dir / "configs" / "feature_select.yaml")
+    project_config = load_yaml(project_path)
+    feature_config = load_yaml(feature_path).get("feature_select", {})
     metadata_config = feature_config.get("metadata", {}) or {}
     data_config = project_config.get("data", {}) or {}
     split_config = project_config.get("split", {}) or {}
@@ -192,7 +203,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     project_dir = Path(args.project_dir).resolve()
     reporter = ProgressReporter(args.run_dir, "feature_metadata") if args.run_dir else None
-    options = load_metadata_options(project_dir, args.tables_file)
+    options = load_metadata_options(project_dir, args.tables_file, config=args.config, project_config=args.project_config)
     tables_file = Path(options["tables_file"])
     if not tables_file.is_absolute():
         tables_file = project_dir / tables_file

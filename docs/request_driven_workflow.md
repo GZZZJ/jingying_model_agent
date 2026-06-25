@@ -11,6 +11,8 @@ open tools/model_request_builder/index.html
 
 The page lets users select sample, split, feature-selection, modeling,
 evaluation, risk-profile, and report requirements, then download Markdown.
+Current support boundaries are documented in
+`docs/model_request_builder_support_audit.md`.
 
 Standard flow:
 

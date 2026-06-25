@@ -32,6 +32,9 @@ def test_tool_registry_declares_permissions_and_auditor_boundary():
     assert dp_tool.permission == "dp_sql_pull"
     assert dp_tool.requires_approval is True
     assert dp_tool.allowed_for_auditor is False
+    wide_execute_tool = get_tool_spec("build_wide_sql_execute")
+    assert wide_execute_tool.permission == "dp_sql_pull"
+    assert wide_execute_tool.requires_approval is True
 
     audit_tool = get_tool_spec("run_audit")
     assert audit_tool.permission == "read_only"

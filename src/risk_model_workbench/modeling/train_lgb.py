@@ -4,12 +4,20 @@ from __future__ import annotations
 
 import json
 import pickle
+import re
 import time
 from pathlib import Path
 from typing import Any
 
 
-def coerce_features(df, features: list[str], sentinels: list[int], min_non_null_rate: float, drop_constant: bool):
+def coerce_features(
+    df,
+    features: list[str],
+    sentinels: list[int],
+    min_non_null_rate: float,
+    drop_constant: bool,
+    max_unique_values: int = 1,
+):
     """Coerce configured features to numeric and drop unusable columns."""
     import numpy as np
     import pandas as pd
@@ -30,7 +38,7 @@ def coerce_features(df, features: list[str], sentinels: list[int], min_non_null_
         drop_reason = ""
         if non_null_rate < min_non_null_rate:
             drop_reason = "low_non_null_rate"
-        elif drop_constant and unique_count <= 1:
+        elif drop_constant and unique_count <= max_unique_values:
             drop_reason = "constant"
         else:
             kept.append(feature)
@@ -93,6 +101,7 @@ def train_lightgbm_from_feather(
     input_cfg = config["input"]
     lgb_cfg = config["lightgbm"]
     preproc_cfg = config.get("preprocessing", {})
+    runtime_experiment = config.get("runtime_experiment", {})
 
     candidate_features = [line.strip() for line in feature_list_path.read_text(encoding="utf-8").splitlines() if line.strip()]
     if progress:
@@ -102,13 +111,38 @@ def train_lightgbm_from_feather(
     configured_historical_scores = input_cfg.get("historical_score_columns", [])
     label_col = input_cfg["label_column"]
     split_col = input_cfg["split_column"]
-    read_cols = list(dict.fromkeys(id_cols + base_cols + configured_historical_scores + [label_col, split_col] + candidate_features))
+    segment_filter = str(runtime_experiment.get("segment_filter") or "").strip()
+    segment_tokens = re.findall(r"\b[A-Za-z_][A-Za-z0-9_]*\b", segment_filter)
+    segment_cols = input_cfg.get("segment_columns", [])
+    time_cols = [input_cfg.get("time_column"), input_cfg.get("period_column")]
+    read_cols = list(
+        dict.fromkeys(
+            id_cols
+            + base_cols
+            + segment_cols
+            + [token for token in segment_tokens if token not in {"in", "and", "or", "not", "True", "False"}]
+            + configured_historical_scores
+            + [item for item in time_cols if item]
+            + [label_col, split_col]
+            + candidate_features
+        )
+    )
     if progress:
         progress.emit(step="read_input_schema", message=f"正在读取训练数据字段：{input_feather}", percent=12)
     all_cols = pd.read_feather(input_feather, columns=None).columns.tolist()
     if progress:
         progress.emit(step="read_input_data", message=f"正在读取训练数据：{len(read_cols)} 个目标字段", percent=18)
     raw = pd.read_feather(input_feather, columns=[column for column in read_cols if column in all_cols])
+    if segment_filter:
+        before_rows = len(raw)
+        raw = raw.query(segment_filter).copy()
+        if progress:
+            progress.emit(
+                step="segment_filter",
+                message=f"实验分群过滤完成：{before_rows} -> {len(raw)} 行",
+                percent=22,
+                metrics={"before_rows": int(before_rows), "after_rows": int(len(raw)), "segment_filter": segment_filter},
+            )
     if progress:
         progress.emit(
             step="read_input_done",
@@ -126,7 +160,8 @@ def train_lightgbm_from_feather(
     sentinels = preproc_cfg.get("missing_sentinels", [-999, -998])
     min_non_null_rate = float(preproc_cfg.get("min_non_null_rate", 0.01))
     drop_constant = bool(preproc_cfg.get("drop_constant", True))
-    x_all, kept_features, drop_detail = coerce_features(raw, candidate_features, sentinels, min_non_null_rate, drop_constant)
+    max_unique_values = int(preproc_cfg.get("max_unique_values", 1))
+    x_all, kept_features, drop_detail = coerce_features(raw, candidate_features, sentinels, min_non_null_rate, drop_constant, max_unique_values)
     if progress:
         progress.emit(
             step="preprocess_done",
@@ -151,6 +186,7 @@ def train_lightgbm_from_feather(
         "dropped_feature_count": int((drop_detail["drop_reason"] != "").sum()),
         "missing_sentinels": sentinels,
         "min_non_null_rate": min_non_null_rate,
+        "max_unique_values": max_unique_values,
         "fill_strategy": "train_median_fill_zero",
         "drop_reason_counts": drop_detail["drop_reason"].value_counts().to_dict(),
         "fill_values": {feature: float(value) for feature, value in medians.items()},
@@ -176,6 +212,12 @@ def train_lightgbm_from_feather(
         "feature_fraction_seed": train_cfg.get("random_seed", 0),
         "bagging_seed": train_cfg.get("random_seed", 0),
     }
+    scale_cfg = (config.get("runtime_step_params") or train_cfg.get("runtime_step_params") or {}).get("scale_pos_weight", {})
+    if scale_cfg:
+        positives = float((tr_y == 1).sum())
+        negatives = float((tr_y == 0).sum())
+        if positives > 0:
+            params["scale_pos_weight"] = float(scale_cfg.get("value") or negatives / positives)
     train_ds = lgb.Dataset(tr_x, label=tr_y, feature_name=kept_features, free_raw_data=False)
     valid_ds = lgb.Dataset(va_x, label=va_y, feature_name=kept_features, reference=train_ds, free_raw_data=False)
     if progress:
@@ -249,7 +291,7 @@ def train_lightgbm_from_feather(
         pickle.dump(model, handle)
 
     run_config = {
-        "experiment": "main_lgbm",
+        "experiment": runtime_experiment.get("name") or "main_lgbm",
         "data_source": str(input_feather),
         "train_values": train_values,
         "valid_values": valid_values,
@@ -270,18 +312,14 @@ def train_lightgbm_from_feather(
     if progress:
         progress.emit(step="score_all", message="开始对全量样本打分", percent=82)
     all_pred = model.predict(x_all_filled[kept_features].values, num_iteration=best_iter)
-    desired_base = [
-        "uid",
-        "mdl_dte",
-        "ds",
-        "final_flag",
-        "blue_customer_flag",
-        "zc_level",
-        "ftr_30d_ord_flag",
-        "ftr_30d_ord_amt",
-        "prc_amt_xz_30d_3m",
-        "ovd_amt_xz_30d_3m",
-    ]
+    desired_base = list(
+        dict.fromkeys(
+            id_cols
+            + base_cols
+            + [item for item in time_cols if item]
+            + [split_col, label_col, "ds", "blue_customer_flag", "zc_level", "prc_amt_xz_30d_3m", "ovd_amt_xz_30d_3m"]
+        )
+    )
     historical_scores = [column for column in configured_historical_scores if column in raw.columns]
     scores = raw[[column for column in desired_base if column in raw.columns]].copy()
     for column in historical_scores:
@@ -323,6 +361,7 @@ def train_lightgbm_from_feather(
         candidate_feature_count=len(candidate_features),
         kept_feature_count=len(kept_features),
         historical_scores=historical_scores,
+        id_columns=id_cols,
     )
     if progress:
         progress.emit(
@@ -343,6 +382,8 @@ def _write_input_snapshot(**kwargs: Any) -> None:
     output_dir = Path(kwargs["input_snapshot_dir"])
     label_col = kwargs["label_col"]
     split_col = kwargs["split_col"]
+    id_columns = kwargs.get("id_columns") or []
+    count_col = next((column for column in id_columns if column in raw.columns), label_col)
     input_config = {
         "data_source": str(kwargs["input_feather"]),
         "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
@@ -360,7 +401,7 @@ def _write_input_snapshot(**kwargs: Any) -> None:
     pd.DataFrame(
         [{"column": col, "dtype": str(scores[col].dtype), "non_null": int(scores[col].notna().sum()), "null": int(scores[col].isna().sum())} for col in scores.columns]
     ).to_csv(output_dir / "input_schema.csv", index=False, encoding="utf-8-sig")
-    raw.groupby(split_col).agg(samples=("uid", "count"), positive=(label_col, "sum"), bad_rate=(label_col, "mean")).reset_index().to_csv(
+    raw.groupby(split_col).agg(samples=(count_col, "count"), positive=(label_col, "sum"), bad_rate=(label_col, "mean")).reset_index().to_csv(
         output_dir / "sample_split_summary.csv", index=False, encoding="utf-8-sig"
     )
     label_dist = raw[label_col].value_counts().reset_index()

@@ -364,14 +364,14 @@
     },
     {
       "path": "reports/model_report.xlsx",
-      "size_bytes": 4293441,
-      "mtime": "2026-06-24T16:59:06",
-      "sha256": "2782746be6e9db0b6c38a4da5ba736d2c435ff3a654c803f89c3289ff20d8fba",
+      "size_bytes": 4299654,
+      "mtime": "2026-06-24T18:36:58",
+      "sha256": "5ee77920a8cd1d2d6fc6c41402d54815a0b4060c7171da925ab4ee09bb8d1fef",
       "stage": "report",
-      "kind": "excel",
+      "kind": "file",
       "source": "generated",
-      "description": "Excel Summary rebuilt to manual vertical structure with feature screening, parameters, V6 AUC/KS side-by-side comparisons, risk availability notes, and PSI stability.",
-      "registered_at": "2026-06-24T16:59:59"
+      "description": "Excel Summary sloping reformatted into per-version side-by-side 10-bin tables matching the manual report layout.",
+      "registered_at": "2026-06-24T18:36:58"
     },
     {
       "path": "reports/model_report.md",
@@ -484,5 +484,5 @@
       "registered_at": "2026-06-24T17:23:14"
     }
   ],
-  "updated_at": "2026-06-24T17:23:14"
+  "updated_at": "2026-06-24T18:36:58"
 }

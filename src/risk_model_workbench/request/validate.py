@@ -6,8 +6,8 @@ from pathlib import Path
 from typing import Any
 
 from risk_model_workbench.config import load_yaml
+from risk_model_workbench.paths import project_config_path, workflow_path
 from risk_model_workbench.planning.steps import resolve_step_configuration
-from risk_model_workbench.paths import project_config_path
 
 
 REQUIRED_FIELDS = [
@@ -19,6 +19,28 @@ REQUIRED_FIELDS = [
     "reports",
 ]
 
+SUPPORTED_TRAINING_METHODS = {
+    "lightgbm",
+    "xgboost",
+    "logistic_regression",
+    "custom",
+    "hier_ranknet",
+    "teacher_student_distillation",
+}
+
+METHOD_ALIASES = {
+    "lgb": "lightgbm",
+    "lgbm": "lightgbm",
+    "xgb": "xgboost",
+    "lr": "logistic_regression",
+    "logistic": "logistic_regression",
+    "ranknet": "hier_ranknet",
+    "teacher_student": "teacher_student_distillation",
+}
+
+SUPPORTED_METRICS = {"auc", "ks", "decile_lift", "ranking_inversion", "psi", "business_risk"}
+SUPPORTED_REPORT_EXTENSIONS = {"", ".md", ".markdown", ".html", ".xlsx", ".json"}
+
 
 def _as_list(value: Any) -> list[Any]:
     if value is None:
@@ -28,11 +50,35 @@ def _as_list(value: Any) -> list[Any]:
     return [value]
 
 
+def _normal_method(value: Any) -> str:
+    raw = str(value or "lightgbm").strip().lower()
+    return METHOD_ALIASES.get(raw, raw)
+
+
+def _custom_entrypoint(project_config: dict[str, Any]) -> Any:
+    return (
+        project_config.get("training", {}).get("custom_entrypoint")
+        or project_config.get("custom_training", {}).get("entrypoint")
+        or project_config.get("modeling", {}).get("custom_training_entrypoint")
+    )
+
+
 def validate_model_request(request_doc: dict[str, Any], project_dir: str | Path | None = None) -> dict[str, Any]:
     """Return validation errors and warnings for a parsed model request."""
     metadata = request_doc.get("metadata", {})
     errors: list[str] = []
     warnings: list[str] = []
+    project_config: dict[str, Any] = {}
+    configured_ids: list[Any] = []
+
+    if project_dir:
+        project_path = Path(project_dir).resolve()
+        config_path = project_config_path(project_path)
+        if not config_path.exists():
+            errors.append(f"missing project config: {config_path}")
+        else:
+            project_config = load_yaml(config_path)
+            configured_ids = project_config.get("data", {}).get("id_columns") or []
 
     for field in REQUIRED_FIELDS:
         if field not in metadata or metadata.get(field) in (None, "", []):
@@ -46,45 +92,65 @@ def validate_model_request(request_doc: dict[str, Any], project_dir: str | Path 
         errors.append("experiments must be a list")
     if "id_columns" in metadata and not isinstance(metadata.get("id_columns"), list):
         errors.append("id_columns must be a list")
+    for index, item in enumerate(experiments if isinstance(experiments, list) else [], start=1):
+        if not isinstance(item, dict):
+            errors.append(f"experiments[{index}] must be a mapping")
+            continue
+        method = _normal_method(item.get("method") or item.get("algorithm"))
+        if method not in SUPPORTED_TRAINING_METHODS:
+            errors.append(f"unsupported training method in experiments[{index}]: {method}")
+        if method == "custom" and not _custom_entrypoint(project_config):
+            errors.append("custom training requires training.custom_entrypoint or custom_training.entrypoint in project config")
+
+    workflow = metadata.get("workflow", "full_modeling")
+    if workflow and not workflow_path(str(workflow)).exists():
+        errors.append(f"unknown workflow: {workflow}")
 
     evaluation = metadata.get("evaluation") or {}
     if not isinstance(evaluation, dict):
         errors.append("evaluation must be a mapping")
     elif not _as_list(evaluation.get("metrics")):
         warnings.append("evaluation.metrics is empty")
+    else:
+        unknown_metrics = sorted({str(metric) for metric in _as_list(evaluation.get("metrics"))} - SUPPORTED_METRICS)
+        if unknown_metrics:
+            errors.append(f"unsupported evaluation metric: {', '.join(unknown_metrics)}")
 
     reports = metadata.get("reports") or {}
     if not isinstance(reports, dict):
         errors.append("reports must be a mapping")
     elif not _as_list(reports.get("outputs")):
         warnings.append("reports.outputs is empty")
+    else:
+        unsupported_outputs = []
+        for output in _as_list(reports.get("outputs")):
+            suffix = Path(str(output)).suffix.lower()
+            if suffix not in SUPPORTED_REPORT_EXTENSIONS:
+                unsupported_outputs.append(str(output))
+        if unsupported_outputs:
+            errors.append(f"unsupported report output type: {', '.join(unsupported_outputs)}")
 
     try:
         step_config = resolve_step_configuration(metadata, project_dir)
         if not metadata.get("scenario_profile"):
             warnings.append(f"scenario_profile inferred as {step_config['scenario_profile']}")
+        unresolved = [step["id"] for step in step_config.get("resolved_steps", []) if step.get("implementation_status") != "implemented"]
+        if unresolved:
+            errors.append(f"selected steps do not have executors: {', '.join(unresolved)}")
     except ValueError as exc:
         errors.append(str(exc))
 
-    configured_ids: list[Any] = []
-    if project_dir:
-        project_path = Path(project_dir).resolve()
-        config_path = project_config_path(project_path)
-        if not config_path.exists():
-            errors.append(f"missing project config: {config_path}")
-        else:
-            project_config = load_yaml(config_path)
-            configured_project = project_config.get("project", {}).get("name")
-            configured_data = project_config.get("data", {})
-            if configured_project and metadata.get("project") and metadata["project"] != configured_project:
-                warnings.append(f"request project differs from project.yml: {metadata['project']} != {configured_project}")
-            if configured_data.get("target_column") and metadata.get("target_column") != configured_data.get("target_column"):
-                warnings.append(
-                    f"request target_column differs from project.yml: {metadata.get('target_column')} != {configured_data.get('target_column')}"
-                )
-            configured_ids = configured_data.get("id_columns") or []
-            if configured_ids and metadata.get("id_columns") and metadata.get("id_columns") != configured_ids:
-                warnings.append(f"request id_columns differs from project.yml: {metadata.get('id_columns')} != {configured_ids}")
+    if project_dir and project_config:
+        configured_project = project_config.get("project", {}).get("name")
+        configured_data = project_config.get("data", {})
+        if configured_project and metadata.get("project") and metadata["project"] != configured_project:
+            warnings.append(f"request project differs from project.yml: {metadata['project']} != {configured_project}")
+        if configured_data.get("target_column") and metadata.get("target_column") != configured_data.get("target_column"):
+            warnings.append(
+                f"request target_column differs from project.yml: {metadata.get('target_column')} != {configured_data.get('target_column')}"
+            )
+        if configured_ids and metadata.get("id_columns") and metadata.get("id_columns") != configured_ids:
+            warnings.append(f"request id_columns differs from project.yml: {metadata.get('id_columns')} != {configured_ids}")
 
     request_ids = _as_list(metadata.get("id_columns"))
     if not request_ids and configured_ids:

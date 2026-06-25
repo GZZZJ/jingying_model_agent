@@ -249,11 +249,19 @@ def write_feature_map(path: Path, records: list[WideFeatureRecord]) -> None:
             )
 
 
-def write_summary(path: Path, *, sql_path: Path, feature_map_path: Path, records: list[WideFeatureRecord]) -> None:
+def write_summary(
+    path: Path,
+    *,
+    sql_path: Path,
+    feature_map_path: Path,
+    output_table: str,
+    records: list[WideFeatureRecord],
+) -> None:
     duplicate_sources = sum(1 for record in records if record.output_feature != record.source_feature)
     summary = {
         "sql_path": str(sql_path),
         "feature_map_path": str(feature_map_path),
+        "output_table": output_table,
         "feature_tables": len({record.table_name for record in records}),
         "features": len(records),
         "renamed_duplicate_features": duplicate_sources,
@@ -262,9 +270,9 @@ def write_summary(path: Path, *, sql_path: Path, feature_map_path: Path, records
     path.write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
-def project_wide_defaults(project_dir: Path) -> dict[str, Any]:
-    project_config = load_yaml(project_dir / "project.yml" if (project_dir / "project.yml").exists() else project_dir / "project.yaml")
-    feature_config = load_yaml(project_dir / "configs" / "feature_select.yaml").get("feature_select", {})
+def project_wide_defaults(project_dir: Path, *, config_path: Path | None = None, project_config_path: Path | None = None) -> dict[str, Any]:
+    project_config = load_yaml(project_config_path or (project_dir / "project.yml" if (project_dir / "project.yml").exists() else project_dir / "project.yaml"))
+    feature_config = load_yaml(config_path or (project_dir / "configs" / "feature_select.yaml")).get("feature_select", {})
     wide_config = feature_config.get("wide_table", {}) or {}
 
     return {
@@ -288,8 +296,10 @@ def generate_wide_sql(
     output_table: str | None = None,
     base_where: str | None = None,
     feature_where: str | None = None,
+    config_path: Path | None = None,
+    project_config_path: Path | None = None,
 ) -> tuple[Path, Path, Path]:
-    defaults = project_wide_defaults(project_dir)
+    defaults = project_wide_defaults(project_dir, config_path=config_path, project_config_path=project_config_path)
     resolved_base_table = base_table or defaults["base_table"]
     resolved_output_table = output_table or defaults["output_table"]
     if not resolved_base_table:
@@ -311,5 +321,11 @@ def generate_wide_sql(
     sql_output_path.parent.mkdir(parents=True, exist_ok=True)
     sql_output_path.write_text(sql, encoding="utf-8")
     write_feature_map(feature_map_path, records)
-    write_summary(summary_path, sql_path=sql_output_path, feature_map_path=feature_map_path, records=records)
+    write_summary(
+        summary_path,
+        sql_path=sql_output_path,
+        feature_map_path=feature_map_path,
+        output_table=resolved_output_table,
+        records=records,
+    )
     return sql_output_path, feature_map_path, summary_path

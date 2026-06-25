@@ -30,11 +30,13 @@ stage_contracts:
   build_wide_sql:
     accepted_artifact_sets:
       - [queries/*.sql]
-      - [feature_selection/wide_sql_summary.json]
+      - [feature_selection/wide_sql_summary.json, feature_selection/prescreen_wide_feature_map.csv]
+      - [feature_selection/wide_sql_summary.json, feature_selection/wide_table_execution.json]
   feature_refine:
     accepted_artifact_sets:
       - [feature_selection/final_features.txt]
       - [feature_selection/final_500_features.txt]
+      - [feature_selection/stage_summary.json, feature_selection/final_features.txt]
   train_baseline:
     accepted_artifact_sets:
       - [modeling/*/metrics_train_valid.json, modeling/*/actual_feature_list.txt, modeling/*/feature_importance.csv]

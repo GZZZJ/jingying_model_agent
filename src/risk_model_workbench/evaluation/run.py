@@ -40,6 +40,11 @@ def evaluate_scores_from_feather(
     label_col = eval_cfg["label_column"]
     split_col = eval_cfg["split_column"]
     time_col = eval_cfg.get("time_column", "mdl_dte")
+    requested_metrics = config.get("metrics") or eval_cfg.get("metrics") or []
+    missing_requirements: list[dict[str, Any]] = []
+    for required in [label_col, split_col]:
+        if required not in df.columns:
+            raise ValueError(f"required evaluation column missing: {required}")
     df[label_col] = pd.to_numeric(df[label_col], errors="coerce")
     for column in ["prc_amt_xz_30d_3m", "ovd_amt_xz_30d_3m"]:
         if column in df.columns:
@@ -47,6 +52,11 @@ def evaluate_scores_from_feather(
 
     desired_scores = eval_cfg.get("score_columns", ["model_score"])
     score_cols = [column for column in desired_scores if column in df.columns]
+    if not score_cols:
+        raise ValueError(f"none of the configured score columns are present: {desired_scores}")
+    missing_scores = [column for column in desired_scores if column not in df.columns]
+    for column in missing_scores:
+        missing_requirements.append({"kind": "score_column", "column": column, "reason": "missing from score table"})
     for column in score_cols:
         df[column] = pd.to_numeric(df[column], errors="coerce")
 
@@ -88,20 +98,42 @@ def evaluate_scores_from_feather(
         progress.emit(step="segment_metrics", message="开始计算分群指标", percent=56)
     segment_rows = _segment_metrics(df, label_col, split_col, score_cols, splits)
     pd.DataFrame(segment_rows).to_csv(output_path / "segment_metrics.csv", index=False, encoding="utf-8-sig")
+    dimension_columns = list(
+        dict.fromkeys(
+            [
+                *[column for column in eval_cfg.get("segment_columns", []) if column],
+                *[column for column in eval_cfg.get("comparison_dimensions", []) if column],
+                *[column for column in eval_cfg.get("risk_profile_dimensions", []) if column],
+            ]
+        )
+    )
+    dimension_rows, missing_dimension_rows = _generic_dimension_metrics(df, dimension_columns, label_col, split_col, score_cols, splits)
+    missing_requirements.extend(missing_dimension_rows)
+    pd.DataFrame(dimension_rows).to_csv(output_path / "dimension_metrics.csv", index=False, encoding="utf-8-sig")
     if progress:
         progress.emit(step="segment_metrics_done", message=f"分群指标完成：{len(segment_rows)} 行", percent=64, metrics={"rows": len(segment_rows)})
 
     if progress:
         progress.emit(step="decile_outputs", message="开始生成 decile lift 结果", percent=68)
     _write_decile_outputs(df, output_path, score_cols, label_col)
+    ranking_rows = _ranking_inversion_rows(output_path, score_cols)
+    pd.DataFrame(ranking_rows).to_csv(output_path / "ranking_inversion.csv", index=False, encoding="utf-8-sig")
+    _write_cross_gain_outputs(df, output_path, score_cols, label_col)
     if progress:
         progress.emit(step="intent_risk_outputs", message="开始生成意愿资产交叉观察结果", percent=76)
     _write_intent_risk_outputs(df, output_path, label_col)
+    business_risk_rows = _business_risk_rows(df, label_col, score_cols, eval_cfg.get("risk_profile_dimensions", []))
+    pd.DataFrame(business_risk_rows).to_csv(output_path / "business_risk.csv", index=False, encoding="utf-8-sig")
     if progress:
         progress.emit(step="psi_outputs", message="开始生成 PSI 稳定性结果", percent=82)
     _write_psi_outputs(df, output_path, score_cols, time_col)
     benchmark_rows = _benchmark_uplift(df, label_col, split_col, score_cols, splits)
     pd.DataFrame(benchmark_rows).to_csv(output_path / "benchmark_uplift.csv", index=False, encoding="utf-8-sig")
+    pd.DataFrame(_feature_gain_rows(benchmark_rows)).to_csv(output_path / "feature_gain_summary.csv", index=False, encoding="utf-8-sig")
+    (output_path / "missing_evaluation_requirements.json").write_text(
+        json.dumps({"missing": missing_requirements}, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
     if progress:
         progress.emit(step="benchmark_done", message=f"冠军挑战者对比指标完成：{len(benchmark_rows)} 行", percent=90, metrics={"rows": len(benchmark_rows)})
 
@@ -109,11 +141,14 @@ def evaluate_scores_from_feather(
         "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
         "scores_source": str(scores_path),
         "score_columns_evaluated": score_cols,
+        "requested_metrics": requested_metrics,
         "label_column": label_col,
         "split_column": split_col,
         "splits_evaluated": splits,
         "n_total_samples": len(df),
         "n_score_columns": len(score_cols),
+        "missing_requirements": missing_requirements,
+        "dimension_columns_evaluated": [column for column in dimension_columns if column in df.columns],
         "overall_metrics": {
             score: {
                 split_val: {
@@ -202,6 +237,88 @@ def _write_decile_outputs(df: pd.DataFrame, output_path: Path, score_cols: list[
                     decile.to_csv(output_path / f"decile_lift_{segment_name}.csv", index=False, encoding="utf-8-sig")
 
 
+def _generic_dimension_metrics(
+    df: pd.DataFrame,
+    dimensions: list[str],
+    label_col: str,
+    split_col: str,
+    score_cols: list[str],
+    splits: list[Any],
+    *,
+    min_samples: int = 20,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    rows: list[dict[str, Any]] = []
+    missing: list[dict[str, Any]] = []
+    for dimension in dimensions:
+        if dimension not in df.columns:
+            missing.append({"kind": "dimension", "column": dimension, "reason": "missing from score table"})
+            continue
+        for value in sorted(df[dimension].dropna().astype(str).unique()):
+            dimension_mask = df[dimension].astype(str) == value
+            for split_val in splits:
+                mask = dimension_mask & (df[split_col] == split_val)
+                if int(mask.sum()) < min_samples:
+                    continue
+                row = _base_slice_row(df, mask, label_col, split_col, split_val)
+                row["dimension"] = dimension
+                row["dimension_value"] = value
+                _add_score_metrics(row, df, mask, label_col, score_cols)
+                rows.append(row)
+    return rows, missing
+
+
+def _ranking_inversion_rows(output_path: Path, score_cols: list[str]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for score_col in score_cols:
+        path = output_path / f"decile_lift_all_{score_col}.csv"
+        if not path.exists():
+            continue
+        decile = pd.read_csv(path)
+        if "bad_rate" not in decile.columns:
+            continue
+        rates = pd.to_numeric(decile["bad_rate"], errors="coerce").dropna().tolist()
+        inversions = sum(1 for left, right in zip(rates, rates[1:]) if right < left)
+        rows.append(
+            {
+                "score_column": score_col,
+                "decile_count": len(rates),
+                "inversion_count": int(inversions),
+                "is_monotonic_non_decreasing": inversions == 0,
+            }
+        )
+    return rows
+
+
+def _write_cross_gain_outputs(df: pd.DataFrame, output_path: Path, score_cols: list[str], label_col: str, bins: int = 10) -> None:
+    if "model_score" not in score_cols:
+        return
+    valid_model = df["model_score"].notna()
+    if int(valid_model.sum()) < 20:
+        return
+    model_bins = pd.qcut(df.loc[valid_model, "model_score"], bins, labels=False, duplicates="drop")
+    for champion in [score for score in score_cols if score != "model_score"]:
+        valid = valid_model & df[champion].notna()
+        if int(valid.sum()) < 20:
+            continue
+        temp = df.loc[valid, [label_col, champion]].copy()
+        temp["model_bin"] = pd.qcut(df.loc[valid, "model_score"], bins, labels=False, duplicates="drop")
+        temp["champion_bin"] = pd.qcut(temp[champion], bins, labels=False, duplicates="drop")
+        rows = []
+        for (model_bin, champion_bin), group in temp.groupby(["model_bin", "champion_bin"], dropna=True):
+            rows.append(
+                {
+                    "model_bin": int(model_bin) + 1,
+                    "champion": champion,
+                    "champion_bin": int(champion_bin) + 1,
+                    "n_samples": int(len(group)),
+                    "bad": int(group[label_col].sum()),
+                    "bad_rate": float(group[label_col].mean()) if len(group) else 0.0,
+                }
+            )
+        if rows:
+            pd.DataFrame(rows).to_csv(output_path / f"cross_gain_matrix_{champion}.csv", index=False, encoding="utf-8-sig")
+
+
 def _write_intent_risk_outputs(df: pd.DataFrame, output_path: Path, label_col: str) -> None:
     if "zc_level" not in df.columns or "model_score" not in df.columns:
         return
@@ -250,6 +367,33 @@ def _write_intent_risk_outputs(df: pd.DataFrame, output_path: Path, label_col: s
     pd.DataFrame(head_rows).to_csv(output_path / "intent_zc_headcount_risk.csv", index=False, encoding="utf-8-sig")
 
 
+def _business_risk_rows(df: pd.DataFrame, label_col: str, score_cols: list[str], dimensions: list[str]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    amount_cols = [column for column in ["prc_amt_xz_30d_3m", "ovd_amt_xz_30d_3m"] if column in df.columns]
+    group_cols = [column for column in dimensions if column in df.columns]
+    if not amount_cols and not group_cols:
+        return rows
+    for score_col in score_cols:
+        if score_col not in df.columns:
+            continue
+        valid = df[score_col].notna()
+        if int(valid.sum()) < 20:
+            continue
+        temp = df.loc[valid].copy()
+        temp["score_band"] = pd.qcut(temp[score_col], 5, labels=False, duplicates="drop")
+        by_cols = ["score_band"] + group_cols[:2]
+        for keys, group in temp.groupby(by_cols, dropna=False):
+            if not isinstance(keys, tuple):
+                keys = (keys,)
+            row = {"score_column": score_col, "score_band": int(keys[0]) + 1 if pd.notna(keys[0]) else None, "n_samples": int(len(group)), "bad": int(group[label_col].sum()), "bad_rate": float(group[label_col].mean()) if len(group) else 0.0}
+            for idx, column in enumerate(group_cols[:2], start=1):
+                row[column] = str(keys[idx])
+            for amount_col in amount_cols:
+                row[f"{amount_col}_sum"] = float(pd.to_numeric(group[amount_col], errors="coerce").fillna(0).sum())
+            rows.append(row)
+    return rows
+
+
 def _write_psi_outputs(df: pd.DataFrame, output_path: Path, score_cols: list[str], time_col: str) -> None:
     if time_col not in df.columns:
         return
@@ -280,4 +424,21 @@ def _benchmark_uplift(df: pd.DataFrame, label_col: str, split_col: str, score_co
             if row["model_score_ks"] is not None and row[f"{ref}_ks"] is not None:
                 row[f"ks_uplift_vs_{ref}"] = round(row["model_score_ks"] - row[f"{ref}_ks"], 6)
         rows.append(row)
+    return rows
+
+
+def _feature_gain_rows(benchmark_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for row in benchmark_rows:
+        split_val = row.get("final_flag")
+        for key, value in row.items():
+            if key.startswith("auc_uplift_vs_") or key.startswith("ks_uplift_vs_"):
+                rows.append(
+                    {
+                        "split": split_val,
+                        "metric": "auc" if key.startswith("auc_") else "ks",
+                        "baseline_score": key.split("_vs_", 1)[-1],
+                        "uplift": value,
+                    }
+                )
     return rows

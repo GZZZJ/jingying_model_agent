@@ -8,6 +8,7 @@ import json
 import shutil
 import sys
 import time
+from copy import deepcopy
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -48,6 +49,7 @@ from risk_model_workbench.project_state import (
     write_retrospective,
 )
 from risk_model_workbench.request import parse_model_request, validate_model_request
+from risk_model_workbench.request.materialize import RUNTIME_CONFIG_DIR, materialize_request_runtime_configs
 from risk_model_workbench.rules import format_rules, load_workbench_rules, promote_lesson_to_rule
 from risk_model_workbench.state import (
     append_decision,
@@ -100,8 +102,54 @@ def _copy_if_exists(source: Path, target: Path) -> Path | None:
     if not source.exists():
         return None
     target.parent.mkdir(parents=True, exist_ok=True)
+    if source.resolve() == target.resolve():
+        return target
     shutil.copy2(source, target)
     return target
+
+
+def _copy_and_register_artifact(
+    run_path: Path,
+    action_id: str,
+    source: Path,
+    target_relative: str | Path,
+    *,
+    description: str = "",
+) -> Path | None:
+    target_relative = Path(target_relative)
+    copied = _copy_if_exists(source, run_path / target_relative)
+    if copied is not None:
+        register_artifact(run_path, action_id, str(target_relative), description=description)
+    return copied
+
+
+def _query_artifact_relative(project_dir: Path, sql_path: Path) -> Path:
+    try:
+        relative = sql_path.resolve().relative_to(project_dir.resolve())
+    except ValueError:
+        return Path("queries") / sql_path.name
+    if relative.parts and relative.parts[0] == "queries":
+        return relative
+    return Path("queries") / sql_path.name
+
+
+def _resolve_refine_config_path(project_dir: Path, config: str | None) -> Path:
+    path = Path(config or "configs/refine_features.yaml")
+    return path if path.is_absolute() else project_dir / path
+
+
+def _feature_refine_output_dir(project_dir: Path, config: str | None) -> Path:
+    cfg = load_yaml(_resolve_refine_config_path(project_dir, config))["feature_refine"]
+    output_dir = Path(cfg["output_dir"])
+    return output_dir if output_dir.is_absolute() else project_dir / output_dir
+
+
+def _feature_refine_output_dir_for_run(project_dir: Path, run_path: Path, config: str | None) -> Path:
+    cfg_path = Path(config) if config else _runtime_config_path(run_path, project_dir, "refine_features")
+    cfg_path = cfg_path if cfg_path.is_absolute() else project_dir / cfg_path
+    cfg = load_yaml(cfg_path)["feature_refine"]
+    output_dir = Path(cfg["output_dir"])
+    return output_dir if output_dir.is_absolute() else project_dir / output_dir
 
 
 def _register_woe_artifacts(path: Path, stage: str, artifact_dir: Path) -> None:
@@ -123,6 +171,88 @@ def _copy_woe_artifacts(source_dir: Path, target_dir: Path) -> None:
 
 def _load_project_config(project_dir: Path) -> dict[str, Any]:
     return load_yaml(project_config_path(project_dir))
+
+
+def _runtime_config_dir(run_path: Path) -> Path:
+    return run_path / RUNTIME_CONFIG_DIR
+
+
+def _runtime_config_path(run_path: Path, project_dir: Path, name: str) -> Path:
+    candidates: list[Path] = []
+    raw = Path(name)
+    if raw.suffix:
+        candidates.extend([_runtime_config_dir(run_path) / raw.name, raw if raw.is_absolute() else project_dir / raw])
+    else:
+        candidates.extend([
+            _runtime_config_dir(run_path) / f"{name}.yaml",
+            _runtime_config_dir(run_path) / f"{name}.yml",
+            project_dir / "configs" / f"{name}.yaml",
+            project_dir / "configs" / f"{name}.yml",
+        ])
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return candidates[0]
+
+
+def _load_runtime_project_config(project_dir: Path, run_path: Path) -> dict[str, Any]:
+    runtime_project = _runtime_config_dir(run_path) / "project.yml"
+    return load_yaml(runtime_project) if runtime_project.exists() else _load_project_config(project_dir)
+
+
+def _load_runtime_config(project_dir: Path, run_path: Path, name: str) -> dict[str, Any]:
+    path = _runtime_config_path(run_path, project_dir, name)
+    return load_yaml(path) if path.exists() else {}
+
+
+def _runtime_config_arg(project_dir: Path, run_path: Path, name: str, explicit: str | None = None) -> str | None:
+    if explicit:
+        return explicit
+    path = _runtime_config_path(run_path, project_dir, name)
+    return str(path) if path.exists() else None
+
+
+def _normal_algorithm(value: Any, default: str = "lightgbm") -> str:
+    raw = str(value or default).strip().lower()
+    aliases = {
+        "lgb": "lightgbm",
+        "lgbm": "lightgbm",
+        "xgb": "xgboost",
+        "lr": "logistic_regression",
+        "logistic": "logistic_regression",
+        "ranknet": "hier_ranknet",
+        "hier_ranknet": "hier_ranknet",
+        "teacher_student": "teacher_student_distillation",
+    }
+    return aliases.get(raw, raw)
+
+
+def _experiment_config(train_config: dict[str, Any], experiment_name: str) -> dict[str, Any]:
+    training = train_config.get("training", {})
+    for item in training.get("experiments") or []:
+        if isinstance(item, dict) and str(item.get("name")) == experiment_name:
+            result = deepcopy(item)
+            result["algorithm"] = _normal_algorithm(result.get("algorithm") or result.get("method"), training.get("default_algorithm", "lightgbm"))
+            return result
+    algorithm = _normal_algorithm(training.get("default_algorithm", "lightgbm"))
+    return {"name": experiment_name, "algorithm": algorithm, "method": algorithm, "segment": "all"}
+
+
+def _scores_feather_for_run(run_path: Path, explicit: str | None = None) -> Path:
+    if explicit:
+        return Path(explicit)
+    candidates = sorted((run_path / "modeling").glob("*/scores_all_splits.feather"))
+    if candidates:
+        return candidates[-1]
+    return run_path / "modeling" / "scores_all_splits.feather"
+
+
+def _as_string_list(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return [str(item) for item in value if str(item)]
+    return [str(value)] if str(value) else []
 
 
 def _read_only_action(action_id: str, operation):
@@ -366,7 +496,7 @@ def cmd_run_init(args: argparse.Namespace) -> int:
         print(f"run already exists: {path}")
         return 1
 
-    for directory in ["configs_snapshot", "audit", "tasks", "sample_check", "feature_selection", "modeling", "evaluation", "reports"]:
+    for directory in ["configs_snapshot", RUNTIME_CONFIG_DIR, "audit", "tasks", "sample_check", "feature_selection", "modeling", "evaluation", "reports"]:
         (path / directory).mkdir(parents=True, exist_ok=True)
     for config_file in [project_config_path(project_dir), *sorted((project_dir / "configs").glob("*.y*ml"))]:
         if config_file.exists():
@@ -379,18 +509,32 @@ def cmd_run_init(args: argparse.Namespace) -> int:
     _write_text(path / "audit" / "decision_log.md", f"# Decision Log\n\n- imported: false\n")
     stage_action_started(path, "validate_config")
     register_artifact(path, "validate_config", "configs_snapshot", kind="directory", description="Project config snapshot")
+    request_doc: dict[str, Any] | None = None
+    plan_payload: dict[str, Any] | None = None
     if getattr(args, "request", None):
         request_path = Path(args.request)
         request_path = request_path if request_path.is_absolute() else (REPO_ROOT / request_path)
         if request_path.exists():
             shutil.copy2(request_path, path / "model_request.md")
             register_artifact(path, "validate_config", "model_request.md", description="Model request copied into run workspace")
+            request_doc = parse_model_request(request_path)
     if getattr(args, "plan", None):
         plan_path = Path(args.plan)
         plan_path = plan_path if plan_path.is_absolute() else (REPO_ROOT / plan_path)
         if plan_path.exists():
             shutil.copy2(plan_path, path / "execution_plan.yml")
             register_artifact(path, "validate_config", "execution_plan.yml", description="Execution plan copied into run workspace")
+            plan_payload = load_yaml(plan_path)
+    if request_doc:
+        runtime_paths = materialize_request_runtime_configs(
+            request_doc=request_doc,
+            project_dir=project_dir,
+            run_dir=path,
+            plan=plan_payload,
+        )
+        register_artifact(path, "validate_config", RUNTIME_CONFIG_DIR, kind="directory", description="Request-materialized runtime configs")
+        for runtime_path in runtime_paths.values():
+            register_artifact(path, "validate_config", runtime_path.relative_to(path), description="Request-materialized runtime config")
     stage_action_done(path, "validate_config")
     print(f"run_id: {run_id}")
     print(f"run_dir: {path}")
@@ -490,13 +634,101 @@ def cmd_sample_check(args: argparse.Namespace) -> int:
     project_dir = resolve_project_path(args.project)
     path = _run_path(args)
     stage_action_started(path, "sample_check")
-    config = _load_project_config(project_dir)
+    config = _load_runtime_project_config(project_dir, path)
     data_cfg = config.get("data", {})
-    raw_path = project_dir / data_cfg.get("raw_path", "data/raw/sample.feather")
+    raw_path = Path(data_cfg.get("raw_path", "data/raw/sample.feather"))
+    if not raw_path.is_absolute():
+        raw_path = project_dir / raw_path
+    if raw_path.exists():
+        try:
+            import pandas as pd
+
+            if raw_path.suffix == ".csv":
+                df = pd.read_csv(raw_path)
+            elif raw_path.suffix == ".parquet":
+                df = pd.read_parquet(raw_path)
+            else:
+                df = pd.read_feather(raw_path)
+            target_col = data_cfg.get("target_column")
+            split_col = data_cfg.get("split_column") or config.get("split", {}).get("source_column")
+            id_columns = [col for col in data_cfg.get("id_columns", []) if col in df.columns]
+            time_col = data_cfg.get("time_column")
+            summary = {
+                "status": "done",
+                "reason": "",
+                "rows": int(len(df)),
+                "columns": int(len(df.columns)),
+                "project": config.get("project", {}),
+                "target_column": target_col,
+                "target_column_present": bool(target_col in df.columns),
+                "id_columns": data_cfg.get("id_columns", []),
+                "id_columns_present": id_columns,
+                "duplicate_key_rows": int(df.duplicated(subset=id_columns).sum()) if id_columns else None,
+                "split_column": split_col,
+                "split_column_present": bool(split_col in df.columns),
+            }
+            _write_json(path / "sample_check" / "sample_summary.json", summary)
+            if target_col in df.columns:
+                df[target_col].value_counts(dropna=False).rename_axis("label").reset_index(name="count").to_csv(
+                    path / "sample_check" / "label_distribution.csv",
+                    index=False,
+                    encoding="utf-8-sig",
+                )
+            if split_col in df.columns:
+                split_rows = df.groupby(split_col, dropna=False).size().reset_index(name="count")
+                if target_col in df.columns:
+                    label_series = pd.to_numeric(df[target_col], errors="coerce")
+                    label_mean = df.assign(_target_numeric=label_series).groupby(split_col, dropna=False)["_target_numeric"].mean().reset_index(name="target_rate")
+                    split_rows = split_rows.merge(label_mean, on=split_col, how="left")
+                split_rows.to_csv(path / "sample_check" / "sample_split_summary.csv", index=False, encoding="utf-8-sig")
+            if time_col in df.columns and target_col in df.columns:
+                month = pd.to_datetime(df[time_col], errors="coerce").dt.to_period("M").astype(str)
+                monthly = df.assign(_month=month).groupby("_month", dropna=False).agg(samples=(target_col, "count"), positive=(target_col, "sum"), target_rate=(target_col, "mean")).reset_index()
+                monthly.to_csv(path / "sample_check" / "monthly_label_distribution.csv", index=False, encoding="utf-8-sig")
+            segment_cols = [
+                col
+                for col in [
+                    "blue_customer_flag",
+                    "zc_level",
+                    "channel",
+                    "channel_id",
+                    "account_status",
+                    "acct_status",
+                    "roll_rate_status",
+                    "credit_product",
+                    "credit_product_code",
+                    "product_code",
+                    *config.get("data", {}).get("segment_columns", []),
+                ]
+                if col in df.columns
+            ]
+            if segment_cols:
+                rows = []
+                for column in dict.fromkeys(segment_cols):
+                    for value, count in df[column].value_counts(dropna=False).items():
+                        rows.append({"segment_column": column, "segment_value": str(value), "count": int(count), "ratio": float(count / len(df)) if len(df) else 0})
+                pd.DataFrame(rows).to_csv(path / "sample_check" / "segment_distribution.csv", index=False, encoding="utf-8-sig")
+            _write_text(path / "sample_check" / "sample_check_report.md", "# Sample Check\n\nstatus: done\n")
+            for artifact in [
+                "sample_check/sample_summary.json",
+                "sample_check/sample_check_report.md",
+                "sample_check/label_distribution.csv",
+                "sample_check/sample_split_summary.csv",
+                "sample_check/monthly_label_distribution.csv",
+                "sample_check/segment_distribution.csv",
+            ]:
+                if (path / artifact).exists():
+                    register_artifact(path, "sample_check", artifact)
+            append_decision(path, stage="sample_check", decision="done", reason="Sample profiling completed from local data")
+            stage_action_done(path, "sample_check")
+            print(f"sample_check: {path / 'sample_check' / 'sample_summary.json'}")
+            return 0
+        except Exception as exc:
+            stage_action_failed(path, "sample_check", str(exc), failure_code=classify_exception(exc))
+            print(f"sample_check failed: {exc}", file=sys.stderr)
+            return 1
     status = "scaffold"
     reason = "local data not available"
-    if raw_path.exists():
-        reason = "local sample file exists; real profiling is not implemented in phase 1"
     summary = {
         "status": status,
         "reason": reason,
@@ -526,12 +758,23 @@ def cmd_sample_check(args: argparse.Namespace) -> int:
 
 def cmd_feature_metadata(args: argparse.Namespace) -> int:
     path = _run_path(args)
+    project_dir = resolve_project_path(args.project)
     stage_action_started(path, "feature_metadata")
     from risk_model_workbench.feature_metadata import main as metadata_main
 
-    argv = ["--project-dir", str(resolve_project_path(args.project)), "--run-dir", str(path)]
-    if args.tables_file:
-        argv.extend(["--tables-file", args.tables_file])
+    argv = ["--project-dir", str(project_dir), "--run-dir", str(path)]
+    config_arg = _runtime_config_arg(project_dir, path, "feature_select", args.config)
+    project_config_arg = str(_runtime_config_dir(path) / "project.yml") if (_runtime_config_dir(path) / "project.yml").exists() else None
+    if config_arg:
+        argv.extend(["--config", config_arg])
+    if project_config_arg:
+        argv.extend(["--project-config", project_config_arg])
+    tables_file = args.tables_file
+    if not tables_file and config_arg:
+        metadata_cfg = load_yaml(config_arg).get("feature_select", {}).get("metadata", {})
+        tables_file = metadata_cfg.get("tables_file")
+    if tables_file:
+        argv.extend(["--tables-file", tables_file])
     code = metadata_main(argv)
     if code == 0:
         stage_action_done(path, "feature_metadata")
@@ -542,13 +785,15 @@ def cmd_feature_metadata(args: argparse.Namespace) -> int:
 
 def cmd_feature_prescreen(args: argparse.Namespace) -> int:
     path = _run_path(args)
+    project_dir = resolve_project_path(args.project)
     stage = _feature_prescreen_stage(path)
     stage_action_started(path, stage)
     from risk_model_workbench.batch_feature_select import main as batch_select_main
 
-    argv = ["--project-dir", str(resolve_project_path(args.project)), "--run-dir", str(path), "--stage", stage]
-    if args.config:
-        argv.extend(["--config", args.config])
+    argv = ["--project-dir", str(project_dir), "--run-dir", str(path), "--stage", stage]
+    config_arg = _runtime_config_arg(project_dir, path, "feature_select", args.config)
+    if config_arg:
+        argv.extend(["--config", config_arg])
     if args.max_tables is not None:
         argv.extend(["--max-tables", str(args.max_tables)])
     if args.table:
@@ -592,7 +837,12 @@ def cmd_build_wide_sql(args: argparse.Namespace) -> int:
         legacy_path = project_dir / LEGACY_PRESCREEN_REMAIN_FEATURES
         if legacy_path.exists():
             remain_features_path = legacy_path
+    execution_path = Path(args.execution_output)
+    if not execution_path.is_absolute():
+        execution_path = (run_path if run_path else project_dir) / execution_path
     try:
+        config_path = _runtime_config_path(run_path, project_dir, "feature_select") if run_path else None
+        project_runtime_path = _runtime_config_dir(run_path) / "project.yml" if run_path else None
         sql_path, feature_map_path, summary_path = generate_wide_sql(
             project_dir=project_dir,
             remain_features_path=remain_features_path,
@@ -603,20 +853,100 @@ def cmd_build_wide_sql(args: argparse.Namespace) -> int:
             output_table=args.output_table,
             base_where=args.base_where,
             feature_where=args.feature_where,
+            config_path=config_path if config_path and config_path.exists() else None,
+            project_config_path=project_runtime_path if project_runtime_path and project_runtime_path.exists() else None,
         )
+        if run_path:
+            _copy_and_register_artifact(
+                run_path,
+                "build_wide_sql",
+                sql_path,
+                _query_artifact_relative(project_dir, sql_path),
+                description="Generated wide-table create SQL",
+            )
+            _copy_and_register_artifact(
+                run_path,
+                "build_wide_sql",
+                feature_map_path,
+                "feature_selection/prescreen_wide_feature_map.csv",
+                description="Wide-table feature output mapping",
+            )
+            _copy_and_register_artifact(
+                run_path,
+                "build_wide_sql",
+                summary_path,
+                "feature_selection/wide_sql_summary.json",
+                description="Wide-table SQL generation summary",
+            )
+            from risk_model_workbench.data.sql_review import review_sql_text
+
+            runtime_project = _load_runtime_project_config(project_dir, run_path)
+            sql_text = sql_path.read_text(encoding="utf-8")
+            review_config = load_yaml(config_path).get("feature_select", {}) if config_path and config_path.exists() else {}
+            runtime_request = review_config.get("runtime_request", {})
+            sql_gate_cfg = (runtime_request.get("step_params") or {}).get("sql_review_gate", {})
+            review_payload = review_sql_text(
+                sql_text,
+                approved_for_execution=bool(args.sql_approved),
+                target_columns=[runtime_project.get("data", {}).get("target_column", "")],
+                time_columns=[
+                    runtime_project.get("data", {}).get("time_column", ""),
+                    runtime_project.get("data", {}).get("period_column", ""),
+                ],
+            )
+            review_payload["block_on_high_risk"] = bool(sql_gate_cfg.get("block_on_high_risk", True))
+            review_payload["sql_path"] = str(sql_path)
+            _write_json(run_path / "feature_selection" / "sql_review.json", review_payload)
+            register_artifact(run_path, "build_wide_sql", "feature_selection/sql_review.json", description="Static SQL review result")
+            if review_payload["high_risk"]:
+                raise RuntimeError("SQL review blocked high-risk generated SQL")
+        if args.execute:
+            from risk_model_workbench.dp_feather import execute_dp_sql, sha256_text
+
+            sql_text = sql_path.read_text(encoding="utf-8")
+            summary_payload = json.loads(summary_path.read_text(encoding="utf-8"))
+            execution_result = execute_dp_sql(
+                project_dir=project_dir,
+                sql=sql_text,
+                operation_id="build_wide_sql",
+                description=f"Create wide feature table {summary_payload.get('output_table', args.output_table or '')}".strip(),
+                metadata_path=execution_path,
+                sql_approved=args.sql_approved,
+                progress=reporter,
+            )
+            execution_payload = {
+                **execution_result,
+                "approved": bool(args.sql_approved),
+                "sql_path": str(sql_path),
+                "summary_path": str(summary_path),
+                "feature_map_path": str(feature_map_path),
+                "output_table": summary_payload.get("output_table") or args.output_table,
+                "sql_sha256": sha256_text(sql_text),
+            }
+            _write_json(execution_path, execution_payload)
+            if run_path:
+                _copy_and_register_artifact(
+                    run_path,
+                    "build_wide_sql",
+                    execution_path,
+                    "feature_selection/wide_table_execution.json",
+                    description="Wide-table create SQL execution metadata",
+                )
     except Exception as exc:
         if run_path:
             stage_action_failed(run_path, "build_wide_sql", str(exc), failure_code=classify_exception(exc))
-        raise
+        print(f"build-wide-sql failed: {exc}", file=sys.stderr)
+        return 1
     if reporter:
         reporter.emit(
             step="write_outputs",
-            message="宽表 SQL、特征映射和摘要已生成",
+            message="宽表 SQL、特征映射和摘要已生成" + ("，建表 SQL 已执行" if args.execute else ""),
             percent=90,
             metrics={
                 "sql_path": str(sql_path),
                 "feature_map_path": str(feature_map_path),
                 "summary_path": str(summary_path),
+                "executed": bool(args.execute),
             },
         )
     if run_path:
@@ -624,25 +954,63 @@ def cmd_build_wide_sql(args: argparse.Namespace) -> int:
     print(f"sql: {sql_path}")
     print(f"feature_map: {feature_map_path}")
     print(f"summary: {summary_path}")
+    if args.execute:
+        print(f"execution: {execution_path}")
     return 0
 
 
 def cmd_feature_refine(args: argparse.Namespace) -> int:
     path = _run_path(args)
+    project_dir = resolve_project_path(args.project)
     stage_action_started(path, "feature_refine")
     from risk_model_workbench.feature_refine import main as refine_main
 
-    argv = ["--project-dir", str(resolve_project_path(args.project)), "--run-dir", str(path)]
-    if args.config:
-        argv.extend(["--config", args.config])
+    argv = ["--project-dir", str(project_dir), "--run-dir", str(path)]
+    config_arg = _runtime_config_arg(project_dir, path, "refine_features", args.config)
+    if config_arg:
+        argv.extend(["--config", config_arg])
     if args.dry_run_sql:
         argv.append("--dry-run-sql")
     if args.refresh_dp_cache:
         argv.append("--refresh-dp-cache")
     if args.sql_approved:
         argv.append("--sql-approved")
-    code = refine_main(argv)
+    if args.sample_max_rows is not None:
+        argv.extend(["--sample-max-rows", str(args.sample_max_rows)])
+    try:
+        code = refine_main(argv)
+    except Exception as exc:
+        stage_action_failed(path, "feature_refine", str(exc), failure_code=classify_exception(exc))
+        print(f"feature refine failed: {exc}", file=sys.stderr)
+        return 1
     if code == 0:
+        if not args.dry_run_sql:
+            output_dir = _feature_refine_output_dir_for_run(project_dir, path, config_arg)
+            try:
+                required_outputs = [
+                    (output_dir / "stage_summary.json", "feature_selection/stage_summary.json", "Feature refinement stage summary"),
+                    (
+                        output_dir / "stage_summary.json",
+                        "feature_selection/feature_stage_summary.json",
+                        "Feature refinement stage summary compatibility copy",
+                    ),
+                    (output_dir / "final_500_features.txt", "feature_selection/final_500_features.txt", "Final refined feature list"),
+                    (output_dir / "final_features.txt", "feature_selection/final_features.txt", "Final refined feature list"),
+                ]
+                for source, target, description in required_outputs:
+                    copied = _copy_and_register_artifact(
+                        path,
+                        "feature_refine",
+                        source,
+                        target,
+                        description=description,
+                    )
+                    if copied is None:
+                        raise FileNotFoundError(f"required feature refine artifact missing: {source}")
+            except Exception as exc:
+                stage_action_failed(path, "feature_refine", str(exc), failure_code=classify_exception(exc))
+                print(f"feature refine artifact registration failed: {exc}", file=sys.stderr)
+                return 1
         stage_action_done(
             path,
             "feature_refine",
@@ -660,9 +1028,25 @@ def cmd_train(args: argparse.Namespace) -> int:
     path = _run_path(args)
     stage_action_started(path, "train_baseline")
     reporter = ProgressReporter(path, "train_baseline")
-    config_path = Path(args.config) if getattr(args, "config", None) else project_dir / "configs" / "train.yaml"
+    config_arg = _runtime_config_arg(project_dir, path, "train", args.config)
+    config_path = Path(config_arg) if config_arg else project_dir / "configs" / "train.yaml"
     config_path = config_path if config_path.is_absolute() else project_dir / config_path
     train_config = load_yaml(config_path) if config_path.exists() else {}
+    runtime_experiment = _experiment_config(train_config, args.experiment) if train_config else {"name": args.experiment, "algorithm": "lightgbm"}
+    algorithm = _normal_algorithm(runtime_experiment.get("algorithm") or runtime_experiment.get("method"))
+    effective_config = deepcopy(train_config)
+    if effective_config:
+        effective_config["runtime_experiment"] = runtime_experiment
+        effective_config["runtime_step_params"] = effective_config.get("training", {}).get("runtime_step_params", {})
+        input_cfg = effective_config.setdefault("input", {})
+        project_cfg = _load_runtime_project_config(project_dir, path)
+        data_cfg = project_cfg.get("data", {})
+        if data_cfg.get("time_column"):
+            input_cfg.setdefault("time_column", data_cfg.get("time_column"))
+        if data_cfg.get("period_column"):
+            input_cfg.setdefault("period_column", data_cfg.get("period_column"))
+        if data_cfg.get("segment_columns"):
+            input_cfg.setdefault("segment_columns", data_cfg.get("segment_columns"))
     configured_input = train_config.get("input", {}).get("feather_path")
     input_feather = Path(args.input_feather or configured_input or "")
     if input_feather and not input_feather.is_absolute():
@@ -678,20 +1062,43 @@ def cmd_train(args: argparse.Namespace) -> int:
     if not input_snapshot_dir.is_absolute():
         input_snapshot_dir = project_dir / input_snapshot_dir
 
+    if algorithm == "custom" and not (train_config.get("custom_training", {}).get("entrypoint") or train_config.get("training", {}).get("custom_entrypoint")):
+        reason = "custom training requires training.custom_entrypoint or custom_training.entrypoint in project/runtime config"
+        payload = {"status": "failed", "reason": reason, "experiment": args.experiment, "algorithm": algorithm}
+        _write_json(output_dir / "train_metrics.json", payload)
+        register_artifact(path, "train_baseline", f"modeling/{args.experiment}/train_metrics.json")
+        stage_action_failed(path, "train_baseline", reason)
+        print(f"train failed: {reason}", file=sys.stderr)
+        return 1
+
     if input_feather and Path(input_feather).exists() and feature_list.exists() and train_config:
         try:
-            from risk_model_workbench.modeling.train_lgb import train_lightgbm_from_feather
+            if algorithm == "lightgbm":
+                from risk_model_workbench.modeling.train_lgb import train_lightgbm_from_feather
 
-            metrics = train_lightgbm_from_feather(
-                input_feather=input_feather,
-                feature_list_path=feature_list,
-                output_dir=output_dir,
-                score_output=score_output,
-                input_snapshot_dir=input_snapshot_dir,
-                config=train_config,
-                progress=reporter,
-            )
-            _write_json(output_dir / "train_metrics.json", {"status": "done", "metrics": metrics, "experiment": args.experiment})
+                metrics = train_lightgbm_from_feather(
+                    input_feather=input_feather,
+                    feature_list_path=feature_list,
+                    output_dir=output_dir,
+                    score_output=score_output,
+                    input_snapshot_dir=input_snapshot_dir,
+                    config=effective_config,
+                    progress=reporter,
+                )
+            else:
+                from risk_model_workbench.modeling.train_xgb import train_tabular_from_feather
+
+                metrics = train_tabular_from_feather(
+                    input_feather=input_feather,
+                    feature_list_path=feature_list,
+                    output_dir=output_dir,
+                    score_output=score_output,
+                    input_snapshot_dir=input_snapshot_dir,
+                    config=effective_config,
+                    algorithm=algorithm,
+                    progress=reporter,
+                )
+            _write_json(output_dir / "train_metrics.json", {"status": "done", "metrics": metrics, "experiment": args.experiment, "algorithm": algorithm})
             for artifact in [
                 "train_metrics.json",
                 "metrics_train_valid.json",
@@ -701,20 +1108,29 @@ def cmd_train(args: argparse.Namespace) -> int:
                 "preprocessing.json",
                 "run_config.json",
                 "model.pkl",
+                "score_column_summary.csv",
+                "distillation_summary.json",
             ]:
-                register_artifact(path, "train_baseline", f"modeling/{args.experiment}/{artifact}")
+                if (output_dir / artifact).exists():
+                    register_artifact(path, "train_baseline", f"modeling/{args.experiment}/{artifact}")
+            if score_output.exists():
+                try:
+                    register_artifact(path, "train_baseline", score_output)
+                except Exception:
+                    register_artifact(path, "train_baseline", f"modeling/{args.experiment}/scores_all_splits.feather")
             _register_woe_artifacts(path, "train_baseline", output_dir / "woe_top_features")
-            append_decision(path, stage="train_baseline", decision="done", reason="LightGBM training completed from local feather data")
+            append_decision(path, stage="train_baseline", decision="done", reason=f"{algorithm} training completed from local feather data")
             stage_action_done(path, "train_baseline")
             print(f"train complete: {output_dir}")
             return 0
         except Exception as exc:
-            payload = {"status": "scaffold", "reason": f"training failed or dependency missing: {exc}", "experiment": args.experiment}
+            payload = {"status": "scaffold", "reason": f"training failed or dependency missing: {exc}", "experiment": args.experiment, "algorithm": algorithm}
     else:
         payload = {
             "status": "scaffold",
             "reason": "training data not available",
             "experiment": args.experiment,
+            "algorithm": algorithm,
             "input_feather": str(input_feather) if input_feather else "",
             "input_feather_exists": bool(input_feather and Path(input_feather).exists()),
             "feature_list": str(feature_list),
@@ -737,9 +1153,10 @@ def cmd_evaluate(args: argparse.Namespace) -> int:
     path = _run_path(args)
     stage_action_started(path, "evaluate")
     reporter = ProgressReporter(path, "evaluate")
-    evaluate_config = load_yaml(project_dir / "configs" / "evaluate.yaml") if (project_dir / "configs" / "evaluate.yaml").exists() else {}
+    evaluate_path = _runtime_config_path(path, project_dir, "evaluate")
+    evaluate_config = load_yaml(evaluate_path) if evaluate_path.exists() else {}
     metrics = evaluate_config.get("metrics") or evaluate_config.get("evaluation", {}).get("metrics") or []
-    scores_feather = Path(args.scores_feather or path / "modeling" / "scores_all_splits.feather")
+    scores_feather = _scores_feather_for_run(path, args.scores_feather)
     if not scores_feather.is_absolute():
         scores_feather = project_dir / scores_feather
     output_dir = Path(args.output_dir or path / "evaluation")
@@ -750,16 +1167,8 @@ def cmd_evaluate(args: argparse.Namespace) -> int:
             from risk_model_workbench.evaluation.run import evaluate_scores_from_feather
 
             summary = evaluate_scores_from_feather(scores_feather=scores_feather, output_dir=output_dir, config=evaluate_config, progress=reporter)
-            for artifact in [
-                "evaluation_summary.json",
-                "overall_metrics.csv",
-                "monthly_metrics.csv",
-                "segment_metrics.csv",
-                "benchmark_uplift.csv",
-                "score_psi_by_month.csv",
-            ]:
-                if (output_dir / artifact).exists():
-                    register_artifact(path, "evaluate", output_dir / artifact)
+            for artifact in sorted([*output_dir.glob("*.csv"), *output_dir.glob("*.json")]):
+                register_artifact(path, "evaluate", artifact)
             append_decision(path, stage="evaluate", decision="done", reason="Evaluation completed from local score feather")
             stage_action_done(path, "evaluate")
             print(f"evaluation complete: {output_dir / 'evaluation_summary.json'}")
@@ -784,22 +1193,52 @@ def cmd_evaluate(args: argparse.Namespace) -> int:
 
 
 def cmd_compare(args: argparse.Namespace) -> int:
+    project_dir = resolve_project_path(args.project)
     path = _run_path(args)
     stage_action_started(path, "compare")
-    if not args.champion:
-        payload = {"status": "skipped", "reason": "no champion configured", "champion": ""}
+    champions = _as_string_list(args.champion)
+    if not champions:
+        evaluate_config = _load_runtime_config(project_dir, path, "evaluate")
+        champions = [
+            score
+            for score in _as_string_list((evaluate_config.get("evaluation") or {}).get("score_columns"))
+            if score != "model_score"
+        ]
+    champions = list(dict.fromkeys(champions))
+    if not champions:
+        payload = {"status": "skipped", "reason": "no champion configured", "champion": "", "champions": []}
         _write_json(path / "evaluation" / "champion_challenger.json", payload)
         register_artifact(path, "compare", "evaluation/champion_challenger.json")
         append_decision(path, stage="compare", decision="skipped", reason=payload["reason"])
         stage_action_done(path, "compare", message=payload["reason"])
         print(f"compare skipped: {path / 'evaluation' / 'champion_challenger.json'}")
         return 0
-    payload = {"status": "scaffold", "reason": "candidate and champion predictions not available", "champion": args.champion}
+    benchmark_path = path / "evaluation" / "benchmark_uplift.csv"
+    if benchmark_path.exists():
+        payload = {
+            "status": "done",
+            "reason": "",
+            "champion": champions[-1],
+            "champions": champions,
+            "benchmark_uplift": str(benchmark_path.relative_to(path)),
+        }
+        register_artifact(path, "compare", "evaluation/benchmark_uplift.csv")
+        decision = "done"
+        scaffold = False
+    else:
+        payload = {
+            "status": "scaffold",
+            "reason": "candidate and champion predictions not available",
+            "champion": champions[-1],
+            "champions": champions,
+        }
+        decision = "scaffold"
+        scaffold = True
     _write_json(path / "evaluation" / "champion_challenger.json", payload)
     register_artifact(path, "compare", "evaluation/champion_challenger.json")
-    append_decision(path, stage="compare", decision="scaffold", reason=payload["reason"])
-    stage_action_done(path, "compare", scaffold=True, message=payload["reason"])
-    print(f"compare scaffold: {path / 'evaluation' / 'champion_challenger.json'}")
+    append_decision(path, stage="compare", decision=decision, reason=payload["reason"] or "Champion/challenger comparison materialized")
+    stage_action_done(path, "compare", scaffold=scaffold, message=payload["reason"])
+    print(f"compare {'scaffold' if scaffold else 'complete'}: {path / 'evaluation' / 'champion_challenger.json'}")
     return 0
 
 
@@ -807,8 +1246,16 @@ def cmd_report(args: argparse.Namespace) -> int:
     project_dir = resolve_project_path(args.project)
     path = _run_path(args)
     stage_action_started(path, "report")
-    report_config = load_yaml(project_dir / "configs" / "report.yaml") if (project_dir / "configs" / "report.yaml").exists() else {}
+    report_path = _runtime_config_path(path, project_dir, "report")
+    report_config = load_yaml(report_path) if report_path.exists() else {}
     sections = report_config.get("sections") or report_config.get("report", {}).get("sections") or []
+    outputs = report_config.get("outputs") or report_config.get("report", {}).get("outputs") or ["model_report.md", "model_card.md", "executive_summary.md"]
+    report_steps = _as_string_list((report_config.get("report") or {}).get("stage_steps"))
+    outputs = _as_string_list(outputs)
+    if "model_recovery_report" in report_steps and "model_recovery_report.md" not in outputs:
+        outputs.append("model_recovery_report.md")
+    if "credit_product_report" in report_steps and "credit_product_report.md" not in outputs:
+        outputs.append("credit_product_report.md")
     state = load_run_state(path)
     manifest_path = path / "audit" / "artifact_manifest.json"
     text = (
@@ -820,11 +1267,43 @@ def cmd_report(args: argparse.Namespace) -> int:
         f"- configured_sections: {', '.join(sections) if sections else 'not configured'}\n"
         f"- artifact_manifest: {manifest_path.relative_to(path)}\n"
     )
-    _write_text(path / "reports" / "model_report.md", text)
-    _write_text(path / "reports" / "model_card.md", "# Model Card\n\nstatus: scaffold\n")
-    _write_text(path / "reports" / "executive_summary.md", "# Executive Summary\n\nstatus: scaffold\n")
-    for artifact in ["reports/model_report.md", "reports/model_card.md", "reports/executive_summary.md"]:
-        register_artifact(path, "report", artifact)
+    generated_report_paths: list[Path] = []
+
+    def _report_body(name: str) -> str:
+        lowered = name.lower()
+        if "model_card" in lowered:
+            return "# Model Card\n\nstatus: scaffold\n\nThis card is generated from registered run artifacts.\n"
+        if "executive" in lowered:
+            return "# Executive Summary\n\nstatus: scaffold\n\nModel evaluation evidence is summarized from the run manifest when available.\n"
+        if "recovery" in lowered:
+            return "# Model Recovery Report\n\nstatus: scaffold\n\nRecovery monitoring inputs were requested; missing artifacts are listed in the run manifest.\n"
+        if "credit" in lowered:
+            return "# Credit Product Report\n\nstatus: scaffold\n\nCredit product evaluation outputs were requested; missing artifacts are listed in the run manifest.\n"
+        return text
+
+    for output_name in outputs:
+        target = path / "reports" / Path(output_name).name
+        suffix = target.suffix.lower()
+        if suffix == ".xlsx":
+            continue
+        if suffix == ".html":
+            import html
+
+            body = _report_body(target.name)
+            _write_text(target, f"<!doctype html><meta charset=\"utf-8\"><pre>{html.escape(body)}</pre>\n")
+        elif suffix == ".json":
+            _write_json(target, {"status": "scaffold", "run_id": args.run_id, "sections": sections, "artifact_manifest": str(manifest_path.relative_to(path))})
+        else:
+            _write_text(target, _report_body(target.name))
+        generated_report_paths.append(target)
+
+    for required_name in ["model_report.md", "model_card.md", "executive_summary.md"]:
+        target = path / "reports" / required_name
+        if not target.exists():
+            _write_text(target, _report_body(required_name))
+            generated_report_paths.append(target)
+    for artifact_path in generated_report_paths:
+        register_artifact(path, "report", artifact_path)
     train_dirs = [item for item in (path / "modeling").glob("*") if item.is_dir() and (item / "metrics_train_valid.json").exists()]
     excel_path = None
     if (path / "evaluation" / "evaluation_summary.json").exists() and train_dirs:
@@ -1124,6 +1603,7 @@ def _add_feature_parser(subparsers: argparse._SubParsersAction[argparse.Argument
     metadata.add_argument("--project", required=True)
     metadata.add_argument("--run-id", required=True)
     metadata.add_argument("--tables-file", default=None)
+    metadata.add_argument("--config", default=None)
     metadata.set_defaults(func=cmd_feature_metadata)
 
     prescreen = feature_sub.add_parser("prescreen")
@@ -1137,6 +1617,7 @@ def _add_feature_parser(subparsers: argparse._SubParsersAction[argparse.Argument
     refine.add_argument("--dry-run-sql", action="store_true")
     refine.add_argument("--refresh-dp-cache", action="store_true")
     refine.add_argument("--sql-approved", action="store_true")
+    refine.add_argument("--sample-max-rows", type=int, default=None)
     refine.set_defaults(func=cmd_feature_refine)
 
 
@@ -1204,7 +1685,7 @@ def build_parser() -> argparse.ArgumentParser:
     compare = subparsers.add_parser("compare")
     compare.add_argument("--project", required=True)
     compare.add_argument("--run-id", required=True)
-    compare.add_argument("--champion", default="")
+    compare.add_argument("--champion", action="append", default=[])
     compare.set_defaults(func=cmd_compare)
 
     report = subparsers.add_parser("report")
@@ -1238,10 +1719,13 @@ def build_parser() -> argparse.ArgumentParser:
     build_wide_sql.add_argument("--sql-output", default="queries/06_build_prescreen_wide_table.sql")
     build_wide_sql.add_argument("--feature-map-output", default="runs/feature_prescreen/results/prescreen_wide_feature_map.csv")
     build_wide_sql.add_argument("--summary-output", default="runs/feature_prescreen/results/prescreen_wide_sql_summary.json")
+    build_wide_sql.add_argument("--execution-output", default="feature_selection/wide_table_execution.json")
     build_wide_sql.add_argument("--base-table", default=None)
     build_wide_sql.add_argument("--output-table", default=None)
     build_wide_sql.add_argument("--base-where", default=None)
     build_wide_sql.add_argument("--feature-where", default=None)
+    build_wide_sql.add_argument("--execute", action="store_true")
+    build_wide_sql.add_argument("--sql-approved", action="store_true")
     build_wide_sql.set_defaults(func=cmd_build_wide_sql)
 
     return parser

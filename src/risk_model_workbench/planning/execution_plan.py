@@ -8,6 +8,7 @@ from typing import Any
 
 import yaml
 
+from risk_model_workbench.paths import workflow_path
 from risk_model_workbench.planning.steps import implemented_step_ids_for_stage, resolve_step_configuration, step_params_for
 
 
@@ -42,6 +43,17 @@ def _project_champions(project_path: str | Path) -> list[Any]:
     return _as_list(champions)
 
 
+def _workflow_stages(workflow: str) -> set[str]:
+    path = workflow_path(workflow)
+    if not path.exists():
+        raise ValueError(f"unknown workflow: {workflow}")
+    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    stages = data.get("stages") or []
+    if not isinstance(stages, list):
+        raise ValueError(f"workflow stages must be a list: {workflow}")
+    return {str(stage) for stage in stages}
+
+
 def _experiments_from_metadata(metadata: dict[str, Any]) -> list[Any]:
     experiments = metadata.get("experiments")
     if isinstance(experiments, list) and experiments:
@@ -54,7 +66,7 @@ def _experiments_from_metadata(metadata: dict[str, Any]) -> list[Any]:
     return [
         {
             "name": "baseline_from_description",
-            "method": "custom",
+            "method": "lightgbm",
             "segment": "all",
             "description": description,
         }
@@ -96,33 +108,73 @@ def create_execution_plan(request_doc: dict[str, Any], project_path: str | Path)
     project = str(project_path)
     request_id = metadata["request_id"]
     workflow = metadata.get("workflow", "full_modeling")
+    workflow_stages = _workflow_stages(str(workflow))
     run_arg = "<run_id>"
     tasks: list[dict[str, Any]] = []
     step_config = resolve_step_configuration(metadata, project_path)
     scenario_profile = step_config["scenario_profile"]
+    workflow_stage_steps = {
+        stage: steps
+        for stage, steps in step_config["stage_steps"].items()
+        if stage in workflow_stages
+    }
+    workflow_step_ids = {step_id for steps in workflow_stage_steps.values() for step_id in steps}
+    workflow_step_params = {
+        step_id: params
+        for step_id, params in step_config["step_params"].items()
+        if step_id in workflow_step_ids
+    }
+    workflow_resolved_steps = [
+        step
+        for step in step_config["resolved_steps"]
+        if step["id"] in workflow_step_ids
+    ]
+    workflow_planned_steps = [
+        step
+        for step in workflow_resolved_steps
+        if step["implementation_status"] == "planned"
+    ]
 
     sample_checks = _as_list(metadata.get("sample_checks"), default=["sample_check_001"])
     sample_task_ids: list[str] = []
     sample_step_ids = implemented_step_ids_for_stage(step_config, "sample_check")
-    for index, item in enumerate(sample_checks, start=1):
-        name = item.get("name") if isinstance(item, dict) else str(item)
-        task_id = name or f"sample_check_{index:03d}"
-        sample_task_ids.append(task_id)
-        tasks.append(
-            _task(
-                task_id=task_id,
-                task_type="sample_check",
-                depends_on=[],
-                args=["sample", "check", "--project", project, "--run-id", run_arg],
-                outputs=["sample_check/sample_summary.json", "sample_check/sample_check_report.md"],
-                scenario_profile=scenario_profile,
-                step_ids=sample_step_ids,
-                step_params=step_params_for(step_config, sample_step_ids),
+    if "sample_check" in workflow_stages:
+        for index, item in enumerate(sample_checks, start=1):
+            name = item.get("name") if isinstance(item, dict) else str(item)
+            task_id = name or f"sample_check_{index:03d}"
+            sample_task_ids.append(task_id)
+            tasks.append(
+                _task(
+                    task_id=task_id,
+                    task_type="sample_check",
+                    depends_on=[],
+                    args=["sample", "check", "--project", project, "--run-id", run_arg],
+                    outputs=["sample_check/sample_summary.json", "sample_check/sample_check_report.md"],
+                    scenario_profile=scenario_profile,
+                    step_ids=sample_step_ids,
+                    step_params=step_params_for(step_config, sample_step_ids),
+                )
             )
-        )
 
     feature_cfg = metadata.get("feature_selection") or {}
-    feature_rounds = _as_list(feature_cfg.get("rounds"), default=["metadata", "prescreen", "refine"])
+    raw_feature_rounds = _as_list(feature_cfg.get("rounds"), default=["metadata", "prescreen", "refine"])
+    has_wide_sql_round = any(
+        (item.get("name") if isinstance(item, dict) else str(item)).replace("-", "_")
+        in {"build_wide_sql", "wide_sql", "build_wide"}
+        for item in raw_feature_rounds
+    )
+    prescreen_round_names = {"prescreen", "feature_prescreen", "coarse_screening", "coarse", "d01_d02", "d01d02"}
+    feature_rounds: list[Any] = []
+    wide_sql_inserted = has_wide_sql_round
+    seen_prescreen_round = False
+    for item in raw_feature_rounds:
+        normalized = (item.get("name") if isinstance(item, dict) else str(item)).replace("-", "_")
+        if normalized == "refine" and seen_prescreen_round and not wide_sql_inserted:
+            feature_rounds.append("build_wide_sql")
+            wide_sql_inserted = True
+        feature_rounds.append(item)
+        if normalized in prescreen_round_names:
+            seen_prescreen_round = True
     feature_task_ids: list[str] = []
     feature_dependency = sample_task_ids[-1:] if sample_task_ids else []
     for item in feature_rounds:
@@ -133,11 +185,20 @@ def create_execution_plan(request_doc: dict[str, Any], project_path: str | Path)
             args = ["feature", "metadata", "--project", project, "--run-id", run_arg]
             outputs = ["feature_selection/feature_table_summary.csv", "feature_selection/feature_columns.csv"]
             stage = "feature_metadata"
-        elif normalized in {"prescreen", "feature_prescreen", "coarse_screening", "coarse", "d01_d02", "d01d02"}:
+        elif normalized in prescreen_round_names:
             task_id = "feature_prescreen"
             args = ["feature", "prescreen", "--project", project, "--run-id", run_arg, "--dry-run-sql"]
             outputs = ["feature_selection/prescreen_run_summary.json", "feature_selection/prescreen_final_remain_features.json"]
             stage = "feature_prescreen"
+        elif normalized in {"build_wide_sql", "wide_sql", "build_wide"}:
+            task_id = "build_wide_sql"
+            args = ["build-wide-sql", "--project", project, "--run-id", run_arg]
+            outputs = [
+                "queries/06_build_prescreen_wide_table.sql",
+                "feature_selection/wide_sql_summary.json",
+                "feature_selection/prescreen_wide_feature_map.csv",
+            ]
+            stage = "build_wide_sql"
         elif normalized == "refine":
             task_id = "feature_refine"
             args = ["feature", "refine", "--project", project, "--run-id", run_arg, "--dry-run-sql"]
@@ -148,94 +209,110 @@ def create_execution_plan(request_doc: dict[str, Any], project_path: str | Path)
             args = ["feature", normalized, "--project", project, "--run-id", run_arg]
             outputs = []
             stage = "feature_refine"
-        step_ids = implemented_step_ids_for_stage(step_config, stage)
-        tasks.append(
-            _task(
-                task_id=task_id,
-                task_type="feature_selection",
-                depends_on=feature_dependency,
-                args=args,
-                outputs=outputs,
-                scenario_profile=scenario_profile,
-                step_ids=step_ids,
-                step_params=step_params_for(step_config, step_ids),
+        if stage in workflow_stages:
+            step_ids = implemented_step_ids_for_stage(step_config, stage)
+            tasks.append(
+                _task(
+                    task_id=task_id,
+                    task_type="feature_selection",
+                    depends_on=feature_dependency,
+                    args=args,
+                    outputs=outputs,
+                    scenario_profile=scenario_profile,
+                    step_ids=step_ids,
+                    step_params=step_params_for(step_config, step_ids),
+                )
             )
-        )
-        feature_dependency = [task_id]
-        feature_task_ids.append(task_id)
+            feature_dependency = [task_id]
+            feature_task_ids.append(task_id)
 
     train_dep = feature_task_ids[-1:] or sample_task_ids[-1:]
     train_task_ids: list[str] = []
     train_step_ids = implemented_step_ids_for_stage(step_config, "train_baseline")
-    for experiment in _experiments_from_metadata(metadata):
-        name = experiment.get("name") if isinstance(experiment, dict) else str(experiment)
-        task_id = f"train_{name}"
-        train_task_ids.append(task_id)
+    if "train_baseline" in workflow_stages:
+        for experiment in _experiments_from_metadata(metadata):
+            name = experiment.get("name") if isinstance(experiment, dict) else str(experiment)
+            task_id = f"train_{name}"
+            train_task_ids.append(task_id)
+            tasks.append(
+                _task(
+                    task_id=task_id,
+                    task_type="train",
+                    depends_on=train_dep,
+                    args=["train", "--project", project, "--run-id", run_arg, "--experiment", name],
+                    outputs=[
+                        f"modeling/{name}/model.pkl",
+                        f"modeling/{name}/prediction.parquet",
+                        f"modeling/{name}/train_metrics.json",
+                    ],
+                    scenario_profile=scenario_profile,
+                    step_ids=train_step_ids,
+                    step_params=step_params_for(step_config, train_step_ids),
+                )
+            )
+
+    evaluate_task_added = False
+    evaluate_step_ids = implemented_step_ids_for_stage(step_config, "evaluate")
+    if "evaluate" in workflow_stages:
         tasks.append(
             _task(
-                task_id=task_id,
-                task_type="train",
-                depends_on=train_dep,
-                args=["train", "--project", project, "--run-id", run_arg, "--experiment", name],
-                outputs=[
-                    f"modeling/{name}/model.pkl",
-                    f"modeling/{name}/prediction.parquet",
-                    f"modeling/{name}/train_metrics.json",
-                ],
+                task_id="evaluate_final",
+                task_type="evaluate",
+                depends_on=train_task_ids,
+                args=["evaluate", "--project", project, "--run-id", run_arg],
+                outputs=["evaluation/evaluation_summary.json"],
                 scenario_profile=scenario_profile,
-                step_ids=train_step_ids,
-                step_params=step_params_for(step_config, train_step_ids),
+                step_ids=evaluate_step_ids,
+                step_params=step_params_for(step_config, evaluate_step_ids),
             )
         )
-
-    evaluate_step_ids = implemented_step_ids_for_stage(step_config, "evaluate")
-    tasks.append(
-        _task(
-            task_id="evaluate_final",
-            task_type="evaluate",
-            depends_on=train_task_ids,
-            args=["evaluate", "--project", project, "--run-id", run_arg],
-            outputs=["evaluation/evaluation_summary.json"],
-            scenario_profile=scenario_profile,
-            step_ids=evaluate_step_ids,
-            step_params=step_params_for(step_config, evaluate_step_ids),
-        )
-    )
+        evaluate_task_added = True
 
     champions = _as_list((metadata.get("evaluation") or {}).get("champions"))
     if not champions:
         champions = _project_champions(project_path)
-    champion = champions[-1] if champions else None
     compare_args = ["compare", "--project", project, "--run-id", run_arg]
-    if champion:
+    for champion in champions:
         compare_args.extend(["--champion", str(champion)])
     compare_step_ids = implemented_step_ids_for_stage(step_config, "compare")
-    tasks.append(
-        _task(
-            task_id="compare_final",
-            task_type="compare",
-            depends_on=["evaluate_final"],
-            args=compare_args,
-            outputs=["evaluation/champion_challenger.json"],
-            scenario_profile=scenario_profile,
-            step_ids=compare_step_ids,
-            step_params=step_params_for(step_config, compare_step_ids),
+    compare_task_added = False
+    if "compare" in workflow_stages:
+        compare_dep = ["evaluate_final"] if evaluate_task_added else (train_task_ids or feature_task_ids[-1:] or sample_task_ids[-1:])
+        tasks.append(
+            _task(
+                task_id="compare_final",
+                task_type="compare",
+                depends_on=compare_dep,
+                args=compare_args,
+                outputs=["evaluation/champion_challenger.json"],
+                scenario_profile=scenario_profile,
+                step_ids=compare_step_ids,
+                step_params=step_params_for(step_config, compare_step_ids),
+            )
         )
-    )
+        compare_task_added = True
 
     report_step_ids = implemented_step_ids_for_stage(step_config, "report")
-    tasks.append(
-        _task(
-            task_id="report_final",
-            task_type="report",
-            depends_on=["compare_final"],
-            args=["report", "--project", project, "--run-id", run_arg],
-            outputs=["reports/model_report.md", "reports/model_card.md", "reports/executive_summary.md"],
-            scenario_profile=scenario_profile,
-            step_ids=report_step_ids,
-            step_params=step_params_for(step_config, report_step_ids),
+    if "report" in workflow_stages:
+        report_dep = (
+            ["compare_final"]
+            if compare_task_added
+            else ["evaluate_final"]
+            if evaluate_task_added
+            else train_task_ids or feature_task_ids[-1:] or sample_task_ids[-1:]
         )
-    )
+        tasks.append(
+            _task(
+                task_id="report_final",
+                task_type="report",
+                depends_on=report_dep,
+                args=["report", "--project", project, "--run-id", run_arg],
+                outputs=["reports/model_report.md", "reports/model_card.md", "reports/executive_summary.md"],
+                scenario_profile=scenario_profile,
+                step_ids=report_step_ids,
+                step_params=step_params_for(step_config, report_step_ids),
+            )
+        )
 
     return {
         "version": 1,
@@ -245,10 +322,10 @@ def create_execution_plan(request_doc: dict[str, Any], project_path: str | Path)
         "project": project,
         "workflow": workflow,
         "scenario_profile": scenario_profile,
-        "stage_steps": step_config["stage_steps"],
-        "step_params": step_config["step_params"],
-        "resolved_steps": step_config["resolved_steps"],
-        "planned_steps": step_config["planned_steps"],
+        "stage_steps": workflow_stage_steps,
+        "step_params": workflow_step_params,
+        "resolved_steps": workflow_resolved_steps,
+        "planned_steps": workflow_planned_steps,
         "created_at": datetime.now().isoformat(timespec="seconds"),
         "run_id_placeholder": run_arg,
         "tasks": tasks,

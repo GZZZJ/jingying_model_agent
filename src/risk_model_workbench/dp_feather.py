@@ -98,6 +98,24 @@ def print_sql_review(
     print("-" * 80)
 
 
+def print_sql_execution_review(
+    *,
+    operation_id: str,
+    description: str,
+    metadata_path: Path,
+    sql: str,
+) -> None:
+    print("=" * 80)
+    print("DP SQL REVIEW REQUIRED")
+    print("=" * 80)
+    print(f"operation_id: {operation_id}")
+    print(f"description: {description}")
+    print(f"metadata_path: {metadata_path}")
+    print("-" * 80)
+    print(sql.rstrip())
+    print("-" * 80)
+
+
 def require_sql_approval(
     *,
     dataset_id: str,
@@ -124,6 +142,91 @@ def require_sql_approval(
     answer = input("Type APPROVE to run this DP query: ").strip()
     if answer != "APPROVE":
         raise RuntimeError("DP query cancelled before execution.")
+
+
+def require_sql_execution_approval(
+    *,
+    operation_id: str,
+    description: str,
+    metadata_path: Path,
+    sql: str,
+    sql_approved: bool,
+) -> None:
+    print_sql_execution_review(
+        operation_id=operation_id,
+        description=description,
+        metadata_path=metadata_path,
+        sql=sql,
+    )
+    if sql_approved:
+        print("[SQL] Approval flag received; executing DP SQL.")
+        return
+    if not sys.stdin.isatty():
+        raise RuntimeError(
+            "Refusing to execute DP SQL without approval. Review the SQL above, then rerun with --sql-approved."
+        )
+    answer = input("Type APPROVE to execute this DP SQL: ").strip()
+    if answer != "APPROVE":
+        raise RuntimeError("DP SQL execution cancelled before execution.")
+
+
+def execute_dp_sql(
+    *,
+    project_dir: Path,
+    sql: str,
+    operation_id: str,
+    description: str,
+    metadata_path: Path,
+    sql_approved: bool = False,
+    progress: Any | None = None,
+) -> dict[str, Any]:
+    """Execute a reviewed DP SQL statement, including DDL statements."""
+    if progress and not sql_approved:
+        progress.emit(
+            step="sql_review",
+            status="waiting_for_approval",
+            message=f"DP SQL 需要审批：{operation_id}",
+            metrics={"operation_id": operation_id, "metadata_path": relative_display(metadata_path, project_dir)},
+        )
+    require_sql_execution_approval(
+        operation_id=operation_id,
+        description=description,
+        metadata_path=metadata_path,
+        sql=sql,
+        sql_approved=sql_approved,
+    )
+
+    from tmlpatch.database import TMLSQLClient
+
+    if progress:
+        progress.emit(step="dp_sql_execute", message=f"开始执行 DP SQL：{operation_id}", metrics={"operation_id": operation_id})
+    client = TMLSQLClient()
+    execution_method = "client.sql"
+    try:
+        result = client.sql(sql)
+        if hasattr(result, "execute"):
+            result.execute()
+            execution_method = "client.sql.execute"
+        elif hasattr(result, "to_pandas"):
+            result.to_pandas()
+            execution_method = "client.sql.to_pandas"
+    finally:
+        client.stop()
+
+    executed_at = datetime.now().isoformat(timespec="seconds")
+    if progress:
+        progress.emit(
+            step="dp_sql_execute_done",
+            message=f"DP SQL 执行完成：{operation_id}",
+            metrics={"operation_id": operation_id, "execution_method": execution_method},
+        )
+    return {
+        "operation_id": operation_id,
+        "status": "executed",
+        "executed_at": executed_at,
+        "execution_method": execution_method,
+        "sql_sha256": sha256_text(sql),
+    }
 
 
 def fetch_dp_query_to_feather(

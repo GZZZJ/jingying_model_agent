@@ -99,6 +99,14 @@ TOOL_SPECS: tuple[ToolSpec, ...] = (
         description="Generate wide-table SQL artifacts.",
     ),
     ToolSpec(
+        name="build_wide_sql_execute",
+        action_id="build_wide_sql",
+        command="rmw build-wide-sql --project <project> --run-id <run_id> --execute --sql-approved",
+        permission="dp_sql_pull",
+        description="Execute reviewed wide-table create SQL through TMLSQLClient.",
+        requires_approval=True,
+    ),
+    ToolSpec(
         name="feature_refine_dry_run",
         action_id="feature_refine",
         command="rmw feature refine --project <project> --run-id <run_id> --dry-run-sql",
@@ -173,7 +181,7 @@ def validate_tool_registry() -> list[str]:
         except KeyError:
             errors.append(f"tool {spec.name} references unknown action: {spec.action_id}")
             continue
-        if spec.requires_approval and not action.approval_required:
+        if spec.requires_approval and not action.approval_required and "sql_approval_required" not in action.failure_codes:
             errors.append(f"tool {spec.name} requires approval but action {spec.action_id} does not")
         if spec.allowed_for_auditor and spec.permission != "read_only":
             errors.append(f"tool {spec.name} is auditor-allowed but permission is {spec.permission}")
