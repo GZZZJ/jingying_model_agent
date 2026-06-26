@@ -1031,7 +1031,11 @@ def main(argv: list[str] | None = None) -> int:
         "refine_wide_features",
         inputs=[
             config_path,
-            resolve_project_path(project_dir, cfg["input"]["feature_map"]),
+            *(
+                [resolve_project_path(project_dir, cfg["input"]["feature_map"])]
+                if cfg["input"].get("feature_map")
+                else []
+            ),
         ],
         outputs=[
             output_dir / "stage_summary.json",

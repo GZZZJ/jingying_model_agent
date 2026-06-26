@@ -323,7 +323,9 @@ def train_lightgbm_from_feather(
     historical_scores = [column for column in configured_historical_scores if column in raw.columns]
     scores = raw[[column for column in desired_base if column in raw.columns]].copy()
     for column in historical_scores:
-        scores[column] = raw[column]
+        # 强转 numeric：部分历史分（champion）在源表中可能存为字符串，转 float 后
+        # score_column_summary 的 mean() 以及下游 evaluate/compare 的 AUC/KS/decile 才正确。
+        scores[column] = pd.to_numeric(raw[column], errors="coerce")
     scores["model_score"] = all_pred
     scores.reset_index(drop=True).to_feather(str(score_output))
     if progress:

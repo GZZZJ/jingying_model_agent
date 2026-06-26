@@ -329,7 +329,14 @@ def materialize_request_runtime_configs(
     if direct_refine_remote_table:
         refine_override["feature_refine"].setdefault("input", {})["wide_table"] = sample_location
     if sample_location and data_source_mode == LOCAL_FEATHER:
-        refine_override["feature_refine"].setdefault("input", {})["local_feather_path"] = sample_location
+        refine_input = refine_override["feature_refine"].setdefault("input", {})
+        refine_input["local_feather_path"] = sample_location
+        # In local_feather mode the wide table already exists as the feather file.
+        # Clear any deep-merged remote-flow pointers so load_feature_list falls back
+        # to reading candidate feature columns from local_feather_path instead of a
+        # stale/non-existent prescreen feature_map.
+        refine_input["feature_map"] = None
+        refine_input["wide_table"] = None
     runtime_refine = _deep_merge(refine_cfg, refine_override)
 
     experiments = []
