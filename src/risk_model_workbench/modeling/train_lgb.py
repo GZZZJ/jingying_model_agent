@@ -10,6 +10,43 @@ from pathlib import Path
 from typing import Any
 
 
+def _workbench_git_commit() -> dict[str, Any]:
+    """Best-effort code provenance for the workbench build that produced a model.
+
+    Lets a run's run_config.json trace model.pkl back to the exact workbench
+    code version. Returns commit=None when not run inside a git worktree.
+    """
+    import subprocess
+
+    repo = Path(__file__).resolve().parent
+    try:
+        commit = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=repo, stderr=subprocess.DEVNULL, text=True
+        ).strip()
+        dirty = bool(
+            subprocess.check_output(
+                ["git", "status", "--porcelain"], cwd=repo, stderr=subprocess.DEVNULL, text=True
+            ).strip()
+        )
+        return {"commit": commit, "dirty": dirty}
+    except Exception:
+        return {"commit": None, "dirty": None}
+
+
+def _file_sha256(path: Path) -> str | None:
+    """Streaming SHA-256 of a (possibly large) input file; None if unreadable."""
+    import hashlib
+
+    try:
+        digest = hashlib.sha256()
+        with Path(path).open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1 << 20), b""):
+                digest.update(chunk)
+        return digest.hexdigest()
+    except Exception:
+        return None
+
+
 def coerce_features(
     df,
     features: list[str],
@@ -304,6 +341,8 @@ def train_lightgbm_from_feather(
         "algorithm": "lightgbm",
         "params": {key: value for key, value in params.items() if not key.endswith("_seed") and key != "seed"},
         "random_seed": train_cfg.get("random_seed", 0),
+        "workbench_git_commit": _workbench_git_commit(),
+        "input_feather": {"path": str(input_feather), "sha256": _file_sha256(input_feather)},
         **metrics,
     }
     (output_dir / "run_config.json").write_text(json.dumps(run_config, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

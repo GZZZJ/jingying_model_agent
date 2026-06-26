@@ -17,14 +17,10 @@ projects/*/data/processed/*
 projects/*/data/local/*
 projects/*/models/
 
-# Large run artifacts (feather files) – keep CSVs/JSONs.
-projects/*/runs/**/*.feather
-projects/*/runs/model_scores/*.feather
+# Run model artifacts (model.pkl, scores feather, etc.) are committed for
+# in-run reproducibility + traceability. Only intermediate caches and editor
+# locks are ignored; raw input data stays excluded (see data/ rules above).
 projects/*/runs/*/feature_selection/calibration/cache/
-projects/*/runs/**/*.pkl
-projects/*/runs/**/*.joblib
-projects/*/runs/**/*.bin
-projects/*/runs/**/*.model
 projects/*/runs/**/.~*.xlsx
 
 # Local generated package metadata.
