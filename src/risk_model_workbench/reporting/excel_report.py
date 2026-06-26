@@ -600,6 +600,42 @@ def _gcard_psi_summary_frame(*, psi: pd.DataFrame | None, compare_score: str) ->
     return pd.DataFrame(rows)
 
 
+def _gcard_psi_bin_detail_frame(*, eval_dir: Path, compare_score: str) -> pd.DataFrame:
+    """Inline bin-level PSI detail (base vs latest-month current prop + psi component).
+
+    Reads evaluation/score_psi_bin_detail.csv (produced by stability.compute_score_psi)
+    and pivots to one row per bin per score column for the latest month, so the report
+    shows which bins drive the monthly PSI instead of pointing off to a CSV.
+    """
+    detail = _read_csv(eval_dir / "score_psi_bin_detail.csv")
+    if detail is None or detail.empty or "month" not in detail.columns:
+        return pd.DataFrame()
+    months = sorted(str(m) for m in detail["month"].dropna().unique().tolist())
+    if len(months) < 2:
+        return pd.DataFrame()
+    base_month, latest_month = months[0], months[-1]
+    rows = []
+    for score_column, prefix in [("model_score", "本轮"), (compare_score, VERSION_LABELS.get(compare_score, compare_score))]:
+        if "score_column" not in detail.columns:
+            sub = detail[detail["month"].astype(str) == latest_month]
+        else:
+            sub = detail[(detail["score_column"] == score_column) & (detail["month"].astype(str) == latest_month)]
+        if sub.empty:
+            continue
+        for _, r in sub.sort_values("bin").iterrows():
+            comp = r.get("psi_component")
+            rows.append(
+                {
+                    "版本": prefix,
+                    "分箱": int(r["bin"]),
+                    f"基线占比({base_month})": round(float(r["base_prop"]), 4),
+                    f"当期占比({latest_month})": round(float(r["current_prop"]), 4),
+                    "PSI贡献": round(float(comp), 5) if comp not in (None, "", float("nan")) else None,
+                }
+            )
+    return pd.DataFrame(rows)
+
+
 def _gcard_stability_coverage_frame(*, score_distribution: pd.DataFrame | None, compare_score: str) -> pd.DataFrame:
     if score_distribution is None or score_distribution.empty or "score_column" not in score_distribution.columns:
         return pd.DataFrame(
@@ -726,13 +762,14 @@ def _gcard_summary_markdown_lines(*, train_dir: Path, eval_dir: Path, feature_di
     lines.extend(_markdown_table(_gcard_top_decile_summary_frame(eval_dir=eval_dir, compare_score=compare_score)))
 
     if psi is not None and not psi.empty:
-        bin_note = (
-            "分箱明细（base/current 占比 + PSI component）见 `evaluation/score_psi_bin_detail.csv`。"
-            if (eval_dir / "score_psi_bin_detail.csv").exists()
-            else "分箱明细和 PSI component 见【模型稳定性】或待补口径说明。"
-        )
-        lines.extend(["", "### 七、模型稳定性", "", f"> PSI 为本轮模型分数月度汇总；{bin_note}", ""])
+        lines.extend(["", "### 七、模型稳定性", "", "> PSI 为本轮模型分数月度汇总；分箱明细（base/current 占比 + PSI component）见下表。", ""])
         lines.extend(_markdown_table(_gcard_psi_summary_frame(psi=psi, compare_score=compare_score), limit=20))
+        bin_frame = _gcard_psi_bin_detail_frame(eval_dir=eval_dir, compare_score=compare_score)
+        if not bin_frame.empty:
+            lines.append("")
+            lines.append("分箱 PSI 明细（基线月 vs 最新月，按分箱看 PSI 贡献）")
+            lines.extend(_markdown_table(bin_frame, limit=40))
+            lines.append("")
 
     if importance is not None and not importance.empty:
         lines.extend(["", "### 八、Top 10 重要变量", "", "> 变量明细与 WOE 图见【重要变量】和【Top变量WOE】。", ""])
@@ -2579,7 +2616,7 @@ def _append_intent_risk_markdown(lines: list[str], eval_dir: Path) -> None:
             return
         lines.extend(["3、意愿交叉风险（DEV-OOS）", ""])
         if (eval_dir / "intent_zc_distribution_b2.csv").exists():
-            lines.append("- 意愿 x 资产评级矩阵含全量口径及分客群（老户次新 e2e3 / 流失户 b2），见 `evaluation/intent_zc_*_{e2e3,b2}.csv`。")
+            lines.append("- 意愿 x 资产评级矩阵：下方依次为全量口径及分客群（老户次新 e2e3 / 流失户 b2）。")
         else:
             lines.append("- 当前 run 仅有全量观察口径的意愿 x 资产评级结果，缺少老户/流失户和历史版本分层矩阵；完整缺失项见 `model_report_missing_results.md`。")
         lines.append("")
@@ -2597,6 +2634,16 @@ def _append_intent_risk_markdown(lines: list[str], eval_dir: Path) -> None:
         if basic_amount_risk is not None and not basic_amount_risk.empty:
             lines.append("当前可用全量观察：金额风险（仅意愿维度）")
             lines.extend(_markdown_table(basic_amount_risk, limit=20))
+            lines.append("")
+        for seg, seg_label in {"e2e3": "老户次新（e2e3）", "b2": "流失户（b2）"}.items():
+            seg_dist = _read_csv(eval_dir / f"intent_zc_distribution_{seg}.csv")
+            if seg_dist is None or seg_dist.empty:
+                continue
+            lines.append(f"{seg_label}：占比（意愿评级 x 资产评级）")
+            lines.extend(_markdown_table(_intent_sum_matrix(seg_dist, "pct"), limit=20))
+            lines.append("")
+            lines.append(f"{seg_label}：30天发起率（意愿评级 x 资产评级）")
+            lines.extend(_markdown_table(_intent_rate_matrix(seg_dist, "bad", "n_samples"), limit=20))
             lines.append("")
         return
     lines.extend(["3、意愿交叉风险（DEV-OOS）", ""])

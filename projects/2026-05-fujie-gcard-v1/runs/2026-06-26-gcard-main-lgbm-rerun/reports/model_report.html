@@ -107,7 +107,7 @@ li{margin:4px 0} blockquote{color:#667085;border-left:3px solid #d9e0e3;padding-
 <tr><td>流失户</td><td>0.162</td><td>0.160</td><td>0.002</td><td>1.000</td><td>1.000</td></tr>
 </table>
 <p>### 七、模型稳定性</p>
-<blockquote>PSI 为本轮模型分数月度汇总；分箱明细（base/current 占比 + PSI component）见 `evaluation/score_psi_bin_detail.csv`。</blockquote>
+<blockquote>PSI 为本轮模型分数月度汇总；分箱明细（base/current 占比 + PSI component）见下表。</blockquote>
 <table>
 <tr><th>月份</th><th>本轮 PSI</th><th>本轮样本数</th><th>G卡V6 PSI</th><th>G卡V6样本数</th></tr>
 <tr><td>2025-06</td><td>0.000</td><td>60987</td><td>0.000</td><td>60987</td></tr>
@@ -118,6 +118,30 @@ li{margin:4px 0} blockquote{color:#667085;border-left:3px solid #d9e0e3;padding-
 <tr><td>2025-11</td><td>0.038</td><td>61575</td><td>0.037</td><td>61575</td></tr>
 <tr><td>2025-12</td><td>0.040</td><td>61187</td><td>0.038</td><td>61187</td></tr>
 <tr><td>2026-01</td><td>0.052</td><td>61337</td><td>0.051</td><td>61337</td></tr>
+</table>
+<p>分箱 PSI 明细（基线月 vs 最新月，按分箱看 PSI 贡献）</p>
+<table>
+<tr><th>版本</th><th>分箱</th><th>基线占比(2025-06)</th><th>当期占比(2026-01)</th><th>PSI贡献</th></tr>
+<tr><td>本轮</td><td>0</td><td>0.095</td><td>0.098</td><td>0.000</td></tr>
+<tr><td>本轮</td><td>1</td><td>0.085</td><td>0.106</td><td>0.005</td></tr>
+<tr><td>本轮</td><td>2</td><td>0.080</td><td>0.115</td><td>0.012</td></tr>
+<tr><td>本轮</td><td>3</td><td>0.084</td><td>0.115</td><td>0.010</td></tr>
+<tr><td>本轮</td><td>4</td><td>0.096</td><td>0.104</td><td>0.001</td></tr>
+<tr><td>本轮</td><td>5</td><td>0.103</td><td>0.097</td><td>0.000</td></tr>
+<tr><td>本轮</td><td>6</td><td>0.111</td><td>0.097</td><td>0.002</td></tr>
+<tr><td>本轮</td><td>7</td><td>0.114</td><td>0.095</td><td>0.004</td></tr>
+<tr><td>本轮</td><td>8</td><td>0.116</td><td>0.095</td><td>0.004</td></tr>
+<tr><td>本轮</td><td>9</td><td>0.117</td><td>0.079</td><td>0.015</td></tr>
+<tr><td>G卡V6</td><td>0</td><td>0.095</td><td>0.103</td><td>0.001</td></tr>
+<tr><td>G卡V6</td><td>1</td><td>0.081</td><td>0.109</td><td>0.008</td></tr>
+<tr><td>G卡V6</td><td>2</td><td>0.083</td><td>0.112</td><td>0.009</td></tr>
+<tr><td>G卡V6</td><td>3</td><td>0.085</td><td>0.112</td><td>0.007</td></tr>
+<tr><td>G卡V6</td><td>4</td><td>0.102</td><td>0.105</td><td>0.000</td></tr>
+<tr><td>G卡V6</td><td>5</td><td>0.099</td><td>0.099</td><td>0.000</td></tr>
+<tr><td>G卡V6</td><td>6</td><td>0.108</td><td>0.093</td><td>0.002</td></tr>
+<tr><td>G卡V6</td><td>7</td><td>0.112</td><td>0.096</td><td>0.002</td></tr>
+<tr><td>G卡V6</td><td>8</td><td>0.118</td><td>0.093</td><td>0.006</td></tr>
+<tr><td>G卡V6</td><td>9</td><td>0.118</td><td>0.079</td><td>0.016</td></tr>
 </table>
 <p>### 八、Top 10 重要变量</p>
 <blockquote>变量明细与 WOE 图见【重要变量】和【Top变量WOE】。</blockquote>
@@ -485,7 +509,7 @@ li{margin:4px 0} blockquote{color:#667085;border-left:3px solid #d9e0e3;padding-
 </table>
 <p>3、意愿交叉风险（DEV-OOS）</p>
 <ul>
-<li>意愿 x 资产评级矩阵含全量口径及分客群（老户次新 e2e3 / 流失户 b2），见 `evaluation/intent_zc_*_{e2e3,b2}.csv`。</li>
+<li>意愿 x 资产评级矩阵：下方依次为全量口径及分客群（老户次新 e2e3 / 流失户 b2）。</li>
 </ul>
 <p>当前可用全量观察：占比（意愿评级 x 资产评级）</p>
 <table>
@@ -517,6 +541,38 @@ li{margin:4px 0} blockquote{color:#667085;border-left:3px solid #d9e0e3;padding-
 <tr><td>低意愿</td><td>163248</td><td>529416.680</td><td>6421.030</td><td>0.012</td><td>3</td><td>0.000</td></tr>
 <tr><td>中意愿</td><td>163247</td><td>9247510.830</td><td>241432.990</td><td>0.026</td><td>66</td><td>0.000</td></tr>
 <tr><td>高意愿</td><td>163248</td><td>173957789.390</td><td>5958338.340</td><td>0.034</td><td>2083</td><td>0.013</td></tr>
+</table>
+<p>老户次新（e2e3）：占比（意愿评级 x 资产评级）</p>
+<table>
+<tr><th>意愿</th><th>1</th><th>2</th><th>3</th><th>4</th><th>5</th><th>6</th><th>7</th><th>sum</th></tr>
+<tr><td>低意愿</td><td>0.010</td><td>0.048</td><td>0.089</td><td>0.098</td><td>0.016</td><td>0.064</td><td>0.008</td><td>0.333</td></tr>
+<tr><td>中意愿</td><td>0.015</td><td>0.050</td><td>0.070</td><td>0.086</td><td>0.016</td><td>0.076</td><td>0.019</td><td>0.333</td></tr>
+<tr><td>高意愿</td><td>0.013</td><td>0.050</td><td>0.069</td><td>0.088</td><td>0.015</td><td>0.074</td><td>0.025</td><td>0.333</td></tr>
+<tr><td>sum</td><td>0.039</td><td>0.148</td><td>0.228</td><td>0.271</td><td>0.047</td><td>0.214</td><td>0.053</td><td>1.000</td></tr>
+</table>
+<p>老户次新（e2e3）：30天发起率（意愿评级 x 资产评级）</p>
+<table>
+<tr><th>意愿</th><th>1</th><th>2</th><th>3</th><th>4</th><th>5</th><th>6</th><th>7</th><th>sum</th></tr>
+<tr><td>低意愿</td><td>0.134</td><td>0.123</td><td>0.126</td><td>0.132</td><td>0.143</td><td>0.143</td><td>0.119</td><td>0.132</td></tr>
+<tr><td>中意愿</td><td>0.351</td><td>0.366</td><td>0.367</td><td>0.380</td><td>0.381</td><td>0.386</td><td>0.385</td><td>0.376</td></tr>
+<tr><td>高意愿</td><td>0.741</td><td>0.770</td><td>0.765</td><td>0.773</td><td>0.761</td><td>0.760</td><td>0.758</td><td>0.765</td></tr>
+<tr><td>sum</td><td>0.429</td><td>0.422</td><td>0.392</td><td>0.418</td><td>0.423</td><td>0.442</td><td>0.522</td><td>0.424</td></tr>
+</table>
+<p>流失户（b2）：占比（意愿评级 x 资产评级）</p>
+<table>
+<tr><th>意愿</th><th>1</th><th>2</th><th>3</th><th>4</th><th>5</th><th>6</th><th>7</th><th>sum</th></tr>
+<tr><td>低意愿</td><td>0.000</td><td>0.000</td><td>0.002</td><td>0.006</td><td>0.013</td><td>0.148</td><td>0.164</td><td>0.333</td></tr>
+<tr><td>中意愿</td><td>0.001</td><td>0.004</td><td>0.015</td><td>0.017</td><td>0.052</td><td>0.186</td><td>0.057</td><td>0.333</td></tr>
+<tr><td>高意愿</td><td>0.015</td><td>0.036</td><td>0.054</td><td>0.035</td><td>0.076</td><td>0.102</td><td>0.014</td><td>0.333</td></tr>
+<tr><td>sum</td><td>0.016</td><td>0.041</td><td>0.070</td><td>0.058</td><td>0.142</td><td>0.437</td><td>0.235</td><td>1.000</td></tr>
+</table>
+<p>流失户（b2）：30天发起率（意愿评级 x 资产评级）</p>
+<table>
+<tr><th>意愿</th><th>1</th><th>2</th><th>3</th><th>4</th><th>5</th><th>6</th><th>7</th><th>sum</th></tr>
+<tr><td>低意愿</td><td>0.000</td><td>0.000</td><td>0.003</td><td>0.000</td><td>0.002</td><td>0.002</td><td>0.002</td><td>0.002</td></tr>
+<tr><td>中意愿</td><td>0.003</td><td>0.005</td><td>0.004</td><td>0.004</td><td>0.005</td><td>0.006</td><td>0.007</td><td>0.006</td></tr>
+<tr><td>高意愿</td><td>0.088</td><td>0.070</td><td>0.060</td><td>0.050</td><td>0.052</td><td>0.067</td><td>0.119</td><td>0.064</td></tr>
+<tr><td>sum</td><td>0.083</td><td>0.063</td><td>0.046</td><td>0.032</td><td>0.030</td><td>0.019</td><td>0.010</td><td>0.024</td></tr>
 </table>
 <h2>五、模型稳定性</h2>
 <ul>
