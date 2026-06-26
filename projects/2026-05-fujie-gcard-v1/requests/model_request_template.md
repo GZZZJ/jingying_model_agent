@@ -56,6 +56,20 @@ evaluation:
     - e2
     - e3
 
+# evaluate 显式子步骤（含稳定性分箱明细、意愿矩阵分客群，避免漏跑）
+stage_steps:
+  evaluate:
+    - auc_ks
+    - decile_lift
+    - monthly_stability
+    - score_psi
+    - score_psi_bin_detail      # 稳定性·分箱 PSI component 明细（base/current 占比 + component）
+    - segment_metrics
+    - intent_zc_cross_risk       # 全量口径意愿×资产矩阵
+    - intent_risk_segmented      # 意愿矩阵分客群（老户次新 e2e3 / 流失户 b2）
+    - cross_gain_matrix
+    - feature_gain_summary
+
 reports:
   outputs:
     - model_report.md

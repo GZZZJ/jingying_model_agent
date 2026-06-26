@@ -274,6 +274,14 @@ STEP_REGISTRY: dict[str, dict[str, Any]] = {
         "source_reference": "RMW evaluation flow",
         "implementation_status": "implemented",
     },
+    "score_psi_bin_detail": {
+        "id": "score_psi_bin_detail",
+        "stage": "evaluate",
+        "description": "Per-bin PSI component (base/current score distribution) by month — the bin-level detail behind score_psi.",
+        "default_params": {"bins": 10},
+        "source_reference": "RMW evaluation flow (stability.compute_score_psi)",
+        "implementation_status": "implemented",
+    },
     "segment_metrics": {
         "id": "segment_metrics",
         "stage": "evaluate",
@@ -288,6 +296,14 @@ STEP_REGISTRY: dict[str, dict[str, Any]] = {
         "description": "Evaluate intent by qualification cross-risk distributions.",
         "default_params": {},
         "source_reference": "Fujie GCard evaluation outputs",
+        "implementation_status": "implemented",
+    },
+    "intent_risk_segmented": {
+        "id": "intent_risk_segmented",
+        "stage": "evaluate",
+        "description": "Intent x qualification risk matrices per business segment (e2e3/b2), in addition to the cohort matrix.",
+        "default_params": {"segments": ["e2e3", "b2"]},
+        "source_reference": "RMW evaluation flow (_write_intent_risk_outputs)",
         "implementation_status": "implemented",
     },
     "cross_gain_matrix": {
