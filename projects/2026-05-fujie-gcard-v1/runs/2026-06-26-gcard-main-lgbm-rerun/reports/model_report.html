@@ -107,7 +107,7 @@ li{margin:4px 0} blockquote{color:#667085;border-left:3px solid #d9e0e3;padding-
 <tr><td>流失户</td><td>0.162</td><td>0.160</td><td>0.002</td><td>1.000</td><td>1.000</td></tr>
 </table>
 <p>### 七、模型稳定性</p>
-<blockquote>PSI 为本轮模型分数月度汇总；分箱明细和 PSI component 见【模型稳定性】或待补口径说明。</blockquote>
+<blockquote>PSI 为本轮模型分数月度汇总；分箱明细（base/current 占比 + PSI component）见 `evaluation/score_psi_bin_detail.csv`。</blockquote>
 <table>
 <tr><th>月份</th><th>本轮 PSI</th><th>本轮样本数</th><th>G卡V6 PSI</th><th>G卡V6样本数</th></tr>
 <tr><td>2025-06</td><td>0.000</td><td>60987</td><td>0.000</td><td>60987</td></tr>
@@ -485,7 +485,7 @@ li{margin:4px 0} blockquote{color:#667085;border-left:3px solid #d9e0e3;padding-
 </table>
 <p>3、意愿交叉风险（DEV-OOS）</p>
 <ul>
-<li>当前 run 仅有全量观察口径的意愿 x 资产评级结果，缺少老户/流失户和历史版本分层矩阵；完整缺失项见 `model_report_missing_results.md`。</li>
+<li>意愿 x 资产评级矩阵含全量口径及分客群（老户次新 e2e3 / 流失户 b2），见 `evaluation/intent_zc_*_{e2e3,b2}.csv`。</li>
 </ul>
 <p>当前可用全量观察：占比（意愿评级 x 资产评级）</p>
 <table>

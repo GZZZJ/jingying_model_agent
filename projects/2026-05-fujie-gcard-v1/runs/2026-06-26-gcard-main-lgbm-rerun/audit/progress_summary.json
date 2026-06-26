@@ -1,30 +1,30 @@
 {
   "version": 1,
   "run_id": "2026-06-26-gcard-main-lgbm-rerun",
-  "updated_at": "2026-06-26T11:45:44",
-  "stage": "feature_metadata",
-  "stage_label": "特征元数据",
+  "updated_at": "2026-06-26T15:59:32",
+  "stage": "report",
+  "stage_label": "报告生成",
   "latest_event": {
-    "timestamp": "2026-06-26T11:45:44",
+    "timestamp": "2026-06-26T15:59:32",
     "run_id": "2026-06-26-gcard-main-lgbm-rerun",
-    "stage": "feature_metadata",
+    "stage": "report",
     "step": "action_done",
     "status": "done",
-    "message": "特征元数据完成",
+    "message": "报告生成完成",
     "current": null,
     "total": null,
     "percent": 100.0,
     "elapsed_seconds": 0.0,
     "eta_seconds": null,
     "metrics": {
-      "action_id": "feature_metadata",
+      "action_id": "report",
       "failure_code": "",
       "retry_count": 0,
-      "artifact_count": 5,
+      "artifact_count": 27,
       "decision": "done"
     },
     "level": "info",
-    "pid": 59382
+    "pid": 14357
   },
   "stages": {
     "validate_config": {
@@ -216,7 +216,7 @@
       "stage": "evaluate",
       "stage_label": "模型评估",
       "latest_event": {
-        "timestamp": "2026-06-26T11:35:55",
+        "timestamp": "2026-06-26T15:53:42",
         "run_id": "2026-06-26-gcard-main-lgbm-rerun",
         "stage": "evaluate",
         "step": "action_done",
@@ -231,13 +231,13 @@
           "action_id": "evaluate",
           "failure_code": "",
           "retry_count": 0,
-          "artifact_count": 37,
+          "artifact_count": 47,
           "decision": "done"
         },
         "level": "info",
-        "pid": 44641
+        "pid": 3707
       },
-      "updated_at": "2026-06-26T11:35:55"
+      "updated_at": "2026-06-26T15:53:42"
     },
     "compare": {
       "stage": "compare",
@@ -270,7 +270,7 @@
       "stage": "report",
       "stage_label": "报告生成",
       "latest_event": {
-        "timestamp": "2026-06-26T11:39:17",
+        "timestamp": "2026-06-26T15:59:32",
         "run_id": "2026-06-26-gcard-main-lgbm-rerun",
         "stage": "report",
         "step": "action_done",
@@ -289,9 +289,9 @@
           "decision": "done"
         },
         "level": "info",
-        "pid": 52474
+        "pid": 14357
       },
-      "updated_at": "2026-06-26T11:39:17"
+      "updated_at": "2026-06-26T15:59:32"
     }
   }
 }

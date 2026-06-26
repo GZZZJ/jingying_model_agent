@@ -105,7 +105,7 @@ OOS 按月 KS
 
 ### 七、模型稳定性
 
-> PSI 为本轮模型分数月度汇总；分箱明细和 PSI component 见【模型稳定性】或待补口径说明。
+> PSI 为本轮模型分数月度汇总；分箱明细（base/current 占比 + PSI component）见 `evaluation/score_psi_bin_detail.csv`。
 
 | 月份 | 本轮 PSI | 本轮样本数 | G卡V6 PSI | G卡V6样本数 |
 | --- | --- | --- | --- | --- |
@@ -491,7 +491,7 @@ OOS 按月 KS
 
 3、意愿交叉风险（DEV-OOS）
 
-- 当前 run 仅有全量观察口径的意愿 x 资产评级结果，缺少老户/流失户和历史版本分层矩阵；完整缺失项见 `model_report_missing_results.md`。
+- 意愿 x 资产评级矩阵含全量口径及分客群（老户次新 e2e3 / 流失户 b2），见 `evaluation/intent_zc_*_{e2e3,b2}.csv`。
 
 当前可用全量观察：占比（意愿评级 x 资产评级）
 | 意愿 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | sum |

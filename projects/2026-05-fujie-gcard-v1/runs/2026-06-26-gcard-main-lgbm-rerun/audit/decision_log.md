@@ -11,3 +11,5 @@
 - 2026-06-26T11:43:44 [feature_metadata] done: 70 feature tables / 15028 candidate fields exported to project data/profile/feature_metadata and registered into run (local_feather mode)
 - 2026-06-26T11:43:45 [build_wide_sql] scaffold: local_feather mode: wide table pre-exists as sample_50pct.feather (2837 features); canonical build SQL 06_build_d01_d02_wide_table_2837.sql registered as evidence; remote CREATE TABLE not executed
 - 2026-06-26T11:43:46 [feature_prescreen] scaffold: local_feather mode: 70 per-table pull SQLs generated under feature_selection/prescreen/sql as audit evidence; real DP quality computation not executed (refine covers screening on local feather)
+- 2026-06-26T15:53:42 [evaluate] done: Evaluation completed from local score feather
+- 2026-06-26T15:59:32 [report] done: Excel report generated from standard train and evaluation artifacts

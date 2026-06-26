@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-26 11:35:43",
+  "generated_at": "2026-06-26 15:53:22",
   "scores_source": "/Users/guzijun/Desktop/AI攻坚/risk_model_workbench/projects/2026-05-fujie-gcard-v1/runs/2026-06-26-gcard-main-lgbm-rerun/modeling/main_lgbm/scores_all_splits.feather",
   "score_columns_evaluated": [
     "model_score",
