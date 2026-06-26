@@ -293,14 +293,24 @@ def _build_gcard_summary_sheet(
     row = _write_gcard_sloping_summary(ws, row, eval_dir=eval_dir, compare_score=compare_score)
 
     intent_frame = _gcard_intent_summary_frame(eval_dir=eval_dir, compare_score=compare_score)
-    if not intent_frame.empty:
-        row = _write_summary_heading(ws, row, "意愿 x 资产评级风险矩阵（DEV-OOS，已补齐 by segment / version / zc）")
-        row = _write_table(ws, row, "全客群 intent=意愿档，zc=合计", intent_frame, apply_color_scale=False)
+    seg_specs = [("e2e3", "老户次新(e2e3)"), ("b2", "流失户(b2)")]
+    seg_rows = []
+    for seg, label in seg_specs:
+        seg_dist = _read_csv(eval_dir / f"intent_zc_distribution_{seg}.csv")
+        if seg_dist is not None and not seg_dist.empty:
+            seg_rows.append((label, seg_dist))
+    if not intent_frame.empty or seg_rows:
+        row = _write_summary_heading(ws, row, "意愿 x 资产评级风险矩阵（DEV-OOS）")
+        if not intent_frame.empty:
+            row = _write_table(ws, row, "全客群 intent=意愿档，zc=合计", intent_frame, apply_color_scale=False)
+        for seg_label, seg_dist in seg_rows:
+            row = _write_table(ws, row, f"{seg_label} 占比（意愿 x 资产评级）", _intent_sum_matrix(seg_dist, "pct"), apply_color_scale=False)
+            row = _write_table(ws, row, f"{seg_label} 30天发起率（意愿 x 资产评级）", _intent_rate_matrix(seg_dist, "bad", "n_samples"), apply_color_scale=False)
 
     row = _write_summary_heading(ws, row, "五、模型稳定性")
     row = _write_note(ws, row, "PSI 同步展示月度汇总和按月/版本/decile 分箱明细覆盖情况；PSI 保留三位小数。")
     row = _write_table(ws, row, "月度 PSI", _gcard_psi_summary_frame(psi=psi, compare_score=compare_score), apply_color_scale=False)
-    row = _write_table(ws, row, "稳定性分箱明细覆盖", _gcard_stability_coverage_frame(score_distribution=score_distribution, compare_score=compare_score), apply_color_scale=False)
+    row = _write_table(ws, row, "分箱 PSI 明细（基线月 vs 最新月）", _gcard_psi_bin_detail_frame(eval_dir=eval_dir, compare_score=compare_score), apply_color_scale=False)
 
     row = _write_table(
         ws,
@@ -688,8 +698,8 @@ def _gcard_stability_coverage_frame(*, score_distribution: pd.DataFrame | None, 
 def _gcard_coverage_frame(*, eval_dir: Path, feature_dir: Path) -> pd.DataFrame:
     checks = [
         ("特征筛选全过程", any((feature_dir / name).exists() for name in ["feature_screening_process.json", "feature_screening_process_v2.json", "stage_summary.json", "feature_stage_summary.json"]), "feature_selection/*.json/txt 已落到当前 run。"),
-        ("稳定性分箱明细", (eval_dir / "score_bin_distribution_by_month_by_version.csv").exists(), "score_bin_distribution_by_month_by_version.csv 覆盖按月、版本、decile。"),
-        ("意愿风险矩阵", all((eval_dir / name).exists() for name in ["intent_zc_segment_distribution_by_version.csv", "intent_zc_segment_ftr_rate_by_version.csv", "intent_zc_segment_amount_risk_by_version.csv"]), "distribution/ftr/amount 三个矩阵覆盖分群、版本、意愿层、资产评级层。"),
+        ("稳定性分箱明细", (eval_dir / "score_psi_bin_detail.csv").exists(), "score_psi_bin_detail.csv 覆盖按月、按分箱的 base/current 占比与 PSI component。"),
+        ("意愿风险矩阵（分客群）", all((eval_dir / f"intent_zc_distribution_{seg}.csv").exists() for seg in ["e2e3", "b2"]), "intent_zc_*_{e2e3,b2}.csv 覆盖意愿 x 资产评级的分客群矩阵。"),
         ("报告刷新范围", True, "本次刷新由 rmw report 统一生成；未直接重跑训练/评估。"),
     ]
     return pd.DataFrame(

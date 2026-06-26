@@ -47,7 +47,7 @@ def test_imported_excel_report_layout(tmp_path):
     assert _find_cell(summary, "整体效果对比 AUC") is not None
     assert _find_cell(summary, "整体效果对比 KS") is not None
     assert _find_cell(summary, "模型sloping（OOT-OOS，10箱完整表现）") is not None
-    assert _find_cell(summary, "稳定性分箱明细覆盖") is not None
+    assert _find_cell(summary, "月度 PSI") is not None
     assert _find_cell_contains(summary, "当前 run audit 仍应以 rmw run audit 输出为准") is not None
 
     description = workbook["模型描述"]
@@ -244,3 +244,25 @@ def _find_cell_contains(ws, value: str):
             if isinstance(cell.value, str) and value in cell.value:
                 return cell
     return None
+
+
+def test_gcard_run_summary_renders_bin_psi_and_segment_intent(tmp_path):
+    """Summary must render bin-PSI detail + segmented intent matrices when the
+    evaluate artifacts exist (guardrail so these are not silently dropped)."""
+    run_dir = Path("projects/2026-05-fujie-gcard-v1/runs/2026-06-26-gcard-main-lgbm-rerun")
+    output_path = tmp_path / "model_report.xlsx"
+    generate_excel_report(
+        eval_dir=run_dir / "evaluation",
+        train_dir=run_dir / "modeling" / "main_lgbm",
+        input_dir=run_dir / "modeling_input",
+        feature_dir=run_dir / "feature_selection",
+        output_path=output_path,
+    )
+    summary = load_workbook(output_path)["Summary"]
+    assert _find_cell_contains(summary, "分箱 PSI 明细") is not None
+    assert _find_cell_contains(summary, "老户次新(e2e3)") is not None
+    assert _find_cell_contains(summary, "流失户(b2)") is not None
+    # the stale 待补 coverage entries for these must be gone
+    for row in summary.iter_rows():
+        for cell in row:
+            assert not (isinstance(cell.value, str) and "稳定性分箱明细覆盖" in cell.value)
