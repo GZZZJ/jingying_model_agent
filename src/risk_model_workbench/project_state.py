@@ -60,7 +60,10 @@ def update_project_state(
 ) -> dict[str, Any]:
     project_path = Path(project_dir)
     state = load_project_state(project_path)
-    state.setdefault("project", str(project_path.resolve()))
+    # Always reflect the current project location so the field self-heals when the
+    # repo is moved/renamed (setdefault left a stale path after jingying_model_agent
+    # was renamed to risk_model_workbench).
+    state["project"] = str(project_path.resolve())
     if active_run_id is not None:
         state["active_run_id"] = active_run_id
     if current_objective is not None:
@@ -143,7 +146,10 @@ def summarize_project(project_dir: str | Path, run_id: str | None = None) -> dic
 def write_project_state_from_summary(project_dir: str | Path, summary: dict[str, Any], commands: list[str]) -> Path:
     project_path = Path(project_dir)
     state = load_project_state(project_path)
-    state.setdefault("project", str(project_path.resolve()))
+    # Always reflect the current project location so the field self-heals when the
+    # repo is moved/renamed (setdefault left a stale path after jingying_model_agent
+    # was renamed to risk_model_workbench).
+    state["project"] = str(project_path.resolve())
     if summary.get("active_run_id"):
         state["active_run_id"] = summary["active_run_id"]
     state.setdefault("current_objective", summary.get("current_objective", ""))
