@@ -13,3 +13,6 @@
 - 2026-06-26T11:43:46 [feature_prescreen] scaffold: local_feather mode: 70 per-table pull SQLs generated under feature_selection/prescreen/sql as audit evidence; real DP quality computation not executed (refine covers screening on local feather)
 - 2026-06-26T15:53:42 [evaluate] done: Evaluation completed from local score feather
 - 2026-06-26T15:59:32 [report] done: Excel report generated from standard train and evaluation artifacts
+- 2026-06-26T17:21:41 [report] excel_scaffold: Excel report not generated: too many values to unpack (expected 2)
+- 2026-06-26T17:21:41 [report] scaffold: report generated with missing real evaluation artifacts
+- 2026-06-26T17:51:31 [report] done: Excel report generated from standard train and evaluation artifacts

@@ -2025,7 +2025,7 @@ stages:
     - reports/woe_top_features/images/019_his_360_day_csh_apl_ord_cnt_his_rto_WOE.png
     - reports/woe_top_features/images/020_his_30d_app_str_ctn_v2_WOE.png
     - reports/woe_top_features/woe_top20_summary.csv
-    started_at: '2026-06-26T15:59:15'
+    started_at: '2026-06-26T17:51:00'
     action:
       id: report
       kind: stage
@@ -2047,7 +2047,7 @@ stages:
       - reports/model_report.md
       - reports/model_card.md
       - reports/executive_summary.md
-    finished_at: '2026-06-26T15:59:32'
+    finished_at: '2026-06-26T17:51:31'
     last_result:
       status: done
       failure_code: ''
@@ -2247,7 +2247,7 @@ stages:
         stage: report
         decision: done
         reason: Excel report generated from standard train and evaluation artifacts
-        created_at: '2026-06-26T15:59:32'
+        created_at: '2026-06-26T17:51:31'
     progress:
       step: action_done
       status: done
@@ -2255,7 +2255,7 @@ stages:
       current: null
       total: null
       percent: 100.0
-      heartbeat_at: '2026-06-26T15:59:32'
+      heartbeat_at: '2026-06-26T17:51:31'
       elapsed_seconds: 0.0
       last_event_status: done
 decisions:
@@ -2313,4 +2313,16 @@ decisions:
   decision: done
   reason: Excel report generated from standard train and evaluation artifacts
   created_at: '2026-06-26T15:59:32'
-updated_at: '2026-06-26T15:59:33'
+- stage: report
+  decision: excel_scaffold
+  reason: 'Excel report not generated: too many values to unpack (expected 2)'
+  created_at: '2026-06-26T17:21:41'
+- stage: report
+  decision: scaffold
+  reason: report generated with missing real evaluation artifacts
+  created_at: '2026-06-26T17:21:41'
+- stage: report
+  decision: done
+  reason: Excel report generated from standard train and evaluation artifacts
+  created_at: '2026-06-26T17:51:31'
+updated_at: '2026-06-26T17:51:32'
