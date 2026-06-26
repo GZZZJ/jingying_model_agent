@@ -20,7 +20,7 @@ projects/*/models/
 # Run model artifacts (model.pkl, scores feather, etc.) are committed for
 # in-run reproducibility + traceability. Only intermediate caches and editor
 # locks are ignored; raw input data stays excluded (see data/ rules above).
-projects/*/runs/*/feature_selection/calibration/cache/
+projects/*/runs/**/cache/
 projects/*/runs/**/.~*.xlsx
 
 # Local generated package metadata.
