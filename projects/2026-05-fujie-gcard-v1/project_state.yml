@@ -1,14 +1,23 @@
 project: /Users/guzijun/Desktop/AI攻坚/jingying_model_agent/projects/2026-05-fujie-gcard-v1
-active_run_id: 2026-06-imported-gcard-main-lgbm
-current_objective: 复借G卡主模型产物标准化与连续性交接机制建设
+active_run_id: '20260625_211825_006138'
+current_objective: 复借G卡主模型从0重跑：全链路样本检查/特征收敛/LGBM训练/评估/对比/报告
 status: active
 next_actions:
 - 核对 imported run 中 pending 阶段是否需要标记为 skipped/imported
 - 把高频 lessons 进一步提升为 CLI guardrail、测试或 skill 规则
+- 继续执行 feature_metadata → feature_prescreen → build_wide_sql → feature_refine → train
+  → evaluate → compare → report
+- 在更大样本上验证模型泛化性能；监控线上PSI趋势
 risks:
 - imported run 不是本地全链路重跑证据
 - imported run is not proof that the full workflow was rerun locally
+- scaffold artifacts exist and must not be treated as real modeling evidence
+- 训练数据为10%抽样，非全量宽表数据
 version: 1
-updated_at: '2026-06-09T20:20:06'
+updated_at: '2026-06-26T11:23:55'
 last_handoff: /Users/guzijun/Desktop/AI攻坚/jingying_model_agent/projects/2026-05-fujie-gcard-v1/handoffs/20260609_201140-2026-06-imported-gcard-main-lgbm.md
 last_retrospective: /Users/guzijun/Desktop/AI攻坚/jingying_model_agent/projects/2026-05-fujie-gcard-v1/retrospectives/20260609_201910-session-2026-06-imported-gcard-main-lgbm.md
+blockers: []
+last_verified_at: '2026-06-25T22:14:11'
+last_verified_commands:
+- rmw project status --project projects/2026-05-fujie-gcard-v1

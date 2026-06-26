@@ -124,13 +124,117 @@ def normalize_columns(columns: list) -> list[dict]:
     return normalized
 
 
+class _TMLMetaClient:
+    """Adapter that uses TMLSQLClient + DESC to provide get_table_meta()."""
+
+    def __init__(self):
+        from tmlpatch.database import TMLSQLClient
+
+        self._client = TMLSQLClient()
+
+    def get_table_meta(self, full_table_name: str) -> dict:
+        sql = f"DESC {full_table_name}"
+        df = self._client.sql(sql).to_pandas()
+        return self._parse_desc(df, full_table_name)
+
+    @staticmethod
+    def _parse_desc(df, full_table_name: str) -> dict:
+        lines: list[str] = []
+        for _, row in df.iterrows():
+            val = row["result"]
+            if isinstance(val, list):
+                lines.append(str(val[0]) if val else "")
+            else:
+                lines.append(str(val))
+
+        columns: list[dict] = []
+        table_des = ""
+        project_name = ""
+
+        in_columns = False
+        past_header_sep = False
+        for line in lines:
+            line_s = line.strip()
+
+            # Extract table-level metadata from header lines
+            if "|" in line_s and not in_columns:
+                parts = [p.strip() for p in line_s.split("|")]
+                for part in parts:
+                    if part.startswith("TableComment:"):
+                        table_des = part.split(":", 1)[1].strip()
+                    elif part.startswith("Project:"):
+                        project_name = part.split(":", 1)[1].strip()
+
+            # Detect start of column definitions
+            if "| Field" in line_s or "|Field" in line_s:
+                in_columns = True
+                past_header_sep = False
+                continue
+
+            if not in_columns:
+                continue
+
+            # Skip the separator line between header and data rows
+            if not past_header_sep and line_s.startswith("+--"):
+                past_header_sep = True
+                continue
+
+            if not past_header_sep:
+                continue
+
+            # End of column definitions (next separator after data)
+            if line_s.startswith("+--"):
+                break
+
+            if not line_s.startswith("|"):
+                break
+
+            # Parse: | name | type | label | comment |
+            parts = [p.strip() for p in line_s.split("|")]
+            parts = [p for p in parts if p]  # remove empty strings from leading/trailing |
+
+            if len(parts) >= 2:
+                col_name = parts[0]
+                col_type = parts[1]
+                col_comment = parts[3] if len(parts) > 3 else ""
+                if col_comment == "null":
+                    col_comment = ""
+                columns.append(
+                    {
+                        "name": col_name,
+                        "type": col_type,
+                        "comment": col_comment,
+                    }
+                )
+
+        project_hierarchy = full_table_name.rsplit(".", 1)[0] if "." in full_table_name else ""
+        return {
+            "columns": columns,
+            "des": table_des,
+            "name": full_table_name,
+            "projectName": project_name or project_hierarchy,
+            "partitioned": False,
+            "partitions": [],
+            "tableType": "",
+        }
+
+
 def load_dp_client():
     try:
         from dp_cli import create_clients
+
+        dp, _ = create_clients()
+        return dp
+    except ImportError:
+        pass
+
+    try:
+        return _TMLMetaClient()
     except ImportError as exc:
-        raise SystemExit("dp_cli is not importable. Confirm the dp CLI installation.") from exc
-    dp, _ = create_clients()
-    return dp
+        raise SystemExit(
+            "Neither dp_cli nor TMLSQLClient is available. "
+            "Install one of them to read table metadata."
+        ) from exc
 
 
 def write_csv(path: Path, rows: list[dict], fieldnames: list[str]) -> None:
