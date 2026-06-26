@@ -42,5 +42,21 @@
   "valid_bad_rate": 0.17346304774362328,
   "best_iteration": 303,
   "train_time_seconds": 24.2,
-  "auc_gap": 0.012993140225999955
+  "auc_gap": 0.012993140225999955,
+  "workbench_git_commit": {
+    "commit": "50dbb7f",
+    "dirty": true,
+    "note": "model trained at HEAD d835597 with local-feather fixes in working tree; fixes later committed as 50dbb7f"
+  },
+  "input_feather": {
+    "path": "/Users/guzijun/gcard_1pct_export/sample_50pct.feather",
+    "sha256": "02b3bc9891c2b285625cebc204ea96942ffe595e4590b340f8f7e86dd7365348",
+    "rows": 489743,
+    "cols": 2857
+  },
+  "model_artifacts": {
+    "model_pkl": "modeling/main_lgbm/model.pkl (trained LightGBM, best_iter=303)",
+    "scores_feather": "modeling/main_lgbm/scores_all_splits.feather (model_score on DEV/DEV-OOS/OOT/OOT-OOS + champion cols)",
+    "note": "champion cols gcard_v2/v4/v6 were string-typed in source feather and coerced to numeric at scoring (see train_lgb.py pd.to_numeric)"
+  }
 }
