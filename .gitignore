@@ -18,7 +18,7 @@ projects/*/data/local/*
 projects/*/models/
 
 # Large run artifacts (feather files) – keep CSVs/JSONs.
-projects/*/runs/*/*.feather
+projects/*/runs/**/*.feather
 projects/*/runs/model_scores/*.feather
 projects/*/runs/*/feature_selection/calibration/cache/
 projects/*/runs/**/*.pkl
