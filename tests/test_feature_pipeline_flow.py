@@ -124,6 +124,45 @@ def test_build_wide_sql_execute_registers_artifacts(tmp_path, monkeypatch):
     assert not (project_dir / "feature_selection" / "wide_table_execution.json").exists()
 
 
+def test_build_wide_sql_prefers_runtime_prescreen_paths(tmp_path):
+    project_dir = tmp_path / "project"
+    run_dir = _write_minimal_project(project_dir)
+    runtime_prescreen = run_dir / "feature_selection" / "prescreen" / "results"
+    runtime_prescreen.mkdir(parents=True)
+    (runtime_prescreen / "prescreen_final_remain_features.json").write_text(
+        json.dumps({"mart.feature_runtime": ["feat_runtime"]}) + "\n",
+        encoding="utf-8",
+    )
+    runtime_config_dir = run_dir / "configs_runtime"
+    runtime_config_dir.mkdir(parents=True)
+    (runtime_config_dir / "feature_select.yaml").write_text(
+        "\n".join(
+            [
+                "feature_select:",
+                "  wide_table:",
+                "    base_table: mart.base",
+                "    output_table: mart.wide",
+                "    join_keys: [uid, mdl_dte]",
+                "    base_columns: [uid, mdl_dte, final_flag, target]",
+                f"    remain_features_path: {runtime_prescreen / 'prescreen_final_remain_features.json'}",
+                f"    sql_output: {run_dir / 'queries' / '06_build_prescreen_wide_table.sql'}",
+                f"    feature_map_output: {run_dir / 'feature_selection' / 'prescreen_wide_feature_map.csv'}",
+                f"    summary_output: {run_dir / 'feature_selection' / 'wide_sql_summary.json'}",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    code = main(["build-wide-sql", "--project", str(project_dir), "--run-id", "run1"])
+
+    assert code == 0
+    sql = (run_dir / "queries" / "06_build_prescreen_wide_table.sql").read_text(encoding="utf-8")
+    assert "feat_runtime" in sql
+    assert "feat_a" not in sql
+    assert not (project_dir / "queries" / "06_build_prescreen_wide_table.sql").exists()
+
+
 def test_sql_review_gate_blocks_high_risk_even_when_approved(tmp_path, monkeypatch):
     project_dir = tmp_path / "project"
     run_dir = _write_minimal_project(project_dir)

@@ -67,6 +67,9 @@ FEATURE_PRESCREEN_STAGE = "feature_prescreen"
 LEGACY_FEATURE_PRESCREEN_STAGE = "d01_d02_screening"
 DEFAULT_PRESCREEN_REMAIN_FEATURES = "runs/feature_prescreen/results/prescreen_final_remain_features.json"
 LEGACY_PRESCREEN_REMAIN_FEATURES = "runs/d01_d02_batch_select/results/d01_d02_final_remain_features.json"
+DEFAULT_WIDE_SQL_OUTPUT = "queries/06_build_prescreen_wide_table.sql"
+DEFAULT_WIDE_FEATURE_MAP_OUTPUT = "runs/feature_prescreen/results/prescreen_wide_feature_map.csv"
+DEFAULT_WIDE_SUMMARY_OUTPUT = "runs/feature_prescreen/results/prescreen_wide_sql_summary.json"
 
 
 def _run_path(args: argparse.Namespace) -> Path:
@@ -1126,10 +1129,31 @@ def cmd_build_wide_sql(args: argparse.Namespace) -> int:
         stage_action_started(run_path, "build_wide_sql")
         reporter = ProgressReporter(run_path, "build_wide_sql")
         reporter.emit(step="build_sql", message="开始生成宽表 SQL", percent=10)
-    remain_features_path = Path(args.remain_features)
+    config_path = _runtime_config_path(run_path, project_dir, "feature_select") if run_path else None
+    runtime_feature_cfg = load_yaml(config_path).get("feature_select", {}) if config_path and config_path.exists() else {}
+    runtime_wide_cfg = runtime_feature_cfg.get("wide_table", {}) or {}
+    runtime_config_active = bool(
+        run_path
+        and config_path
+        and config_path.exists()
+        and config_path.parent.resolve() == _runtime_config_dir(run_path).resolve()
+    )
+
+    def _runtime_default_path(arg_value: str, default_value: str, config_key: str) -> Path:
+        value = arg_value
+        if runtime_config_active and arg_value == default_value:
+            value = str(runtime_wide_cfg.get(config_key) or arg_value)
+        path = Path(value)
+        return path if path.is_absolute() else project_dir / path
+
+    remain_features_path = _runtime_default_path(
+        args.remain_features,
+        DEFAULT_PRESCREEN_REMAIN_FEATURES,
+        "remain_features_path",
+    )
     if not remain_features_path.is_absolute():
         remain_features_path = project_dir / remain_features_path
-    if args.remain_features == DEFAULT_PRESCREEN_REMAIN_FEATURES and not remain_features_path.exists():
+    if not runtime_config_active and args.remain_features == DEFAULT_PRESCREEN_REMAIN_FEATURES and not remain_features_path.exists():
         legacy_path = project_dir / LEGACY_PRESCREEN_REMAIN_FEATURES
         if legacy_path.exists():
             remain_features_path = legacy_path
@@ -1137,14 +1161,24 @@ def cmd_build_wide_sql(args: argparse.Namespace) -> int:
     if not execution_path.is_absolute():
         execution_path = (run_path if run_path else project_dir) / execution_path
     try:
-        config_path = _runtime_config_path(run_path, project_dir, "feature_select") if run_path else None
         project_runtime_path = _runtime_config_dir(run_path) / "project.yml" if run_path else None
+        sql_output_path = _runtime_default_path(args.sql_output, DEFAULT_WIDE_SQL_OUTPUT, "sql_output")
+        feature_map_output_path = _runtime_default_path(
+            args.feature_map_output,
+            DEFAULT_WIDE_FEATURE_MAP_OUTPUT,
+            "feature_map_output",
+        )
+        summary_output_path = _runtime_default_path(
+            args.summary_output,
+            DEFAULT_WIDE_SUMMARY_OUTPUT,
+            "summary_output",
+        )
         sql_path, feature_map_path, summary_path = generate_wide_sql(
             project_dir=project_dir,
             remain_features_path=remain_features_path,
-            sql_output_path=project_dir / args.sql_output if not Path(args.sql_output).is_absolute() else Path(args.sql_output),
-            feature_map_path=project_dir / args.feature_map_output if not Path(args.feature_map_output).is_absolute() else Path(args.feature_map_output),
-            summary_path=project_dir / args.summary_output if not Path(args.summary_output).is_absolute() else Path(args.summary_output),
+            sql_output_path=sql_output_path,
+            feature_map_path=feature_map_output_path,
+            summary_path=summary_output_path,
             base_table=args.base_table,
             output_table=args.output_table,
             base_where=args.base_where,
@@ -2102,9 +2136,9 @@ def build_parser() -> argparse.ArgumentParser:
     build_wide_sql.add_argument("--project", required=True)
     build_wide_sql.add_argument("--run-id", default=None, help="optional run id for progress tracking")
     build_wide_sql.add_argument("--remain-features", default=DEFAULT_PRESCREEN_REMAIN_FEATURES)
-    build_wide_sql.add_argument("--sql-output", default="queries/06_build_prescreen_wide_table.sql")
-    build_wide_sql.add_argument("--feature-map-output", default="runs/feature_prescreen/results/prescreen_wide_feature_map.csv")
-    build_wide_sql.add_argument("--summary-output", default="runs/feature_prescreen/results/prescreen_wide_sql_summary.json")
+    build_wide_sql.add_argument("--sql-output", default=DEFAULT_WIDE_SQL_OUTPUT)
+    build_wide_sql.add_argument("--feature-map-output", default=DEFAULT_WIDE_FEATURE_MAP_OUTPUT)
+    build_wide_sql.add_argument("--summary-output", default=DEFAULT_WIDE_SUMMARY_OUTPUT)
     build_wide_sql.add_argument("--execution-output", default="feature_selection/wide_table_execution.json")
     build_wide_sql.add_argument("--base-table", default=None)
     build_wide_sql.add_argument("--output-table", default=None)

@@ -178,6 +178,17 @@ def materialize_request_runtime_configs(
         data_override["period_column"] = period_column
     sample_location = request_sample_location(metadata)
     data_source_mode = resolve_data_source_mode(metadata)
+    run_feature_selection_dir = run_path / "feature_selection"
+    prescreen_output_dir = run_feature_selection_dir / "prescreen"
+    prescreen_remain_features_path = prescreen_output_dir / "results" / "prescreen_final_remain_features.json"
+    wide_sql_output_path = run_path / "queries" / "06_build_prescreen_wide_table.sql"
+    wide_feature_map_path = run_feature_selection_dir / "prescreen_wide_feature_map.csv"
+    wide_sql_summary_path = run_feature_selection_dir / "wide_sql_summary.json"
+    refine_output_dir = run_feature_selection_dir / "refine"
+    refine_dp_data_dir = run_path / "data" / "dp_feather" / "feature_refine"
+    refine_dp_metadata_dir = run_feature_selection_dir / "dp_feather_datasets" / "feature_refine"
+    prescreen_dp_data_dir = run_path / "data" / "dp_feather" / "feature_prescreen"
+    prescreen_dp_metadata_dir = run_feature_selection_dir / "dp_feather_datasets" / "feature_prescreen"
     if sample_location:
         if data_source_mode == LOCAL_FEATHER:
             data_override["raw_path"] = sample_location
@@ -242,6 +253,10 @@ def materialize_request_runtime_configs(
 
     wide_table_override: dict[str, Any] = {
         "join_keys": id_columns,
+        "remain_features_path": str(prescreen_remain_features_path),
+        "sql_output": str(wide_sql_output_path),
+        "feature_map_output": str(wide_feature_map_path),
+        "summary_output": str(wide_sql_summary_path),
     }
     if runtime_project.get("data", {}).get("source_table"):
         wide_table_override["base_table"] = runtime_project["data"]["source_table"]
@@ -250,12 +265,17 @@ def materialize_request_runtime_configs(
         "feature_select": {
             "thresholds": feature_thresholds,
             "prescreen": {
+                "output_dir": str(prescreen_output_dir),
                 "target_col": target_column,
                 "split_col": split_column,
                 "train_value": dev_values[0] if dev_values else "DEV",
                 "valid_value": oot_values[0] if oot_values else "OOT",
                 "thresholds": feature_thresholds,
                 "sampling": {"partition_col": period_column or None},
+                "dp_feather": {
+                    "data_dir": str(prescreen_dp_data_dir),
+                    "metadata_dir": str(prescreen_dp_metadata_dir),
+                },
             },
             "wide_table": wide_table_override,
             "runtime_request": {
@@ -274,6 +294,7 @@ def materialize_request_runtime_configs(
         min_non_null_rate = max(0.0, min(1.0, 1.0 - float(missing_threshold)))
     refine_override: dict[str, Any] = {
         "feature_refine": {
+            "output_dir": str(refine_output_dir),
             "input": {
                 "label_column": target_column,
                 "split_column": split_column,
@@ -288,6 +309,10 @@ def materialize_request_runtime_configs(
             "d03_random_importance": {"enabled": "random_noise_importance" in ((plan or {}).get("step_params") or metadata.get("step_params") or {})},
             "d04_null_importance": {"enabled": "null_importance_filter" in ((plan or {}).get("step_params") or metadata.get("step_params") or {})},
             "d05_baseline_importance": {"enabled": "baseline_importance_filter" in ((plan or {}).get("step_params") or metadata.get("step_params") or {})},
+            "dp_feather": {
+                "data_dir": str(refine_dp_data_dir),
+                "metadata_dir": str(refine_dp_metadata_dir),
+            },
             "runtime_request": {
                 "data_source_mode": data_source_mode,
                 "sample_location": sample_location,
@@ -328,6 +353,13 @@ def materialize_request_runtime_configs(
     )
     if direct_refine_remote_table:
         refine_override["feature_refine"].setdefault("input", {})["wide_table"] = sample_location
+        refine_override["feature_refine"].setdefault("input", {})["feature_map"] = None
+    elif data_source_mode != LOCAL_FEATHER:
+        refine_input = refine_override["feature_refine"].setdefault("input", {})
+        refine_input["feature_map"] = str(wide_feature_map_path)
+        output_table = (runtime_feature_select.get("feature_select", {}).get("wide_table", {}) or {}).get("output_table")
+        if output_table:
+            refine_input["wide_table"] = output_table
     if sample_location and data_source_mode == LOCAL_FEATHER:
         refine_input = refine_override["feature_refine"].setdefault("input", {})
         refine_input["local_feather_path"] = sample_location

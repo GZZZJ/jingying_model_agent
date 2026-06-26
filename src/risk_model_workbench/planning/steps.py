@@ -135,7 +135,7 @@ STEP_REGISTRY: dict[str, dict[str, Any]] = {
         "stage": "feature_refine",
         "description": "Keep only executable model features and remove id, label, split, score, random, and other non-feature columns.",
         "default_params": {},
-        "source_reference": "Fujie GCard feature_refine_feather availability and base-column exclusion flow",
+        "source_reference": "Fujie GCard feature availability and base-column exclusion flow",
         "implementation_status": "implemented",
     },
     "missing_rate_filter": {
@@ -151,7 +151,7 @@ STEP_REGISTRY: dict[str, dict[str, Any]] = {
         "stage": "feature_refine",
         "description": "Drop constant or near-constant features using the configured unique-value threshold.",
         "default_params": {"max_unique_values": 1},
-        "source_reference": "Fujie GCard feature_refine_feather drop_constant flow",
+        "source_reference": "Fujie GCard constant-value filtering flow",
         "implementation_status": "implemented",
     },
     "iv_filter": {

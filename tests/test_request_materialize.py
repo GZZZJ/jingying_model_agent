@@ -116,6 +116,7 @@ def test_materialize_request_runtime_configs_maps_builder_fields(tmp_path):
 
     assert set(paths) >= {"project.yml", "sample.yaml", "feature_select.yaml", "refine_features.yaml", "train.yaml", "evaluate.yaml", "report.yaml"}
     runtime_project = yaml.safe_load((run_dir / "configs_runtime" / "project.yml").read_text(encoding="utf-8"))
+    feature_select = yaml.safe_load((run_dir / "configs_runtime" / "feature_select.yaml").read_text(encoding="utf-8"))
     refine = yaml.safe_load((run_dir / "configs_runtime" / "refine_features.yaml").read_text(encoding="utf-8"))
     train = yaml.safe_load((run_dir / "configs_runtime" / "train.yaml").read_text(encoding="utf-8"))
     evaluate = yaml.safe_load((run_dir / "configs_runtime" / "evaluate.yaml").read_text(encoding="utf-8"))
@@ -128,6 +129,13 @@ def test_materialize_request_runtime_configs_maps_builder_fields(tmp_path):
     request_runtime = yaml.safe_load((run_dir / "configs_runtime" / "request_runtime.yaml").read_text(encoding="utf-8"))
     assert request_runtime["data_source_mode"] == "local_feather"
     assert request_runtime["sample_location"] == "data/raw/model.feather"
+    assert feature_select["feature_select"]["prescreen"]["output_dir"] == str(run_dir / "feature_selection" / "prescreen")
+    assert feature_select["feature_select"]["wide_table"]["remain_features_path"] == str(
+        run_dir / "feature_selection" / "prescreen" / "results" / "prescreen_final_remain_features.json"
+    )
+    assert feature_select["feature_select"]["wide_table"]["feature_map_output"] == str(run_dir / "feature_selection" / "prescreen_wide_feature_map.csv")
+    assert refine["feature_refine"]["output_dir"] == str(run_dir / "feature_selection" / "refine")
+    assert refine["feature_refine"]["dp_feather"]["data_dir"] == str(run_dir / "data" / "dp_feather" / "feature_refine")
     assert refine["feature_refine"]["input"]["local_feather_path"] == "data/raw/model.feather"
     assert runtime_project["split"]["oos_values"] == ["DEV-OOS"]
     assert refine["feature_refine"]["preprocessing"]["min_non_null_rate"] == 0.12
@@ -156,10 +164,16 @@ def test_materialize_remote_table_mode_overrides_project_raw_path(tmp_path):
     materialize_request_runtime_configs(request_doc=request_doc, project_dir=project_dir, run_dir=run_dir)
 
     runtime_project = yaml.safe_load((run_dir / "configs_runtime" / "project.yml").read_text(encoding="utf-8"))
+    feature_select = yaml.safe_load((run_dir / "configs_runtime" / "feature_select.yaml").read_text(encoding="utf-8"))
+    refine = yaml.safe_load((run_dir / "configs_runtime" / "refine_features.yaml").read_text(encoding="utf-8"))
     train = yaml.safe_load((run_dir / "configs_runtime" / "train.yaml").read_text(encoding="utf-8"))
     assert runtime_project["data"]["source_table"] == "mart.request_sample"
     assert runtime_project["data"].get("raw_path") is None
     assert runtime_project["request"]["data_source_mode"] == "remote_table"
+    assert feature_select["feature_select"]["wide_table"]["base_table"] == "mart.request_sample"
+    assert feature_select["feature_select"]["wide_table"]["sql_output"] == str(run_dir / "queries" / "06_build_prescreen_wide_table.sql")
+    assert refine["feature_refine"]["input"]["feature_map"] == str(run_dir / "feature_selection" / "prescreen_wide_feature_map.csv")
+    assert refine["feature_refine"]["input"]["wide_table"] == "mart.wide"
     assert "feather_path" not in train["input"]
 
 
@@ -176,6 +190,7 @@ def test_materialize_refine_only_remote_table_uses_request_table_as_wide_input(t
 
     refine = yaml.safe_load((run_dir / "configs_runtime" / "refine_features.yaml").read_text(encoding="utf-8"))
     assert refine["feature_refine"]["input"]["wide_table"] == "pdm_risk.large_wide_table"
+    assert refine["feature_refine"]["input"].get("feature_map") is None
 
 
 def test_run_init_materializes_and_registers_runtime_configs(tmp_path):

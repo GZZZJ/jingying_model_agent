@@ -73,7 +73,7 @@ reports:
 
 # 特征要求
 
-优先复用已回溯的 70 张候选特征表和历史特征筛选产物。`vendor/feature-select-v2/scripts/code/` 视为只读。
+参考已回溯的候选特征表口径，但本轮 run 的特征筛选产物必须重新生成并注册到当前 run。`vendor/feature-select-v2/scripts/code/` 视为只读。
 
 # 实验要求
 
