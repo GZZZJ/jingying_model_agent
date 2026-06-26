@@ -121,7 +121,13 @@ def evaluate_scores_from_feather(
     _write_cross_gain_outputs(df, output_path, score_cols, label_col)
     if progress:
         progress.emit(step="intent_risk_outputs", message="开始生成意愿资产交叉观察结果", percent=76)
-    _write_intent_risk_outputs(df, output_path, label_col)
+    intent_segments: dict[str, Any] = {}
+    if "blue_customer_flag" in df.columns:
+        intent_segments = {
+            "e2e3": df["blue_customer_flag"].isin(["E2", "E3"]),
+            "b2": df["blue_customer_flag"] == "B2",
+        }
+    _write_intent_risk_outputs(df, output_path, label_col, segment_filters=intent_segments)
     business_risk_rows = _business_risk_rows(df, label_col, score_cols, eval_cfg.get("risk_profile_dimensions", []))
     pd.DataFrame(business_risk_rows).to_csv(output_path / "business_risk.csv", index=False, encoding="utf-8-sig")
     if progress:
@@ -319,52 +325,95 @@ def _write_cross_gain_outputs(df: pd.DataFrame, output_path: Path, score_cols: l
             pd.DataFrame(rows).to_csv(output_path / f"cross_gain_matrix_{champion}.csv", index=False, encoding="utf-8-sig")
 
 
-def _write_intent_risk_outputs(df: pd.DataFrame, output_path: Path, label_col: str) -> None:
+def _write_intent_risk_outputs(
+    df: pd.DataFrame,
+    output_path: Path,
+    label_col: str,
+    segment_filters: dict[str, Any] | None = None,
+) -> None:
+    """Write intent x zc_level risk matrices for the cohort and each segment.
+
+    Always writes the cohort files (``intent_zc_*.csv``). When ``segment_filters``
+    is provided (e.g. {"e2e3": mask, "b2": mask}) it also writes per-segment files
+    (``intent_zc_*_<segment>.csv``) so segmented intent matrices are produced, not
+    flagged as missing by the report.
+    """
     if "zc_level" not in df.columns or "model_score" not in df.columns:
         return
-    valid = df["model_score"].notna()
+    _write_intent_tables(_compute_intent_risk_tables(df, label_col), output_path, suffix="")
+    if segment_filters:
+        for seg_name, seg_mask in segment_filters.items():
+            seg_df = df[seg_mask]
+            if int(seg_df["model_score"].notna().sum()) < 30:
+                continue
+            _write_intent_tables(_compute_intent_risk_tables(seg_df, label_col), output_path, suffix=f"_{seg_name}")
+
+
+def _compute_intent_risk_tables(df_slice: pd.DataFrame, label_col: str) -> dict[str, pd.DataFrame]:
+    """Bin model_score into intent levels and build the four intent x zc tables."""
+    empty = {
+        "distribution": pd.DataFrame(),
+        "ftr_rate": pd.DataFrame(),
+        "amount_risk": pd.DataFrame(),
+        "headcount": pd.DataFrame(),
+    }
+    valid = df_slice["model_score"].notna()
     if int(valid.sum()) < 30:
-        return
-    bins = pd.qcut(df.loc[valid, "model_score"], 3, labels=False, duplicates="drop")
-    df["intent_level"] = "中意愿"
+        return empty
+    bins = pd.qcut(df_slice.loc[valid, "model_score"], 3, labels=False, duplicates="drop")
+    frame = df_slice.copy()
+    frame["intent_level"] = "中意愿"
     if bins.nunique() == 3:
-        df.loc[valid, "intent_level"] = ["低意愿" if b == 0 else "中意愿" if b == 1 else "高意愿" for b in bins]
+        frame.loc[valid, "intent_level"] = ["低意愿" if b == 0 else "中意愿" if b == 1 else "高意愿" for b in bins]
     elif bins.nunique() == 2:
-        df.loc[valid, "intent_level"] = ["低意愿" if b == 0 else "高意愿" for b in bins]
+        frame.loc[valid, "intent_level"] = ["低意愿" if b == 0 else "高意愿" for b in bins]
+    total = max(len(frame), 1)
     rows = []
     for intent in ["低意愿", "中意愿", "高意愿"]:
-        for zc_val in sorted(df["zc_level"].dropna().unique()):
-            mask = (df["intent_level"] == intent) & (df["zc_level"] == zc_val)
+        for zc_val in sorted(frame["zc_level"].dropna().unique()):
+            mask = (frame["intent_level"] == intent) & (frame["zc_level"] == zc_val)
             n = int(mask.sum())
             if n:
-                positive = int(df.loc[mask, label_col].sum())
-                rows.append({"intent_level": intent, "zc_level": str(zc_val), "n_samples": n, "pct": round(n / len(df), 6), "bad": positive, "bad_rate": round(positive / n, 6)})
-    intent_zc = pd.DataFrame(rows)
-    if len(intent_zc):
-        intent_zc.to_csv(output_path / "intent_zc_distribution.csv", index=False, encoding="utf-8-sig")
-        intent_zc.pivot_table(index="intent_level", columns="zc_level", values="bad_rate", aggfunc="first").to_csv(
-            output_path / "intent_zc_ftr_rate.csv", encoding="utf-8-sig"
-        )
-    if "prc_amt_xz_30d_3m" not in df.columns or "ovd_amt_xz_30d_3m" not in df.columns:
-        return
-    risk_rows = []
-    head_rows = []
-    for intent in ["低意愿", "中意愿", "高意愿"]:
-        mask = df["intent_level"] == intent
-        n = int(mask.sum())
-        if n:
-            principal = float(df.loc[mask, "prc_amt_xz_30d_3m"].fillna(0).sum())
-            overdue = float(df.loc[mask, "ovd_amt_xz_30d_3m"].fillna(0).sum())
-            head_risk = int((df.loc[mask, "ovd_amt_xz_30d_3m"].fillna(0) > 0).sum())
-            risk_rows.append({"intent_level": intent, "n_samples": n, "total_principal": principal, "total_overdue": overdue, "amount_overdue_rate": overdue / principal if principal > 0 else 0, "head_risk_count": head_risk, "head_risk_rate": round(head_risk / n, 6)})
-        for zc_val in sorted(df["zc_level"].dropna().unique()):
-            zc_mask = mask & (df["zc_level"] == zc_val)
-            zc_n = int(zc_mask.sum())
-            if zc_n:
-                head_risk = int((df.loc[zc_mask, "ovd_amt_xz_30d_3m"].fillna(0) > 0).sum())
-                head_rows.append({"intent_level": intent, "zc_level": str(zc_val), "n_samples": zc_n, "head_risk_count": head_risk, "head_risk_rate": round(head_risk / zc_n, 6)})
-    pd.DataFrame(risk_rows).to_csv(output_path / "intent_zc_amount_risk.csv", index=False, encoding="utf-8-sig")
-    pd.DataFrame(head_rows).to_csv(output_path / "intent_zc_headcount_risk.csv", index=False, encoding="utf-8-sig")
+                positive = int(frame.loc[mask, label_col].sum())
+                rows.append({"intent_level": intent, "zc_level": str(zc_val), "n_samples": n, "pct": round(n / total, 6), "bad": positive, "bad_rate": round(positive / n, 6)})
+    distribution = pd.DataFrame(rows)
+    ftr_rate = (
+        distribution.pivot_table(index="intent_level", columns="zc_level", values="bad_rate", aggfunc="first")
+        if len(distribution)
+        else pd.DataFrame()
+    )
+    amount_risk = pd.DataFrame()
+    headcount = pd.DataFrame()
+    if "prc_amt_xz_30d_3m" in frame.columns and "ovd_amt_xz_30d_3m" in frame.columns:
+        risk_rows = []
+        head_rows = []
+        for intent in ["低意愿", "中意愿", "高意愿"]:
+            mask = frame["intent_level"] == intent
+            n = int(mask.sum())
+            if n:
+                principal = float(frame.loc[mask, "prc_amt_xz_30d_3m"].fillna(0).sum())
+                overdue = float(frame.loc[mask, "ovd_amt_xz_30d_3m"].fillna(0).sum())
+                head_risk = int((frame.loc[mask, "ovd_amt_xz_30d_3m"].fillna(0) > 0).sum())
+                risk_rows.append({"intent_level": intent, "n_samples": n, "total_principal": principal, "total_overdue": overdue, "amount_overdue_rate": overdue / principal if principal > 0 else 0, "head_risk_count": head_risk, "head_risk_rate": round(head_risk / n, 6)})
+            for zc_val in sorted(frame["zc_level"].dropna().unique()):
+                zc_mask = mask & (frame["zc_level"] == zc_val)
+                zc_n = int(zc_mask.sum())
+                if zc_n:
+                    head_risk = int((frame.loc[zc_mask, "ovd_amt_xz_30d_3m"].fillna(0) > 0).sum())
+                    head_rows.append({"intent_level": intent, "zc_level": str(zc_val), "n_samples": zc_n, "head_risk_count": head_risk, "head_risk_rate": round(head_risk / zc_n, 6)})
+        amount_risk = pd.DataFrame(risk_rows)
+        headcount = pd.DataFrame(head_rows)
+    return {"distribution": distribution, "ftr_rate": ftr_rate, "amount_risk": amount_risk, "headcount": headcount}
+
+
+def _write_intent_tables(tables: dict[str, pd.DataFrame], output_path: Path, suffix: str) -> None:
+    if len(tables["distribution"]):
+        tables["distribution"].to_csv(output_path / f"intent_zc_distribution{suffix}.csv", index=False, encoding="utf-8-sig")
+        tables["ftr_rate"].to_csv(output_path / f"intent_zc_ftr_rate{suffix}.csv", encoding="utf-8-sig")
+    if len(tables["amount_risk"]):
+        tables["amount_risk"].to_csv(output_path / f"intent_zc_amount_risk{suffix}.csv", index=False, encoding="utf-8-sig")
+    if len(tables["headcount"]):
+        tables["headcount"].to_csv(output_path / f"intent_zc_headcount_risk{suffix}.csv", index=False, encoding="utf-8-sig")
 
 
 def _business_risk_rows(df: pd.DataFrame, label_col: str, score_cols: list[str], dimensions: list[str]) -> list[dict[str, Any]]:
@@ -398,13 +447,20 @@ def _write_psi_outputs(df: pd.DataFrame, output_path: Path, score_cols: list[str
     if time_col not in df.columns:
         return
     rows = []
+    bin_rows = []
     for score_col in score_cols:
-        psi_df = compute_score_psi(df, score_col, time_col)
+        psi_df, bin_df = compute_score_psi(df, score_col, time_col)
         if len(psi_df):
             psi_df["score_column"] = score_col
             rows.append(psi_df)
+        if len(bin_df):
+            bin_df["score_column"] = score_col
+            bin_rows.append(bin_df)
     if rows:
         pd.concat(rows, ignore_index=True).to_csv(output_path / "score_psi_by_month.csv", index=False, encoding="utf-8-sig")
+    if bin_rows:
+        # Per-bin score distribution + PSI component by month (stability bin detail).
+        pd.concat(bin_rows, ignore_index=True).to_csv(output_path / "score_psi_bin_detail.csv", index=False, encoding="utf-8-sig")
 
 
 def _benchmark_uplift(df: pd.DataFrame, label_col: str, split_col: str, score_cols: list[str], splits: list[Any]) -> list[dict[str, Any]]:

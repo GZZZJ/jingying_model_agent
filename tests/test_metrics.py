@@ -29,5 +29,10 @@ def test_decile_lift_and_monthly_psi():
     assert lift.iloc[-1]["cum_lift"] == 1.0
     assert lift.iloc[-1]["remaining_lift"] == 0.0
 
-    psi = compute_score_psi(frame, "score", "mdl_dte")
+    psi, bin_detail = compute_score_psi(frame, "score", "mdl_dte")
     assert list(psi["month"]) == ["2026-01", "2026-02"]
+    # bin-level PSI detail is now produced alongside the monthly scalar
+    assert not bin_detail.empty
+    assert set(["month", "bin", "base_prop", "current_prop", "psi_component"]).issubset(bin_detail.columns)
+    # components for the baseline month sum to ~0, later months reconstruct the psi
+    assert bin_detail["month"].nunique() == 2

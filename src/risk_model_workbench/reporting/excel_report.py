@@ -726,7 +726,12 @@ def _gcard_summary_markdown_lines(*, train_dir: Path, eval_dir: Path, feature_di
     lines.extend(_markdown_table(_gcard_top_decile_summary_frame(eval_dir=eval_dir, compare_score=compare_score)))
 
     if psi is not None and not psi.empty:
-        lines.extend(["", "### 七、模型稳定性", "", "> PSI 为本轮模型分数月度汇总；分箱明细和 PSI component 见【模型稳定性】或待补口径说明。", ""])
+        bin_note = (
+            "分箱明细（base/current 占比 + PSI component）见 `evaluation/score_psi_bin_detail.csv`。"
+            if (eval_dir / "score_psi_bin_detail.csv").exists()
+            else "分箱明细和 PSI component 见【模型稳定性】或待补口径说明。"
+        )
+        lines.extend(["", "### 七、模型稳定性", "", f"> PSI 为本轮模型分数月度汇总；{bin_note}", ""])
         lines.extend(_markdown_table(_gcard_psi_summary_frame(psi=psi, compare_score=compare_score), limit=20))
 
     if importance is not None and not importance.empty:
@@ -2573,7 +2578,10 @@ def _append_intent_risk_markdown(lines: list[str], eval_dir: Path) -> None:
         ):
             return
         lines.extend(["3、意愿交叉风险（DEV-OOS）", ""])
-        lines.append("- 当前 run 仅有全量观察口径的意愿 x 资产评级结果，缺少老户/流失户和历史版本分层矩阵；完整缺失项见 `model_report_missing_results.md`。")
+        if (eval_dir / "intent_zc_distribution_b2.csv").exists():
+            lines.append("- 意愿 x 资产评级矩阵含全量口径及分客群（老户次新 e2e3 / 流失户 b2），见 `evaluation/intent_zc_*_{e2e3,b2}.csv`。")
+        else:
+            lines.append("- 当前 run 仅有全量观察口径的意愿 x 资产评级结果，缺少老户/流失户和历史版本分层矩阵；完整缺失项见 `model_report_missing_results.md`。")
         lines.append("")
         if basic_distribution is not None and not basic_distribution.empty:
             lines.append("当前可用全量观察：占比（意愿评级 x 资产评级）")
